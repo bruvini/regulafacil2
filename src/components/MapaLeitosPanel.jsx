@@ -4,15 +4,24 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { ChevronDown, MoreVertical, Loader2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { ChevronDown, MoreVertical, Loader2, Flame, Star } from 'lucide-react';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { 
   getSetoresCollection, 
   getLeitosCollection, 
   getQuartosCollection, 
-  onSnapshot 
+  onSnapshot,
+  doc,
+  updateDoc,
+  arrayUnion,
+  serverTimestamp,
+  deleteField
 } from '@/lib/firebase';
+import { useToast } from '@/hooks/use-toast';
 
 // Color mapping for sector types
 const getSectorTypeColor = (tipoSetor) => {
@@ -25,8 +34,10 @@ const getSectorTypeColor = (tipoSetor) => {
   return colorMap[tipoSetor] || 'border-t-4 border-gray-500';
 };
 
-// Componente LeitoCard
-const LeitoCard = ({ leito }) => {
+// Componente LeitoCard Dinâmico
+const LeitoCard = ({ leito, onBloquearLeito, onSolicitarHigienizacao, onDesbloquearLeito, onFinalizarHigienizacao, onPriorizarHigienizacao }) => {
+  const { toast } = useToast();
+
   const getTempoNoStatus = () => {
     if (!leito.historico || leito.historico.length === 0) {
       return 'sem histórico';
@@ -51,13 +62,72 @@ const LeitoCard = ({ leito }) => {
     }
   };
 
-  // Só renderiza leitos com status "Vago"
-  if (leito.status !== 'Vago') {
-    return null;
-  }
+  const getCardStyle = () => {
+    switch (leito.status) {
+      case 'Vago':
+        return "bg-white border-2 border-blue-200 hover:border-blue-300 transition-colors shadow-sm";
+      case 'Bloqueado':
+        return "bg-gray-50 border-2 border-gray-300 hover:border-gray-400 transition-colors shadow-sm";
+      case 'Higienização':
+        return "bg-yellow-50 border-2 border-yellow-300 hover:border-yellow-400 transition-colors shadow-sm";
+      default:
+        return "bg-white border-2 border-gray-200 hover:border-gray-300 transition-colors shadow-sm";
+    }
+  };
+
+  const getBadgeStyle = () => {
+    switch (leito.status) {
+      case 'Vago':
+        return "bg-green-100 text-green-800 border-green-200";
+      case 'Bloqueado':
+        return "bg-gray-100 text-gray-800 border-gray-200";
+      case 'Higienização':
+        return "bg-yellow-100 text-yellow-800 border-yellow-200";
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-200";
+    }
+  };
+
+  const renderActions = () => {
+    switch (leito.status) {
+      case 'Vago':
+        return (
+          <>
+            <DropdownMenuItem disabled className="opacity-50">
+              INTERNAR PACIENTE MANUALMENTE
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onBloquearLeito(leito)}>
+              BLOQUEAR LEITO
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onSolicitarHigienizacao(leito)}>
+              SOLICITAR HIGIENIZAÇÃO
+            </DropdownMenuItem>
+          </>
+        );
+      case 'Bloqueado':
+        return (
+          <DropdownMenuItem onClick={() => onDesbloquearLeito(leito)}>
+            DESBLOQUEAR LEITO
+          </DropdownMenuItem>
+        );
+      case 'Higienização':
+        return (
+          <>
+            <DropdownMenuItem onClick={() => onFinalizarHigienizacao(leito)}>
+              FINALIZAR HIGIENIZAÇÃO
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onPriorizarHigienizacao(leito)}>
+              {leito.higienizacaoPrioritaria ? 'REMOVER PRIORIDADE' : 'PRIORIZAR HIGIENIZAÇÃO'}
+            </DropdownMenuItem>
+          </>
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
-    <Card className="bg-white border-2 border-blue-200 hover:border-blue-300 transition-colors shadow-sm">
+    <Card className={getCardStyle()}>
       <CardContent className="p-4 relative">
         {/* Dropdown de ações */}
         <div className="absolute top-2 right-2">
@@ -68,15 +138,7 @@ const LeitoCard = ({ leito }) => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem>
-                INTERNAR PACIENTE MANUALMENTE
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                BLOQUEAR LEITO
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                SOLICITAR HIGIENIZAÇÃO
-              </DropdownMenuItem>
+              {renderActions()}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -87,16 +149,31 @@ const LeitoCard = ({ leito }) => {
             <h4 className="font-semibold text-sm text-gray-900">
               Leito: {leito.codigoLeito}
             </h4>
-            {leito.isPCP && (
-              <Badge variant="secondary" className="text-xs mt-1">
-                PCP
-              </Badge>
-            )}
+            <div className="flex items-center gap-1 mt-1">
+              {leito.isPCP && (
+                <Badge variant="secondary" className="text-xs">
+                  PCP
+                </Badge>
+              )}
+              {leito.status === 'Higienização' && leito.higienizacaoPrioritaria && (
+                <Badge variant="destructive" className="text-xs flex items-center gap-1">
+                  <Flame className="h-3 w-3" />
+                  Prioridade
+                </Badge>
+              )}
+            </div>
           </div>
 
-          <Badge variant="default" className="bg-green-100 text-green-800 border-green-200">
+          <Badge variant="outline" className={getBadgeStyle()}>
             {leito.status}
           </Badge>
+
+          {/* Informações específicas por status */}
+          {leito.status === 'Bloqueado' && leito.motivoBloqueio && (
+            <div className="text-xs text-gray-600 bg-gray-100 p-2 rounded">
+              <strong>Motivo:</strong> {leito.motivoBloqueio}
+            </div>
+          )}
 
           <div className="text-xs text-muted-foreground">
             {getTempoNoStatus()}
@@ -115,6 +192,152 @@ const MapaLeitosPanel = () => {
   const [loading, setLoading] = useState(true);
   const [expandedSections, setExpandedSections] = useState({});
   const [expandedSetores, setExpandedSetores] = useState({});
+  
+  // Estados dos modais
+  const [modalBloquear, setModalBloquear] = useState({ open: false, leito: null });
+  const [modalHigienizacao, setModalHigienizacao] = useState({ open: false, leito: null });
+  const [modalDesbloquear, setModalDesbloquear] = useState({ open: false, leito: null });
+  const [modalFinalizarHigienizacao, setModalFinalizarHigienizacao] = useState({ open: false, leito: null });
+  const [motivoBloqueio, setMotivoBloqueio] = useState('');
+  
+  const { toast } = useToast();
+
+  // Funções de ação dos leitos
+  const handleBloquearLeito = async () => {
+    if (!modalBloquear.leito || !motivoBloqueio.trim()) return;
+    
+    try {
+      const leitoRef = doc(getLeitosCollection(), modalBloquear.leito.id);
+      await updateDoc(leitoRef, {
+        status: 'Bloqueado',
+        motivoBloqueio: motivoBloqueio.trim(),
+        historico: arrayUnion({
+          status: 'Bloqueado',
+          timestamp: serverTimestamp()
+        })
+      });
+      
+      toast({
+        title: "Leito bloqueado",
+        description: `Leito ${modalBloquear.leito.codigoLeito} foi bloqueado com sucesso.`,
+      });
+      
+      setModalBloquear({ open: false, leito: null });
+      setMotivoBloqueio('');
+    } catch (error) {
+      console.error('Erro ao bloquear leito:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao bloquear o leito. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSolicitarHigienizacao = async (leito) => {
+    try {
+      const leitoRef = doc(getLeitosCollection(), leito.id);
+      await updateDoc(leitoRef, {
+        status: 'Higienização',
+        higienizacaoPrioritaria: false,
+        historico: arrayUnion({
+          status: 'Higienização',
+          timestamp: serverTimestamp()
+        })
+      });
+      
+      toast({
+        title: "Higienização solicitada",
+        description: `Higienização do leito ${leito.codigoLeito} foi solicitada.`,
+      });
+      
+      setModalHigienizacao({ open: false, leito: null });
+    } catch (error) {
+      console.error('Erro ao solicitar higienização:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao solicitar higienização. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDesbloquearLeito = async (leito) => {
+    try {
+      const leitoRef = doc(getLeitosCollection(), leito.id);
+      await updateDoc(leitoRef, {
+        status: 'Vago',
+        motivoBloqueio: deleteField(),
+        historico: arrayUnion({
+          status: 'Vago',
+          timestamp: serverTimestamp()
+        })
+      });
+      
+      toast({
+        title: "Leito desbloqueado",
+        description: `Leito ${leito.codigoLeito} foi desbloqueado com sucesso.`,
+      });
+      
+      setModalDesbloquear({ open: false, leito: null });
+    } catch (error) {
+      console.error('Erro ao desbloquear leito:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao desbloquear o leito. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleFinalizarHigienizacao = async (leito) => {
+    try {
+      const leitoRef = doc(getLeitosCollection(), leito.id);
+      await updateDoc(leitoRef, {
+        status: 'Vago',
+        higienizacaoPrioritaria: deleteField(),
+        historico: arrayUnion({
+          status: 'Vago',
+          timestamp: serverTimestamp()
+        })
+      });
+      
+      toast({
+        title: "Higienização finalizada",
+        description: `Higienização do leito ${leito.codigoLeito} foi finalizada.`,
+      });
+      
+      setModalFinalizarHigienizacao({ open: false, leito: null });
+    } catch (error) {
+      console.error('Erro ao finalizar higienização:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao finalizar higienização. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handlePriorizarHigienizacao = async (leito) => {
+    try {
+      const leitoRef = doc(getLeitosCollection(), leito.id);
+      await updateDoc(leitoRef, {
+        higienizacaoPrioritaria: !leito.higienizacaoPrioritaria
+      });
+      
+      toast({
+        title: leito.higienizacaoPrioritaria ? "Prioridade removida" : "Higienização priorizada",
+        description: `Leito ${leito.codigoLeito} ${leito.higienizacaoPrioritaria ? 'não é mais' : 'agora é'} prioritário.`,
+      });
+    } catch (error) {
+      console.error('Erro ao alterar prioridade:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao alterar prioridade. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
 
   // Buscar dados do Firestore em tempo real
   useEffect(() => {
@@ -304,7 +527,15 @@ const MapaLeitosPanel = () => {
                           </h4>
                           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                             {quarto.leitos.map(leito => (
-                              <LeitoCard key={leito.id} leito={leito} />
+                              <LeitoCard 
+                                key={leito.id} 
+                                leito={leito}
+                                onBloquearLeito={(leito) => setModalBloquear({ open: true, leito })}
+                                onSolicitarHigienizacao={(leito) => setModalHigienizacao({ open: true, leito })}
+                                onDesbloquearLeito={(leito) => setModalDesbloquear({ open: true, leito })}
+                                onFinalizarHigienizacao={(leito) => setModalFinalizarHigienizacao({ open: true, leito })}
+                                onPriorizarHigienizacao={handlePriorizarHigienizacao}
+                              />
                             ))}
                           </div>
                         </div>
@@ -321,7 +552,15 @@ const MapaLeitosPanel = () => {
                           </h4>
                           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                             {setor.leitosSemQuarto.map(leito => (
-                              <LeitoCard key={leito.id} leito={leito} />
+                              <LeitoCard 
+                                key={leito.id} 
+                                leito={leito}
+                                onBloquearLeito={(leito) => setModalBloquear({ open: true, leito })}
+                                onSolicitarHigienizacao={(leito) => setModalHigienizacao({ open: true, leito })}
+                                onDesbloquearLeito={(leito) => setModalDesbloquear({ open: true, leito })}
+                                onFinalizarHigienizacao={(leito) => setModalFinalizarHigienizacao({ open: true, leito })}
+                                onPriorizarHigienizacao={handlePriorizarHigienizacao}
+                              />
                             ))}
                           </div>
                         </div>
@@ -334,6 +573,92 @@ const MapaLeitosPanel = () => {
           </Collapsible>
         </div>
       ))}
+      
+      {/* Modal para Bloquear Leito */}
+      <Dialog open={modalBloquear.open} onOpenChange={(open) => setModalBloquear({ open, leito: null })}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Bloquear Leito</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Você está prestes a bloquear o leito <strong>{modalBloquear.leito?.codigoLeito}</strong>.
+            </p>
+            <Textarea
+              placeholder="Informe o motivo do bloqueio..."
+              value={motivoBloqueio}
+              onChange={(e) => setMotivoBloqueio(e.target.value)}
+              className="min-h-[100px]"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalBloquear({ open: false, leito: null })}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleBloquearLeito}
+              disabled={!motivoBloqueio.trim()}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Confirmar Bloqueio
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal para Solicitar Higienização */}
+      <AlertDialog open={modalHigienizacao.open} onOpenChange={(open) => setModalHigienizacao({ open, leito: null })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Solicitar Higienização</AlertDialogTitle>
+            <AlertDialogDescription>
+              Confirmar solicitação de higienização para o leito <strong>{modalHigienizacao.leito?.codigoLeito}</strong>?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => handleSolicitarHigienizacao(modalHigienizacao.leito)}>
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Modal para Desbloquear Leito */}
+      <AlertDialog open={modalDesbloquear.open} onOpenChange={(open) => setModalDesbloquear({ open, leito: null })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Desbloquear Leito</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deseja realmente desbloquear o leito <strong>{modalDesbloquear.leito?.codigoLeito}</strong>?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => handleDesbloquearLeito(modalDesbloquear.leito)}>
+              Desbloquear
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Modal para Finalizar Higienização */}
+      <AlertDialog open={modalFinalizarHigienizacao.open} onOpenChange={(open) => setModalFinalizarHigienizacao({ open, leito: null })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Finalizar Higienização</AlertDialogTitle>
+            <AlertDialogDescription>
+              Confirmar a finalização da higienização do leito <strong>{modalFinalizarHigienizacao.leito?.codigoLeito}</strong>?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => handleFinalizarHigienizacao(modalFinalizarHigienizacao.leito)}>
+              Finalizar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
