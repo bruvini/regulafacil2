@@ -549,7 +549,7 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
                       {setores.map((setor) => {
                         const leitosDoSetor = leitos
                           .filter(l => l.setorId === setor.id)
-                          .sort((a, b) => a.codigoLeito.localeCompare(b.codigoLeito));
+                          .sort((a, b) => (a.codigoLeito || '').localeCompare(b.codigoLeito || ''));
                         
                         if (leitosDoSetor.length === 0) return null;
                         
