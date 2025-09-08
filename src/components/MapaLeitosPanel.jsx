@@ -1036,7 +1036,7 @@ const MapaLeitosPanel = () => {
     return estruturaFiltrada;
   }, [dadosEstruturados, filtros]);
 
-  const aplicarFiltrosAoLeito = (leito) => {
+  function aplicarFiltrosAoLeito(leito) {
     // Filtro de busca rápida
     if (filtros.busca.trim()) {
       const termoBusca = filtros.busca.trim().toUpperCase();
@@ -1081,7 +1081,7 @@ const MapaLeitosPanel = () => {
     }
     
     return true;
-  };
+  }
 
   const limparFiltros = () => {
     setFiltros({
