@@ -370,10 +370,6 @@ const LeitoCard = ({
               )}
             </div>
           </div>
-                </Badge>
-              )}
-            </div>
-          </div>
 
           {/* Informações do paciente para leitos ocupados */}
           {leito.status === 'Ocupado' && leito.paciente && (
@@ -395,10 +391,6 @@ const LeitoCard = ({
               {renderStatusBadges()}
             </div>
           )}
-
-          <Badge variant="outline" className={getBadgeStyle()}>
-            {leito.status}
-          </Badge>
 
           {/* Informações específicas por status */}
           {leito.status === 'Bloqueado' && leito.motivoBloqueio && (
