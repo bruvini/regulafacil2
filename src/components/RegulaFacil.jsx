@@ -47,6 +47,7 @@ import {
 import { cn } from "@/lib/utils";
 import GerenciamentoLeitosModal from './GerenciamentoLeitosModal';
 import MapaLeitosPanel from './MapaLeitosPanel';
+import RegulacaoLeitosPage from './RegulacaoLeitosPage';
 
 // Dados de navegação
 const navigationItems = [
@@ -657,12 +658,7 @@ const RegulaFacil = () => {
       case "home":
         return <HomePage onNavigate={handleNavigate} />;
       case "regulacao-leitos":
-        return (
-          <DevelopmentPage
-            title="Regulação de Leitos"
-            description="Gestão e controle de ocupação hospitalar"
-          />
-        );
+        return <RegulacaoLeitosPage />;
       case "mapa-leitos":
         return <MapaLeitosPage />;
       case "central-higienizacao":
