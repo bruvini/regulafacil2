@@ -38,6 +38,11 @@ import {
   Clock,
   Construction,
   Wrench,
+  Settings2,
+  FileText,
+  ClipboardList,
+  Newspaper,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 
@@ -445,6 +450,103 @@ const HomePage = ({ onNavigate }) => {
   );
 };
 
+// Componente da página Mapa de Leitos
+const MapaLeitosPage = () => {
+  const ferramentas = [
+    {
+      id: "gerenciamento-leitos",
+      title: "Gerenciamento de Leitos",
+      icon: Settings2,
+    },
+    {
+      id: "relatorio-isolamento",
+      title: "Relatório de Isolamento",
+      icon: FileText,
+    },
+    {
+      id: "relatorio-leitos-vagos",
+      title: "Relatório de Leitos Vagos",
+      icon: ClipboardList,
+    },
+    {
+      id: "boletim-diario",
+      title: "Boletim diário",
+      icon: Newspaper,
+    },
+    {
+      id: "reservas-externas",
+      title: "Reservas Externas",
+      icon: ArrowRightLeft,
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Linha superior com Indicadores e Ferramentas */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Bloco 1: Indicadores */}
+        <Card className="bg-white rounded-lg shadow-md">
+          <CardHeader>
+            <CardTitle className="text-xl font-semibold">
+              Indicadores Rápidos
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground">
+              Componente de indicadores em desenvolvimento.
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Bloco 2: Ferramentas */}
+        <Card className="bg-white rounded-lg shadow-md">
+          <CardHeader>
+            <CardTitle className="text-xl font-semibold">
+              Ferramentas
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {ferramentas.map((ferramenta) => {
+              const Icon = ferramenta.icon;
+              return (
+                <Button
+                  key={ferramenta.id}
+                  variant="ghost"
+                  className="w-full justify-start gap-3 p-4 bg-slate-100 hover:bg-blue-100 rounded-lg"
+                >
+                  <Icon className="h-5 w-5" />
+                  <span className="text-sm font-medium">
+                    {ferramenta.title}
+                  </span>
+                </Button>
+              );
+            })}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Bloco 3: Painel de Leitos */}
+      <Card className="bg-white rounded-lg shadow-md border border-slate-200">
+        <CardHeader>
+          <CardTitle className="text-xl font-semibold">
+            Painel e Mapa de Leitos
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="min-h-[400px] flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <div className="p-6 bg-muted/30 rounded-full w-fit mx-auto">
+              <Map className="h-16 w-16 text-muted-foreground" />
+            </div>
+            <p className="text-lg text-muted-foreground">
+              O mapa de leitos interativo será implementado aqui.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
 // Componente das páginas em desenvolvimento
 const DevelopmentPage = ({ title, description }) => {
   return (
@@ -557,12 +659,7 @@ const RegulaFacil = () => {
           />
         );
       case "mapa-leitos":
-        return (
-          <DevelopmentPage
-            title="Mapa de Leitos"
-            description="Visualização em tempo real dos leitos"
-          />
-        );
+        return <MapaLeitosPage />;
       case "central-higienizacao":
         return (
           <DevelopmentPage
