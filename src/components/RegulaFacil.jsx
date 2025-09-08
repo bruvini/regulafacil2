@@ -16,7 +16,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
+import { 
   Hospital,
   Mail,
   Lock,
@@ -39,6 +39,8 @@ import {
   Construction,
   Wrench,
   Settings2,
+  History,
+  CalendarDays,
   FileText,
   ClipboardList,
   Newspaper,
@@ -48,9 +50,15 @@ import {
   getSetoresCollection, 
   getLeitosCollection,
   getPacientesCollection,
-  onSnapshot
+  getAuditoriaCollection,
+  onSnapshot,
+  query,
+  orderBy,
+  limit
 } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import GerenciamentoLeitosModal from './GerenciamentoLeitosModal';
 import MapaLeitosPanel from './MapaLeitosPanel';
 import RegulacaoLeitosPage from './RegulacaoLeitosPage';
@@ -386,76 +394,157 @@ const Footer = () => {
 
 // Componente da página inicial
 const HomePage = ({ onNavigate }) => {
+  const [atividadesRecentes, setAtividadesRecentes] = useState([]);
+
+  // Buscar atividades recentes do Firestore
+  useEffect(() => {
+    const auditoriaQuery = query(
+      getAuditoriaCollection(),
+      orderBy('timestamp', 'desc'),
+      limit(10)
+    );
+
+    const unsubscribe = onSnapshot(auditoriaQuery, (snapshot) => {
+      const atividades = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setAtividadesRecentes(atividades);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Função para formatar tempo relativo
+  const formatarTempoRelativo = (timestamp) => {
+    if (!timestamp) return 'Agora';
+    
+    let data;
+    if (typeof timestamp.toDate === 'function') {
+      data = timestamp.toDate();
+    } else if (timestamp instanceof Date) {
+      data = timestamp;
+    } else {
+      data = new Date(timestamp);
+    }
+
+    const agora = new Date();
+    const diffMinutos = Math.floor((agora - data) / (1000 * 60));
+
+    if (diffMinutos < 1) return 'Agora mesmo';
+    if (diffMinutos < 60) return `há ${diffMinutos} minuto${diffMinutos > 1 ? 's' : ''}`;
+    
+    const diffHoras = Math.floor(diffMinutos / 60);
+    if (diffHoras < 24) return `há ${diffHoras} hora${diffHoras > 1 ? 's' : ''}`;
+    
+    const diffDias = Math.floor(diffHoras / 24);
+    if (diffDias < 7) return `há ${diffDias} dia${diffDias > 1 ? 's' : ''}`;
+    
+    return format(data, 'dd/MM/yyyy \'às\' HH:mm', { locale: ptBR });
+  };
+
+  // Data atual formatada
+  const dataAtual = format(new Date(), 'EEEE, dd \'de\' MMMM \'de\' yyyy', { locale: ptBR });
+
   return (
     <div className="space-y-8">
-      {/* Welcome Block */}
-      <Card className="shadow-card">
-        <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-bold gradient-primary bg-clip-text text-transparent">
-            Bem-vindo ao RegulaFacil!
+      {/* Welcome Block - Refinado */}
+      <Card className="shadow-card border-0 bg-gradient-subtle">
+        <CardHeader className="text-center pb-6">
+          <CardTitle className="text-3xl font-bold text-foreground mb-2">
+            Bem-vindo(a) de volta ao RegulaFacil!
           </CardTitle>
-          <CardDescription className="text-lg mt-4 max-w-2xl mx-auto">
-            Sistema integrado de gestão hospitalar do Hospital Municipal São José. 
-            Centralize todas as operações e maximize a eficiência do cuidado ao paciente.
+          <CardDescription className="text-lg max-w-2xl mx-auto mb-4 text-muted-foreground">
+            Aqui você tem uma visão centralizada para otimizar o fluxo de pacientes e a gestão de leitos do hospital.
           </CardDescription>
+          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+            <CalendarDays className="h-4 w-4" />
+            <span className="capitalize">{dataAtual}</span>
+          </div>
         </CardHeader>
       </Card>
 
-      {/* Navigation Cards Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {moduleCards.map((module) => {
-          const Icon = module.icon;
-          return (
-            <Card
-              key={module.id}
-              className={`card-interactive border-2 ${module.color}`}
-              onClick={() => onNavigate(module.id)}
-            >
-              <CardHeader className="text-center pb-3">
-                <div className="flex justify-center mb-3">
-                  <div className="p-3 bg-white rounded-full shadow-soft">
-                    <Icon className={`h-8 w-8 ${module.iconColor}`} />
+      {/* Navigation Cards Grid - Redesenhados */}
+      <div>
+        <h2 className="text-xl font-semibold text-foreground mb-6">Módulos do Sistema</h2>
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {moduleCards.map((module) => {
+            const Icon = module.icon;
+            return (
+              <Card
+                key={module.id}
+                className="card-interactive border hover:bg-slate-50 transition-colors duration-200 cursor-pointer"
+                onClick={() => onNavigate(module.id)}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <div className="p-2.5 bg-slate-100 rounded-full">
+                      <Icon className="h-5 w-5 text-slate-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-foreground text-sm mb-1 truncate">
+                        {module.title}
+                      </h3>
+                      <p className="text-xs text-slate-500 line-clamp-2">
+                        {module.description}
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <CardTitle className="text-lg font-semibold">
-                  {module.title}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <CardDescription className="text-center text-sm">
-                  {module.description}
-                </CardDescription>
-              </CardContent>
-            </Card>
-          );
-        })}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Recent Activities Block */}
+      {/* Recent Activities Block - Implementado com dados reais */}
       <Card className="shadow-card">
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="p-2 bg-primary/10 rounded-lg">
-              <Activity className="h-5 w-5 text-primary" />
+              <History className="h-5 w-5 text-primary" />
             </div>
             <div>
               <CardTitle className="text-xl">Atividades Recentes</CardTitle>
               <CardDescription>
-                Acompanhe as últimas atividades do sistema
+                Últimas 10 ações registradas no sistema
               </CardDescription>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
-            <Clock className="h-5 w-5 text-muted-foreground" />
-            <div className="flex-1">
-              <p className="text-sm font-medium">Sistema em desenvolvimento</p>
-              <p className="text-xs text-muted-foreground">
-                Este componente será implementado em breve com o histórico completo de atividades.
-              </p>
+        <CardContent className="space-y-3">
+          {atividadesRecentes.length === 0 ? (
+            <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
+              <Clock className="h-5 w-5 text-muted-foreground" />
+              <div className="flex-1">
+                <p className="text-sm font-medium">Nenhuma atividade registrada</p>
+                <p className="text-xs text-muted-foreground">
+                  As atividades do sistema aparecerão aqui conforme forem realizadas.
+                </p>
+              </div>
             </div>
-          </div>
+          ) : (
+            atividadesRecentes.map((atividade) => (
+              <div 
+                key={atividade.id} 
+                className="flex items-start gap-3 p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors"
+              >
+                <div className="p-1.5 bg-primary/10 rounded-full mt-0.5">
+                  <Activity className="h-3 w-3 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground mb-1">
+                    {atividade.acao}
+                  </p>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>{atividade.pagina}</span>
+                    <span>•</span>
+                    <span>{formatarTempoRelativo(atividade.timestamp)}</span>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
         </CardContent>
       </Card>
     </div>
