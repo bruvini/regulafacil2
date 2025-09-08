@@ -24,7 +24,6 @@ import {
   deleteDoc, 
   doc, 
   serverTimestamp,
-  writeBatch,
   arrayUnion,
   db
 } from '@/lib/firebase';
@@ -33,6 +32,7 @@ import {
   getLeitosCollection, 
   getPacientesCollection 
 } from '@/lib/firebase';
+import { writeBatch } from 'firebase/firestore';
 import { logAction } from '@/lib/auditoria';
 import { toast } from 'sonner';
 
