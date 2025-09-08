@@ -44,10 +44,17 @@ import {
   Newspaper,
   ArrowRightLeft,
 } from 'lucide-react';
+import { 
+  getSetoresCollection, 
+  getLeitosCollection,
+  getPacientesCollection,
+  onSnapshot
+} from '@/lib/firebase';
 import { cn } from "@/lib/utils";
 import GerenciamentoLeitosModal from './GerenciamentoLeitosModal';
 import MapaLeitosPanel from './MapaLeitosPanel';
 import RegulacaoLeitosPage from './RegulacaoLeitosPage';
+import IndicadoresGeraisPanel from './IndicadoresGeraisPanel';
 
 // Dados de navegação
 const navigationItems = [
@@ -453,9 +460,45 @@ const HomePage = ({ onNavigate }) => {
   );
 };
 
-// Componente da página Mapa de Leitos
+// Componente da página Mapa de Leitos  
 const MapaLeitosPage = () => {
   const [showGerenciamentoModal, setShowGerenciamentoModal] = useState(false);
+  const [setores, setSetores] = useState([]);
+  const [leitos, setLeitos] = useState([]);
+  const [pacientes, setPacientes] = useState([]);
+
+  // Buscar dados do Firestore em tempo real para os indicadores
+  useEffect(() => {
+    const unsubscribeSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
+      const setoresData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setSetores(setoresData);
+    });
+
+    const unsubscribeLeitos = onSnapshot(getLeitosCollection(), (snapshot) => {
+      const leitosData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setLeitos(leitosData);
+    });
+
+    const unsubscribePacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
+      const pacientesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setPacientes(pacientesData);
+    });
+
+    return () => {
+      unsubscribeSetores();
+      unsubscribeLeitos();
+      unsubscribePacientes();
+    };
+  }, []);
 
   const ferramentas = [
     {
@@ -488,23 +531,16 @@ const MapaLeitosPage = () => {
 
   return (
     <div className="space-y-6">
-      {/* Linha superior com Indicadores e Ferramentas */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Bloco 1: Indicadores */}
-        <Card className="bg-white rounded-lg shadow-md">
-          <CardHeader>
-            <CardTitle className="text-xl font-semibold">
-              Indicadores Rápidos
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">
-              Componente de indicadores em desenvolvimento.
-            </p>
-          </CardContent>
-        </Card>
+      {/* Painel de Indicadores Estratégicos - PRIMEIRO ELEMENTO */}
+      <IndicadoresGeraisPanel 
+        setores={setores}
+        leitos={leitos}
+        pacientes={pacientes}
+      />
 
-        {/* Bloco 2: Ferramentas */}
+      {/* Linha superior com Ferramentas */}
+      <div className="grid grid-cols-1 gap-6">
+        {/* Bloco de Ferramentas */}
         <Card className="bg-white rounded-lg shadow-md">
           <CardHeader>
             <CardTitle className="text-xl font-semibold">
@@ -532,7 +568,7 @@ const MapaLeitosPage = () => {
         </Card>
       </div>
 
-      {/* Bloco 3: Painel de Leitos */}
+      {/* Bloco: Painel de Leitos */}
       <Card className="bg-white rounded-lg shadow-md border border-slate-200">
         <CardHeader>
           <CardTitle className="text-xl font-semibold">

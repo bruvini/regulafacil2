@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { 
@@ -16,90 +16,16 @@ import {
   Sparkles,
   PieChart
 } from "lucide-react";
-import { 
-  getSetoresCollection, 
-  getLeitosCollection,
-  getPacientesCollection,
-  onSnapshot
-} from '@/lib/firebase';
 import ImportarPacientesMVModal from './ImportarPacientesMVModal';
-import IndicadoresGeraisPanel from './IndicadoresGeraisPanel';
-import MapaLeitosPanel from './MapaLeitosPanel';
+import AguardandoRegulacaoPanel from './AguardandoRegulacaoPanel';
 
 const RegulacaoLeitosPage = () => {
   const [showImportModal, setShowImportModal] = useState(false);
-  const [setores, setSetores] = useState([]);
-  const [leitos, setLeitos] = useState([]);
-  const [pacientes, setPacientes] = useState([]);
-  const [activeTab, setActiveTab] = useState('indicadores'); // indicadores, mapa
-
-  // Buscar dados do Firestore em tempo real
-  useEffect(() => {
-    const unsubscribeSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
-      const setoresData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setSetores(setoresData);
-    });
-
-    const unsubscribeLeitos = onSnapshot(getLeitosCollection(), (snapshot) => {
-      const leitosData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setLeitos(leitosData);
-    });
-
-    const unsubscribePacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
-      const pacientesData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setPacientes(pacientesData);
-    });
-
-    return () => {
-      unsubscribeSetores();
-      unsubscribeLeitos();
-      unsubscribePacientes();
-    };
-  }, []);
 
   return (
     <div className="p-6 space-y-6">
-      {/* Painel de Indicadores Estratégicos */}
-      <IndicadoresGeraisPanel 
-        setores={setores}
-        leitos={leitos}
-        pacientes={pacientes}
-      />
-
-      {/* Abas de Navegação */}
-      <div className="flex items-center gap-2 border-b">
-        <Button
-          variant={activeTab === 'indicadores' ? 'default' : 'ghost'}
-          onClick={() => setActiveTab('indicadores')}
-          className="rounded-b-none"
-        >
-          <TrendingUp className="h-4 w-4 mr-2" />
-          Indicadores e Regulação
-        </Button>
-        <Button
-          variant={activeTab === 'mapa' ? 'default' : 'ghost'}
-          onClick={() => setActiveTab('mapa')}
-          className="rounded-b-none"
-        >
-          <BedDouble className="h-4 w-4 mr-2" />
-          Painel e Mapa de Leitos
-        </Button>
-      </div>
-
-      {/* Conteúdo das Abas */}
-      {activeTab === 'indicadores' && (
-        <>
-          {/* Seção 1: Cabeçalho do Dashboard */}
-          <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Seção 1: Cabeçalho do Dashboard */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Coluna 1: Indicadores Principais */}
         <Card className="shadow-card">
           <CardHeader>
@@ -184,125 +110,105 @@ const RegulacaoLeitosPage = () => {
 
       {/* Seção 3: Painel Principal de Regulação */}
       <section>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {/* Card 1: Pacientes Aguardando Regulação */}
-          <Card className="shadow-card card-interactive">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Users className="h-5 w-5 text-blue-600" />
-                Aguardando Regulação
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                Os dados serão carregados e exibidos aqui.
-              </p>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-1 gap-6">
+          {/* Painel de Pacientes Aguardando Regulação - OCUPA TODA A LARGURA */}
+          <div className="col-span-full">
+            <AguardandoRegulacaoPanel />
+          </div>
 
-          {/* Card 2: Regulações em Andamento */}
-          <Card className="shadow-card card-interactive">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Loader className="h-5 w-5 text-orange-600" />
-                Regulações em Andamento
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                Os dados serão carregados e exibidos aqui.
-              </p>
-            </CardContent>
-          </Card>
+          {/* Outros Cards em Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {/* Card 2: Regulações em Andamento */}
+            <Card className="shadow-card card-interactive">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Loader className="h-5 w-5 text-orange-600" />
+                  Regulações em Andamento
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground">
+                  Os dados serão carregados e exibidos aqui.
+                </p>
+              </CardContent>
+            </Card>
 
-          {/* Card 3: Pacientes Aguardando UTI */}
-          <Card className="shadow-card card-interactive border-red-200">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <BedDouble className="h-5 w-5 text-red-600" />
-                Fila de Espera - UTI
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                Os dados serão carregados e exibidos aqui.
-              </p>
-            </CardContent>
-          </Card>
+            {/* Card 3: Pacientes Aguardando UTI */}
+            <Card className="shadow-card card-interactive border-red-200">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <BedDouble className="h-5 w-5 text-red-600" />
+                  Fila de Espera - UTI
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground">
+                  Os dados serão carregados e exibidos aqui.
+                </p>
+              </CardContent>
+            </Card>
 
-          {/* Card 4: Pacientes Aguardando Transf. Externa */}
-          <Card className="shadow-card card-interactive">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Truck className="h-5 w-5 text-green-600" />
-                Aguardando Transferência Externa
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                Os dados serão carregados e exibidos aqui.
-              </p>
-            </CardContent>
-          </Card>
+            {/* Card 4: Pacientes Aguardando Transf. Externa */}
+            <Card className="shadow-card card-interactive">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Truck className="h-5 w-5 text-green-600" />
+                  Aguardando Transferência Externa
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground">
+                  Os dados serão carregados e exibidos aqui.
+                </p>
+              </CardContent>
+            </Card>
 
-          {/* Card 5: Marcação Cirúrgica */}
-          <Card className="shadow-card card-interactive">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Stethoscope className="h-5 w-5 text-purple-600" />
-                Marcações Cirúrgicas Pendentes
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                Os dados serão carregados e exibidos aqui.
-              </p>
-            </CardContent>
-          </Card>
+            {/* Card 5: Marcação Cirúrgica */}
+            <Card className="shadow-card card-interactive">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Stethoscope className="h-5 w-5 text-purple-600" />
+                  Marcações Cirúrgicas Pendentes
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground">
+                  Os dados serão carregados e exibidos aqui.
+                </p>
+              </CardContent>
+            </Card>
 
-          {/* Card 6: Remanejamentos Pendentes */}
-          <Card className="shadow-card card-interactive">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <ArrowRightLeft className="h-5 w-5 text-teal-600" />
-                Remanejamentos Pendentes
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                Os dados serão carregados e exibidos aqui.
-              </p>
-            </CardContent>
-          </Card>
+            {/* Card 6: Remanejamentos Pendentes */}
+            <Card className="shadow-card card-interactive">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <ArrowRightLeft className="h-5 w-5 text-teal-600" />
+                  Remanejamentos Pendentes
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground">
+                  Os dados serão carregados e exibidos aqui.
+                </p>
+              </CardContent>
+            </Card>
 
-          {/* Card 7: Espaço para Futuro Uso */}
-          <Card className="shadow-card border-dashed border-muted-foreground/30 bg-muted/20">
-            <CardHeader>
-              <CardTitle className="text-lg text-muted-foreground">
-                Painel Futuro
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground/70 text-sm">
-                Espaço reservado para futuras funcionalidades.
-              </p>
-            </CardContent>
-          </Card>
+            {/* Card 7: Espaço para Futuro Uso */}
+            <Card className="shadow-card border-dashed border-muted-foreground/30 bg-muted/20">
+              <CardHeader>
+                <CardTitle className="text-lg text-muted-foreground">
+                  Painel Futuro
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground/70 text-sm">
+                  Espaço reservado para futuras funcionalidades.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </section>
-        </>
-      )}
-
-      {/* Aba do Mapa de Leitos */}
-      {activeTab === 'mapa' && (
-        <div className="space-y-6">
-          <div className="flex items-center gap-3">
-            <BedDouble className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-bold text-gray-900">Painel e Mapa de Leitos</h1>
-          </div>
-          <MapaLeitosPanel />
-        </div>
-      )}
 
       {/* Modal de Importação */}
       <ImportarPacientesMVModal 
