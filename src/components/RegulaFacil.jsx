@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -156,6 +156,21 @@ const getPageTitle = (pageId) => {
     "gestao-pacientes": "Gestão de Pacientes",
   };
   return titles[pageId] || "RegulaFacil";
+};
+
+// Helpers de mapeamento entre caminho e página
+const pageFromPath = (path) => {
+  const clean = path.replace(/\/$/, "");
+  if (!clean || clean === "") return "home";
+  if (clean === "/") return "home";
+  if (clean === "/login") return "login";
+  const id = clean.startsWith("/") ? clean.slice(1) : clean;
+  return navigationItems.some((i) => i.id === id) ? id : "home";
+};
+
+const pathFromPage = (page) => {
+  if (page === "home") return "/";
+  return `/${page}`;
 };
 
 // Componente da página de login
@@ -479,18 +494,50 @@ const RegulaFacil = () => {
   const [currentPage, setCurrentPage] = useState("home");
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
 
+  // Sincroniza estado com a URL (simulação de rotas)
+  useEffect(() => {
+    const path = window.location.pathname;
+    const page = pageFromPath(path);
+    if (page === "login") {
+      setIsAuthenticated(false);
+      setCurrentPage("home");
+    } else {
+      setIsAuthenticated(true);
+      setCurrentPage(page);
+    }
+
+    const onPopState = () => {
+      const p = window.location.pathname;
+      const pg = pageFromPath(p);
+      if (pg === "login") {
+        setIsAuthenticated(false);
+        setCurrentPage("home");
+      } else {
+        setIsAuthenticated(true);
+        setCurrentPage(pg);
+      }
+    };
+
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   // Funções de controle
   const handleLogin = () => {
     setIsAuthenticated(true);
+    setCurrentPage("home");
+    window.history.pushState({}, "", "/");
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
     setCurrentPage("home");
+    window.history.pushState({}, "", "/login");
   };
 
   const handleNavigate = (page) => {
     setCurrentPage(page);
+    window.history.pushState({}, "", pathFromPage(page));
   };
 
   const handleToggleSidebar = () => {
