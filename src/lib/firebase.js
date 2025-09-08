@@ -23,6 +23,7 @@ const appId = 'regulafacil';
 export const getSetoresCollection = () => collection(db, 'artifacts', appId, 'public', 'data', 'setores');
 export const getLeitosCollection = () => collection(db, 'artifacts', appId, 'public', 'data', 'leitos');
 export const getQuartosCollection = () => collection(db, 'artifacts', appId, 'public', 'data', 'quartos');
+export const getAuditoriaCollection = () => collection(db, 'artifacts', appId, 'public', 'data', 'auditoria');
 
 // Export Firebase utilities
 export { 

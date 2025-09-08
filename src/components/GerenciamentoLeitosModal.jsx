@@ -27,6 +27,7 @@ import {
   getDocs,
   serverTimestamp
 } from '@/lib/firebase';
+import { logAction } from '@/lib/auditoria';
 
 const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
   // Estados para dados
@@ -117,10 +118,12 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
       if (editingSetor) {
         await setDoc(doc(getSetoresCollection(), editingSetor), setorData);
         toast({ title: "Setor atualizado com sucesso!" });
+        await logAction('Gerenciamento de Leitos', `Setor '${setorData.nomeSetor}' foi atualizado.`);
         setEditingSetor(null);
       } else {
         await addDoc(getSetoresCollection(), setorData);
         toast({ title: "Setor criado com sucesso!" });
+        await logAction('Gerenciamento de Leitos', `Setor '${setorData.nomeSetor}' foi criado.`);
       }
 
       setSetorForm({ id: '', nomeSetor: '', siglaSetor: '', tipoSetor: '' });
@@ -150,8 +153,10 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
 
     setLoading(prev => ({ ...prev, setores: true }));
     try {
+      const setor = setores.find(s => s.id === setorId);
       await deleteDoc(doc(getSetoresCollection(), setorId));
       toast({ title: "Setor excluído com sucesso!" });
+      await logAction('Gerenciamento de Leitos', `Setor '${setor?.nomeSetor || setorId}' foi excluído.`);
     } catch (error) {
       toast({ 
         title: "Erro ao excluir setor", 
@@ -191,7 +196,9 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
         await addDoc(getLeitosCollection(), leitoData);
       }
 
+      const setorNome = setores.find(s => s.id === leitoForm.setorId)?.nomeSetor || leitoForm.setorId;
       toast({ title: `${codigos.length} leito(s) criado(s) com sucesso!` });
+      await logAction('Gerenciamento de Leitos', `${codigos.length} leito(s) foram criados no setor '${setorNome}'.`);
       setLeitoForm({ setorId: '', codigosLeitos: '', isPCP: false });
     } catch (error) {
       toast({ 
@@ -209,8 +216,10 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
 
     setLoading(prev => ({ ...prev, leitos: true }));
     try {
+      const leito = leitos.find(l => l.id === leitoId);
       await deleteDoc(doc(getLeitosCollection(), leitoId));
       toast({ title: "Leito excluído com sucesso!" });
+      await logAction('Gerenciamento de Leitos', `Leito '${leito?.codigoLeito || leitoId}' foi excluído.`);
     } catch (error) {
       toast({ 
         title: "Erro ao excluir leito", 
@@ -246,10 +255,12 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
       if (editingQuarto) {
         await setDoc(doc(getQuartosCollection(), editingQuarto), quartoData);
         toast({ title: "Quarto atualizado com sucesso!" });
+        await logAction('Gerenciamento de Leitos', `Quarto '${quartoData.nomeQuarto}' foi atualizado.`);
         setEditingQuarto(null);
       } else {
         await addDoc(getQuartosCollection(), quartoData);
         toast({ title: "Quarto criado com sucesso!" });
+        await logAction('Gerenciamento de Leitos', `Quarto '${quartoData.nomeQuarto}' foi criado.`);
       }
 
       setQuartoForm({ id: '', nomeQuarto: '', setorId: '', leitosIds: [] });
@@ -279,8 +290,10 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
 
     setLoading(prev => ({ ...prev, quartos: true }));
     try {
+      const quarto = quartos.find(q => q.id === quartoId);
       await deleteDoc(doc(getQuartosCollection(), quartoId));
       toast({ title: "Quarto excluído com sucesso!" });
+      await logAction('Gerenciamento de Leitos', `Quarto '${quarto?.nomeQuarto || quartoId}' foi excluído.`);
     } catch (error) {
       toast({ 
         title: "Erro ao excluir quarto", 

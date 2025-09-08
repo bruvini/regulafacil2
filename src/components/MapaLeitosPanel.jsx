@@ -21,6 +21,7 @@ import {
   serverTimestamp,
   deleteField
 } from '@/lib/firebase';
+import { logAction } from '@/lib/auditoria';
 import { useToast } from '@/hooks/use-toast';
 
 // Color mapping for sector types
@@ -216,6 +217,7 @@ const MapaLeitosPanel = () => {
           timestamp: serverTimestamp()
         })
       });
+      await logAction('Mapa de Leitos', `Leito '${modalBloquear.leito.codigoLeito}' foi bloqueado. Motivo: '${motivoBloqueio.trim()}'.`);
       
       toast({
         title: "Leito bloqueado",
@@ -245,6 +247,7 @@ const MapaLeitosPanel = () => {
           timestamp: serverTimestamp()
         })
       });
+      await logAction('Mapa de Leitos', `Solicitada higienização para o leito '${leito.codigoLeito}'.`);
       
       toast({
         title: "Higienização solicitada",
@@ -273,6 +276,7 @@ const MapaLeitosPanel = () => {
           timestamp: serverTimestamp()
         })
       });
+      await logAction('Mapa de Leitos', `Leito '${leito.codigoLeito}' foi desbloqueado.`);
       
       toast({
         title: "Leito desbloqueado",
@@ -301,6 +305,7 @@ const MapaLeitosPanel = () => {
           timestamp: serverTimestamp()
         })
       });
+      await logAction('Mapa de Leitos', `Higienização do leito '${leito.codigoLeito}' foi finalizada.`);
       
       toast({
         title: "Higienização finalizada",
@@ -324,6 +329,10 @@ const MapaLeitosPanel = () => {
       await updateDoc(leitoRef, {
         higienizacaoPrioritaria: !leito.higienizacaoPrioritaria
       });
+      await logAction('Mapa de Leitos', !leito.higienizacaoPrioritaria
+        ? `Higienização do leito '${leito.codigoLeito}' foi marcada como prioritária.`
+        : `Prioridade de higienização do leito '${leito.codigoLeito}' foi removida.`
+      );
       
       toast({
         title: leito.higienizacaoPrioritaria ? "Prioridade removida" : "Higienização priorizada",
