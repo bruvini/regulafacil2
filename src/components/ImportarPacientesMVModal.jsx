@@ -15,7 +15,9 @@ import {
   Database,
   ArrowRightLeft,
   UserPlus,
-  UserMinus
+  UserMinus,
+  Copy,
+  RefreshCw
 } from 'lucide-react';
 import { 
   getDocs, 
@@ -37,7 +39,7 @@ import { logAction } from '@/lib/auditoria';
 import { toast } from 'sonner';
 
 const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
-  const [currentStep, setCurrentStep] = useState('instructions'); // instructions, processing, confirmation, completed
+  const [currentStep, setCurrentStep] = useState('instructions'); // instructions, processing, validation, confirmation, completed
   const [selectedFile, setSelectedFile] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedData, setProcessedData] = useState(null);
@@ -48,6 +50,11 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     novosSetores: 0,
     novosLeitos: 0
   });
+  
+  // Novos estados para validação
+  const [setoresFaltantes, setSetoresFaltantes] = useState([]);
+  const [leitosFaltantes, setLeitosFaltantes] = useState([]);
+  const [parsedFileData, setParsedFileData] = useState(null); // Para armazenar dados do arquivo já processado
 
   const handleFileChange = (event) => {
     const file = event.target.files[0];
@@ -121,13 +128,12 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     try {
       // Parse do arquivo Excel
       const pacientesArquivo = await parseExcelFile(selectedFile);
+      setParsedFileData(pacientesArquivo); // Armazenar dados do arquivo
       
       // Carregamento dos dados do Firestore
       const { setores, leitos, pacientes } = await loadFirestoreData();
 
-      // Verificar e criar setores/leitos que não existem
-      const novosSetores = [];
-      const novosLeitos = [];
+      // Identificar setores e leitos faltantes
       const setoresParaCriar = new Set();
       const leitosParaCriar = [];
 
@@ -143,108 +149,105 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
         }
       }
 
-      // Criar setores faltantes
-      for (const nomeSetor of setoresParaCriar) {
-        const novoSetor = {
-          nome: nomeSetor,
-          tipo: 'Internação',
-          ativo: true,
-          criadoEm: serverTimestamp()
-        };
-        const setorRef = await addDoc(getSetoresCollection(), novoSetor);
-        setores[nomeSetor] = { id: setorRef.id, ...novoSetor };
-        novosSetores.push(nomeSetor);
-      }
-
-      // Criar leitos faltantes
-      for (const leitoInfo of leitosParaCriar) {
-        const setorId = setores[leitoInfo.nomeSetor].id;
-        const novoLeito = {
-          codigo: leitoInfo.codigo,
-          setorId: setorId,
-          status: 'Vago',
-          ativo: true,
-          criadoEm: serverTimestamp(),
-          historico: []
-        };
-        const leitoRef = await addDoc(getLeitosCollection(), novoLeito);
-        leitos[leitoInfo.codigo] = { id: leitoRef.id, ...novoLeito };
-        novosLeitos.push(leitoInfo.codigo);
-      }
-
-      // Análise de reconciliação
-      const altas = [];
-      const movimentacoes = [];
-      const internacoes = [];
-
-      // Pacientes no arquivo (por nome)
-      const pacientesArquivoMap = {};
-      pacientesArquivo.forEach(p => {
-        pacientesArquivoMap[p.nomePaciente] = p;
-      });
-
-      // Regra 1: Altas (no Firestore mas não no arquivo)
-      Object.keys(pacientes).forEach(nomePaciente => {
-        if (!pacientesArquivoMap[nomePaciente]) {
-          altas.push(pacientes[nomePaciente]);
-        }
-      });
-
-      // Regra 2 e 3: Movimentações e Internações
-      Object.keys(pacientesArquivoMap).forEach(nomePaciente => {
-        const pacienteArquivo = pacientesArquivoMap[nomePaciente];
-        const pacienteFirestore = pacientes[nomePaciente];
-
-        if (pacienteFirestore) {
-          // Verificar se mudou de leito
-          const leitoAtualId = pacienteFirestore.leitoId;
-          const leitoNovoId = leitos[pacienteArquivo.codigoLeito]?.id;
-          
-          if (leitoAtualId !== leitoNovoId) {
-            movimentacoes.push({
-              paciente: pacienteFirestore,
-              dadosNovos: {
-                ...pacienteArquivo,
-                leitoId: leitoNovoId,
-                setorId: setores[pacienteArquivo.nomeSetor].id
-              }
-            });
+      // Verificar se há pendências
+      if (setoresParaCriar.size > 0 || leitosParaCriar.length > 0) {
+        // Há pendências - pausar processo e mostrar validação
+        setSetoresFaltantes(Array.from(setoresParaCriar));
+        
+        // Organizar leitos faltantes por setor
+        const leitosPorSetor = {};
+        leitosParaCriar.forEach(leito => {
+          if (!leitosPorSetor[leito.nomeSetor]) {
+            leitosPorSetor[leito.nomeSetor] = [];
           }
-        } else {
-          // Nova internação
-          internacoes.push({
-            ...pacienteArquivo,
-            leitoId: leitos[pacienteArquivo.codigoLeito].id,
-            setorId: setores[pacienteArquivo.nomeSetor].id
-          });
-        }
-      });
+          leitosPorSetor[leito.nomeSetor].push(leito.codigo);
+        });
+        setLeitosFaltantes(leitosPorSetor);
+        
+        setCurrentStep('validation');
+        setIsProcessing(false);
+        return; // Parar aqui - não prosseguir
+      }
 
-      setProcessedData({
-        altas,
-        movimentacoes,
-        internacoes,
-        novosSetores,
-        novosLeitos,
-        setores,
-        leitos
-      });
-
-      setSyncSummary({
-        altas: altas.length,
-        movimentacoes: movimentacoes.length,
-        internacoes: internacoes.length,
-        novosSetores: novosSetores.length,
-        novosLeitos: novosLeitos.length
-      });
-
-      setCurrentStep('confirmation');
+      // Se chegou aqui, não há pendências - prosseguir com análise
+      await analyzeAndProceed(pacientesArquivo, setores, leitos, pacientes);
 
     } catch (error) {
       console.error('Erro ao processar arquivo:', error);
       toast.error('Erro ao processar arquivo: ' + error.message);
+      setIsProcessing(false);
     }
+  };
 
+  // Nova função para análise após validação
+  const analyzeAndProceed = async (pacientesArquivo, setores, leitos, pacientes) => {
+    // Análise de reconciliação
+    const altas = [];
+    const movimentacoes = [];
+    const internacoes = [];
+
+    // Pacientes no arquivo (por nome)
+    const pacientesArquivoMap = {};
+    pacientesArquivo.forEach(p => {
+      pacientesArquivoMap[p.nomePaciente] = p;
+    });
+
+    // Regra 1: Altas (no Firestore mas não no arquivo)
+    Object.keys(pacientes).forEach(nomePaciente => {
+      if (!pacientesArquivoMap[nomePaciente]) {
+        altas.push(pacientes[nomePaciente]);
+      }
+    });
+
+    // Regra 2 e 3: Movimentações e Internações
+    Object.keys(pacientesArquivoMap).forEach(nomePaciente => {
+      const pacienteArquivo = pacientesArquivoMap[nomePaciente];
+      const pacienteFirestore = pacientes[nomePaciente];
+
+      if (pacienteFirestore) {
+        // Verificar se mudou de leito
+        const leitoAtualId = pacienteFirestore.leitoId;
+        const leitoNovoId = leitos[pacienteArquivo.codigoLeito]?.id;
+        
+        if (leitoAtualId !== leitoNovoId) {
+          movimentacoes.push({
+            paciente: pacienteFirestore,
+            dadosNovos: {
+              ...pacienteArquivo,
+              leitoId: leitoNovoId,
+              setorId: setores[pacienteArquivo.nomeSetor].id
+            }
+          });
+        }
+      } else {
+        // Nova internação
+        internacoes.push({
+          ...pacienteArquivo,
+          leitoId: leitos[pacienteArquivo.codigoLeito].id,
+          setorId: setores[pacienteArquivo.nomeSetor].id
+        });
+      }
+    });
+
+    setProcessedData({
+      altas,
+      movimentacoes,
+      internacoes,
+      novosSetores: [],
+      novosLeitos: [],
+      setores,
+      leitos
+    });
+
+    setSyncSummary({
+      altas: altas.length,
+      movimentacoes: movimentacoes.length,
+      internacoes: internacoes.length,
+      novosSetores: 0,
+      novosLeitos: 0
+    });
+
+    setCurrentStep('confirmation');
     setIsProcessing(false);
   };
 
@@ -337,12 +340,82 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     setIsProcessing(false);
   };
 
+  // Nova função para revalidar cadastros
+  const revalidarCadastros = async () => {
+    if (!parsedFileData) return;
+
+    setIsProcessing(true);
+
+    try {
+      // Carregamento dos dados atualizados do Firestore
+      const { setores, leitos, pacientes } = await loadFirestoreData();
+
+      // Verificar novamente se ainda há pendências
+      const setoresParaCriar = new Set();
+      const leitosParaCriar = [];
+
+      for (const paciente of parsedFileData) {
+        if (!setores[paciente.nomeSetor]) {
+          setoresParaCriar.add(paciente.nomeSetor);
+        }
+        if (!leitos[paciente.codigoLeito]) {
+          leitosParaCriar.push({
+            codigo: paciente.codigoLeito,
+            nomeSetor: paciente.nomeSetor
+          });
+        }
+      }
+
+      if (setoresParaCriar.size > 0 || leitosParaCriar.length > 0) {
+        // Ainda há pendências - atualizar listas
+        setSetoresFaltantes(Array.from(setoresParaCriar));
+        
+        const leitosPorSetor = {};
+        leitosParaCriar.forEach(leito => {
+          if (!leitosPorSetor[leito.nomeSetor]) {
+            leitosPorSetor[leito.nomeSetor] = [];
+          }
+          leitosPorSetor[leito.nomeSetor].push(leito.codigo);
+        });
+        setLeitosFaltantes(leitosPorSetor);
+        
+        toast.info('Ainda há pendências. Continue o cadastro.');
+      } else {
+        // Todas as pendências foram resolvidas!
+        setSetoresFaltantes([]);
+        setLeitosFaltantes([]);
+        
+        // Prosseguir com análise
+        await analyzeAndProceed(parsedFileData, setores, leitos, pacientes);
+        toast.success('Todas as pendências foram resolvidas! Prosseguindo...');
+      }
+
+    } catch (error) {
+      console.error('Erro ao revalidar:', error);
+      toast.error('Erro ao revalidar: ' + error.message);
+    }
+
+    setIsProcessing(false);
+  };
+
+  const copyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Copiado para a área de transferência!');
+    } catch (error) {
+      toast.error('Erro ao copiar');
+    }
+  };
+
   const resetModal = () => {
     setCurrentStep('instructions');
     setSelectedFile(null);
     setProcessedData(null);
     setSyncSummary({ altas: 0, movimentacoes: 0, internacoes: 0, novosSetores: 0, novosLeitos: 0 });
     setIsProcessing(false);
+    setSetoresFaltantes([]);
+    setLeitosFaltantes([]);
+    setParsedFileData(null);
   };
 
   const handleClose = () => {
@@ -413,18 +486,95 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     </div>
   );
 
+  const renderValidation = () => (
+    <div className="space-y-6">
+      <Alert>
+        <AlertTriangle className="h-4 w-4" />
+        <AlertDescription>
+          <p className="font-semibold mb-2">Pré-requisitos pendentes</p>
+          <p>
+            Foram encontrados setores e/ou leitos no arquivo que não existem no sistema. 
+            Por favor, realize o cadastro manual no "Gerenciamento de Leitos" para prosseguir com a sincronização.
+          </p>
+        </AlertDescription>
+      </Alert>
+
+      {setoresFaltantes.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Setores que precisam ser cadastrados:</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="p-3 bg-muted rounded-md">
+              <code className="text-sm">{setoresFaltantes.join(', ')}</code>
+            </div>
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={() => copyToClipboard(setoresFaltantes.join(', '))}
+              className="w-full"
+            >
+              <Copy className="h-4 w-4 mr-2" />
+              Copiar Lista de Setores
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {Object.keys(leitosFaltantes).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Leitos que precisam ser cadastrados:</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {Object.entries(leitosFaltantes).map(([setor, leitos]) => (
+              <div key={setor} className="space-y-2">
+                <p className="text-sm font-medium">{setor}:</p>
+                <div className="p-3 bg-muted rounded-md">
+                  <code className="text-sm">{leitos.join(', ')}</code>
+                </div>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={() => copyToClipboard(leitos.join(', '))}
+                  className="w-full"
+                >
+                  <Copy className="h-4 w-4 mr-2" />
+                  Copiar Leitos do {setor}
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="flex gap-3">
+        <Button onClick={handleClose} variant="outline" className="flex-1">
+          Cancelar
+        </Button>
+        <Button 
+          onClick={revalidarCadastros}
+          disabled={isProcessing}
+          className="flex-1"
+        >
+          {isProcessing ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              Verificando...
+            </>
+          ) : (
+            <>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Verificar Cadastros Novamente
+            </>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+
   const renderConfirmation = () => (
     <div className="space-y-6">
-      {(syncSummary.novosSetores > 0 || syncSummary.novosLeitos > 0) && (
-        <Alert>
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            {syncSummary.novosSetores} novos setores e {syncSummary.novosLeitos} novos leitos foram cadastrados 
-            para garantir a compatibilidade. Lembre-se de organizá-los em quartos no Gerenciamento de Leitos, 
-            se necessário.
-          </AlertDescription>
-        </Alert>
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
@@ -515,6 +665,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
           <DialogDescription>
             {currentStep === 'instructions' && 'Siga as orientações para obter e processar o arquivo de ocupação dos leitos.'}
             {currentStep === 'processing' && 'Processando arquivo e analisando diferenças...'}
+            {currentStep === 'validation' && 'É necessário cadastrar alguns setores e leitos antes de prosseguir.'}
             {currentStep === 'confirmation' && 'Revise as alterações antes de confirmar a sincronização.'}
             {currentStep === 'completed' && 'Processo concluído com sucesso.'}
           </DialogDescription>
@@ -527,6 +678,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
             <p>Processando arquivo e comparando com dados atuais...</p>
           </div>
         )}
+        {currentStep === 'validation' && renderValidation()}
         {currentStep === 'confirmation' && renderConfirmation()}
         {currentStep === 'completed' && renderCompleted()}
       </DialogContent>
