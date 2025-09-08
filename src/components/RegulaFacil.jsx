@@ -55,6 +55,7 @@ import GerenciamentoLeitosModal from './GerenciamentoLeitosModal';
 import MapaLeitosPanel from './MapaLeitosPanel';
 import RegulacaoLeitosPage from './RegulacaoLeitosPage';
 import IndicadoresGeraisPanel from './IndicadoresGeraisPanel';
+import GestaoIsolamentosPage from './GestaoIsolamentosPage';
 
 // Dados de navegação
 const navigationItems = [
@@ -705,12 +706,7 @@ const RegulaFacil = () => {
           />
         );
       case "gestao-isolamentos":
-        return (
-          <DevelopmentPage
-            title="Gestão de Isolamentos"
-            description="Monitoramento de pacientes em isolamento"
-          />
-        );
+        return <GestaoIsolamentosPage />;
       case "marcacao-cirurgica":
         return (
           <DevelopmentPage

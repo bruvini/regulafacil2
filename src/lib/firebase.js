@@ -22,7 +22,8 @@ import {
   BEDS_COLLECTION_PATH,
   ROOMS_COLLECTION_PATH,
   AUDIT_COLLECTION_PATH,
-  PATIENTS_COLLECTION_PATH
+  PATIENTS_COLLECTION_PATH,
+  INFECTIONS_COLLECTION_PATH
 } from './firebase-constants';
 
 // Collection references using centralized constants
@@ -31,6 +32,7 @@ export const getLeitosCollection = () => collection(db, BEDS_COLLECTION_PATH);
 export const getQuartosCollection = () => collection(db, ROOMS_COLLECTION_PATH);
 export const getAuditoriaCollection = () => collection(db, AUDIT_COLLECTION_PATH);
 export const getPacientesCollection = () => collection(db, PATIENTS_COLLECTION_PATH);
+export const getInfeccoesCollection = () => collection(db, INFECTIONS_COLLECTION_PATH);
 
 // Export Firebase utilities
 export { 
