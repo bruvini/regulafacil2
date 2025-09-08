@@ -186,7 +186,7 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
           setorId: leitoForm.setorId,
           status: "Vago",
           isPCP: codigos.length === 1 ? leitoForm.isPCP : false,
-          historico: [{ status: 'Vago', timestamp: serverTimestamp() }]
+          historico: [{ status: 'Vago', timestamp: new Date() }]
         };
         await addDoc(getLeitosCollection(), leitoData);
       }
