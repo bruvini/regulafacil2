@@ -46,6 +46,7 @@ import {
 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import GerenciamentoLeitosModal from './GerenciamentoLeitosModal';
+import MapaLeitosPanel from './MapaLeitosPanel';
 
 // Dados de navegação
 const navigationItems = [
@@ -537,15 +538,8 @@ const MapaLeitosPage = () => {
             Painel e Mapa de Leitos
           </CardTitle>
         </CardHeader>
-        <CardContent className="min-h-[400px] flex items-center justify-center">
-          <div className="text-center space-y-4">
-            <div className="p-6 bg-muted/30 rounded-full w-fit mx-auto">
-              <Map className="h-16 w-16 text-muted-foreground" />
-            </div>
-            <p className="text-lg text-muted-foreground">
-              O mapa de leitos interativo será implementado aqui.
-            </p>
-          </div>
+        <CardContent>
+          <MapaLeitosPanel />
         </CardContent>
       </Card>
 
