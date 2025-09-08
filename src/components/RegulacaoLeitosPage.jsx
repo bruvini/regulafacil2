@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { 
@@ -15,8 +16,11 @@ import {
   Sparkles,
   PieChart
 } from "lucide-react";
+import ImportarPacientesMVModal from './ImportarPacientesMVModal';
 
 const RegulacaoLeitosPage = () => {
+  const [showImportModal, setShowImportModal] = useState(false);
+
   return (
     <div className="p-6 space-y-6">
       {/* Seção 1: Cabeçalho do Dashboard */}
@@ -48,8 +52,8 @@ const RegulacaoLeitosPage = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Button 
                 variant="outline" 
-                className="flex items-center gap-2 opacity-60 cursor-not-allowed" 
-                disabled
+                className="flex items-center gap-2" 
+                onClick={() => setShowImportModal(true)}
               >
                 <DatabaseIcon className="h-4 w-4" />
                 Importar Pacientes MV
@@ -211,6 +215,12 @@ const RegulacaoLeitosPage = () => {
           </Card>
         </div>
       </section>
+
+      {/* Modal de Importação */}
+      <ImportarPacientesMVModal 
+        isOpen={showImportModal} 
+        onClose={() => setShowImportModal(false)} 
+      />
     </div>
   );
 };

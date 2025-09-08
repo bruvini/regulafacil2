@@ -1,6 +1,6 @@
 // Firebase configuration and initialization
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, doc, addDoc, setDoc, deleteDoc, updateDoc, onSnapshot, query, getDocs, serverTimestamp, arrayUnion, deleteField } from 'firebase/firestore';
+import { getFirestore, collection, doc, addDoc, setDoc, deleteDoc, updateDoc, onSnapshot, query, getDocs, serverTimestamp, arrayUnion, deleteField, writeBatch } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBvgWppRYjPIP22U9-vu-J2dwrhJ2Klvpc",
@@ -24,6 +24,7 @@ export const getSetoresCollection = () => collection(db, 'artifacts', appId, 'pu
 export const getLeitosCollection = () => collection(db, 'artifacts', appId, 'public', 'data', 'leitos');
 export const getQuartosCollection = () => collection(db, 'artifacts', appId, 'public', 'data', 'quartos');
 export const getAuditoriaCollection = () => collection(db, 'artifacts', appId, 'public', 'data', 'auditoria');
+export const getPacientesCollection = () => collection(db, 'artifacts', appId, 'public', 'data', 'pacientes');
 
 // Export Firebase utilities
 export { 
@@ -39,5 +40,6 @@ export {
   getDocs,
   serverTimestamp,
   arrayUnion,
-  deleteField
+  deleteField,
+  writeBatch
 };
