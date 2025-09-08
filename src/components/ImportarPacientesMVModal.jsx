@@ -82,8 +82,8 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
             dataNascimento: (row[1] || '').toString(),
             sexo: (row[2] || '').toString().toUpperCase(),
             dataInternacao: (row[3] || '').toString(),
-            nomeSetor: (row[4] || '').toString().trim(),
-            codigoLeito: (row[6] || '').toString().trim(),
+            nomeSetor: (row[4] || '').toString().trim().toUpperCase(),
+            codigoLeito: (row[6] || '').toString().trim().toUpperCase(),
             especialidade: (row[7] || '').toString().toUpperCase().trim()
           })).filter(p => p.nomePaciente && p.codigoLeito);
           
@@ -108,17 +108,31 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     const leitos = {};
     const pacientes = {};
 
-    setoresSnapshot.forEach(doc => {
-      setores[doc.data().nome] = { id: doc.id, ...doc.data() };
+    setoresSnapshot.forEach(docSnap => {
+      const data = docSnap.data();
+      const key = (data.nome || '').toString().trim().toUpperCase();
+      setores[key] = { id: docSnap.id, ...data };
     });
 
-    leitosSnapshot.forEach(doc => {
-      leitos[doc.data().codigo] = { id: doc.id, ...doc.data() };
+    leitosSnapshot.forEach(docSnap => {
+      const data = docSnap.data();
+      const key = (data.codigo || '').toString().trim().toUpperCase();
+      leitos[key] = { id: docSnap.id, ...data };
     });
 
-    pacientesSnapshot.forEach(doc => {
-      pacientes[doc.data().nomePaciente] = { id: doc.id, ...doc.data() };
+    pacientesSnapshot.forEach(docSnap => {
+      const data = docSnap.data();
+      const key = (data.nomePaciente || '').toString().trim().toUpperCase();
+      pacientes[key] = { id: docSnap.id, ...data };
     });
+
+    // Diagnóstico: visualizar dados buscados do Firestore
+    try {
+      console.log('--- DADOS BUSCADOS DO FIRESTORE (SETORES) ---');
+      console.table(Object.entries(setores).map(([k, v]) => ({ key: k, id: v.id, nome: (v.nome || '').toString(), sigla: v.sigla || '' })));
+      console.log('--- DADOS BUSCADOS DO FIRESTORE (LEITOS) ---');
+      console.table(Object.entries(leitos).map(([k, v]) => ({ key: k, id: v.id, codigo: (v.codigo || '').toString(), setorId: v.setorId || '' })));
+    } catch (_) { /* noop for environments without console.table */ }
 
     return { setores, leitos, pacientes };
   };
@@ -133,15 +147,33 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       // Parse do arquivo Excel
       const pacientesArquivo = await parseExcelFile(selectedFile);
       setParsedFileData(pacientesArquivo); // Armazenar dados do arquivo
+
+      // Diagnóstico: visualizar dados processados do arquivo
+      try {
+        console.log('--- DADOS PROCESSADOS DO ARQUIVO XLS ---');
+        console.table(pacientesArquivo);
+      } catch (_) { /* noop */ }
       
       // Carregamento dos dados do Firestore
       const { setores, leitos, pacientes } = await loadFirestoreData();
 
+      // Diagnóstico: visualizar dados buscados do Firestore
+      try {
+        console.log('--- DADOS BUSCADOS DO FIRESTORE (SETORES) ---');
+        console.table(Object.entries(setores).map(([key, v]) => ({ key, id: v.id, nome: (v.nome || '').toString() })));
+        console.log('--- DADOS BUSCADOS DO FIRESTORE (LEITOS) ---');
+        console.table(Object.entries(leitos).map(([key, v]) => ({ key, id: v.id, codigo: (v.codigo || '').toString() })));
+      } catch (_) { /* noop */ }
       // Identificar setores e leitos faltantes
       const setoresParaCriar = new Set();
       const leitosParaCriar = [];
 
       for (const paciente of pacientesArquivo) {
+        // Diagnóstico: mostrar exatamente o que está sendo comparado
+        try {
+          console.log(`Comparando Setor: [ARQ] '${paciente.nomeSetor}' vs [DB] exists=${!!setores[paciente.nomeSetor]}`);
+          console.log(`Comparando Leito: [ARQ] '${paciente.codigoLeito}' vs [DB] exists=${!!leitos[paciente.codigoLeito]}`);
+        } catch (_) { /* noop */ }
         if (!setores[paciente.nomeSetor]) {
           setoresParaCriar.add(paciente.nomeSetor);
         }
@@ -167,6 +199,13 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
           leitosPorSetor[leito.nomeSetor].push(leito.codigo);
         });
         setLeitosFaltantes(leitosPorSetor);
+        
+        // Diagnóstico: resultado da validação
+        try {
+          console.log('--- RESULTADO DA VALIDAÇÃO ---');
+          console.log('Setores Faltantes Identificados:', Array.from(setoresParaCriar));
+          console.log('Leitos Faltantes Identificados:', leitosPorSetor);
+        } catch (_) { /* noop */ }
         
         setCurrentStep('validation');
         setIsProcessing(false);
@@ -354,11 +393,24 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       // Carregamento dos dados atualizados do Firestore
       const { setores, leitos, pacientes } = await loadFirestoreData();
 
+      // Diagnóstico: visualizar dados buscados do Firestore (revalidação)
+      try {
+        console.log('--- (REVALIDAÇÃO) DADOS BUSCADOS DO FIRESTORE (SETORES) ---');
+        console.table(Object.entries(setores).map(([key, v]) => ({ key, id: v.id, nome: (v.nome || '').toString() })));
+        console.log('--- (REVALIDAÇÃO) DADOS BUSCADOS DO FIRESTORE (LEITOS) ---');
+        console.table(Object.entries(leitos).map(([key, v]) => ({ key, id: v.id, codigo: (v.codigo || '').toString() })));
+      } catch (_) { /* noop */ }
+
       // Verificar novamente se ainda há pendências
       const setoresParaCriar = new Set();
       const leitosParaCriar = [];
 
       for (const paciente of parsedFileData) {
+        // Diagnóstico: mostrar exatamente o que está sendo comparado (revalidação)
+        try {
+          console.log(`(REVALIDAÇÃO) Comparando Setor: [ARQ] '${paciente.nomeSetor}' vs [DB] exists=${!!setores[paciente.nomeSetor]}`);
+          console.log(`(REVALIDAÇÃO) Comparando Leito: [ARQ] '${paciente.codigoLeito}' vs [DB] exists=${!!leitos[paciente.codigoLeito]}`);
+        } catch (_) { /* noop */ }
         if (!setores[paciente.nomeSetor]) {
           setoresParaCriar.add(paciente.nomeSetor);
         }
@@ -382,6 +434,13 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
           leitosPorSetor[leito.nomeSetor].push(leito.codigo);
         });
         setLeitosFaltantes(leitosPorSetor);
+        
+        // Diagnóstico: resultado da validação (revalidação)
+        try {
+          console.log('--- (REVALIDAÇÃO) RESULTADO DA VALIDAÇÃO ---');
+          console.log('Setores Faltantes Identificados:', Array.from(setoresParaCriar));
+          console.log('Leitos Faltantes Identificados:', leitosPorSetor);
+        } catch (_) { /* noop */ }
         
         toast.info('Ainda há pendências. Continue o cadastro.');
       } else {
