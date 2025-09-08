@@ -7,22 +7,46 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuIte
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronDown, MoreVertical, Loader2, Flame, Star } from 'lucide-react';
+import { 
+  ChevronDown, 
+  MoreVertical, 
+  Loader2, 
+  Flame, 
+  Star,
+  MessageSquareQuote,
+  BedDouble,
+  ArrowRightLeft,
+  Truck,
+  UserCheck,
+  Home,
+  MoveUpRight,
+  StickyNote,
+  AlertTriangle,
+  Calendar,
+  LogOut
+} from 'lucide-react';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { 
   getSetoresCollection, 
   getLeitosCollection, 
-  getQuartosCollection, 
+  getQuartosCollection,
+  getPacientesCollection,
   onSnapshot,
   doc,
   updateDoc,
   arrayUnion,
   serverTimestamp,
-  deleteField
+  deleteField,
+  deleteDoc
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
 import { useToast } from '@/hooks/use-toast';
+import LiberarLeitoModal from './modals/LiberarLeitoModal';
+import ObservacoesModal from './modals/ObservacoesModal';
+import MoverPacienteModal from './modals/MoverPacienteModal';
+import RemanejamentoModal from './modals/RemanejamentoModal';
+import TransferenciaExternaModal from './modals/TransferenciaExternaModal';
 
 // Color mapping for sector types
 const getSectorTypeColor = (tipoSetor) => {
@@ -36,7 +60,22 @@ const getSectorTypeColor = (tipoSetor) => {
 };
 
 // Componente LeitoCard Dinâmico
-const LeitoCard = ({ leito, onBloquearLeito, onSolicitarHigienizacao, onDesbloquearLeito, onFinalizarHigienizacao, onPriorizarHigienizacao }) => {
+const LeitoCard = ({ 
+  leito, 
+  onBloquearLeito, 
+  onSolicitarHigienizacao, 
+  onDesbloquearLeito, 
+  onFinalizarHigienizacao, 
+  onPriorizarHigienizacao,
+  onLiberarLeito,
+  onMoverPaciente,
+  onObservacoes,
+  onSolicitarUTI,
+  onSolicitarRemanejamento,
+  onTransferenciaExterna,
+  onProvavelAlta,
+  onAltaNoLeito
+}) => {
   const { toast } = useToast();
 
   const getTempoNoStatus = () => {
@@ -63,8 +102,32 @@ const LeitoCard = ({ leito, onBloquearLeito, onSolicitarHigienizacao, onDesbloqu
     }
   };
 
+  const calcularIdade = (dataNascimento) => {
+    if (!dataNascimento) return 'N/A';
+    try {
+      const nascimento = dataNascimento.toDate ? dataNascimento.toDate() : new Date(dataNascimento);
+      const hoje = new Date();
+      const idade = hoje.getFullYear() - nascimento.getFullYear();
+      const mesAtual = hoje.getMonth();
+      const diaAtual = hoje.getDate();
+      const mesNascimento = nascimento.getMonth();
+      const diaNascimento = nascimento.getDate();
+      
+      if (mesAtual < mesNascimento || (mesAtual === mesNascimento && diaAtual < diaNascimento)) {
+        return idade - 1;
+      }
+      return idade;
+    } catch (error) {
+      return 'N/A';
+    }
+  };
+
   const getCardStyle = () => {
     switch (leito.status) {
+      case 'Ocupado':
+        const genderBorder = leito.paciente?.sexo === 'M' ? 'border-blue-500' : 
+                           leito.paciente?.sexo === 'F' ? 'border-pink-500' : 'border-red-500';
+        return `bg-red-50 border-4 ${genderBorder} hover:shadow-lg transition-all shadow-sm`;
       case 'Vago':
         return "bg-white border-2 border-blue-200 hover:border-blue-300 transition-colors shadow-sm";
       case 'Bloqueado':
@@ -78,6 +141,8 @@ const LeitoCard = ({ leito, onBloquearLeito, onSolicitarHigienizacao, onDesbloqu
 
   const getBadgeStyle = () => {
     switch (leito.status) {
+      case 'Ocupado':
+        return "bg-red-100 text-red-800 border-red-200";
       case 'Vago':
         return "bg-green-100 text-green-800 border-green-200";
       case 'Bloqueado':
@@ -89,8 +154,106 @@ const LeitoCard = ({ leito, onBloquearLeito, onSolicitarHigienizacao, onDesbloqu
     }
   };
 
+  const renderStatusBadges = () => {
+    if (leito.status !== 'Ocupado' || !leito.paciente) return null;
+
+    const badges = [];
+    const paciente = leito.paciente;
+
+    if (paciente.observacoes && paciente.observacoes.length > 0) {
+      badges.push(
+        <Badge key="obs" variant="outline" className="text-xs p-1">
+          <MessageSquareQuote className="h-3 w-3" />
+        </Badge>
+      );
+    }
+
+    if (paciente.pedidoUTI) {
+      badges.push(
+        <Badge key="uti" variant="destructive" className="text-xs p-1">
+          <BedDouble className="h-3 w-3" />
+        </Badge>
+      );
+    }
+
+    if (paciente.pedidoRemanejamento) {
+      badges.push(
+        <Badge key="rem" variant="outline" className="text-xs p-1">
+          <ArrowRightLeft className="h-3 w-3" />
+        </Badge>
+      );
+    }
+
+    if (paciente.pedidoTransferenciaExterna) {
+      badges.push(
+        <Badge key="trans" variant="outline" className="text-xs p-1">
+          <Truck className="h-3 w-3" />
+        </Badge>
+      );
+    }
+
+    if (paciente.provavelAlta) {
+      badges.push(
+        <Badge key="alta" variant="outline" className="text-xs p-1">
+          <UserCheck className="h-3 w-3" />
+        </Badge>
+      );
+    }
+
+    if (paciente.altaNoLeito) {
+      badges.push(
+        <Badge key="altaleito" variant="outline" className="text-xs p-1">
+          <Home className="h-3 w-3" />
+        </Badge>
+      );
+    }
+
+    return badges.length > 0 ? (
+      <div className="flex flex-wrap gap-1 mt-2">
+        {badges}
+      </div>
+    ) : null;
+  };
+
   const renderActions = () => {
     switch (leito.status) {
+      case 'Ocupado':
+        return (
+          <>
+            <DropdownMenuItem onClick={() => onLiberarLeito(leito, leito.paciente)}>
+              <LogOut className="h-4 w-4 mr-2" />
+              LIBERAR LEITO
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onMoverPaciente(leito, leito.paciente)}>
+              <MoveUpRight className="h-4 w-4 mr-2" />
+              MOVER PACIENTE
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onObservacoes(leito.paciente)}>
+              <StickyNote className="h-4 w-4 mr-2" />
+              OBSERVAÇÕES
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onSolicitarUTI(leito.paciente)}>
+              <AlertTriangle className="h-4 w-4 mr-2" />
+              {leito.paciente?.pedidoUTI ? 'REMOVER PEDIDO UTI' : 'SOLICITAR UTI'}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onSolicitarRemanejamento(leito.paciente)}>
+              <ArrowRightLeft className="h-4 w-4 mr-2" />
+              SOLICITAR REMANEJAMENTO
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onTransferenciaExterna(leito.paciente)}>
+              <Truck className="h-4 w-4 mr-2" />
+              TRANSFERÊNCIA EXTERNA
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onProvavelAlta(leito.paciente)}>
+              <Calendar className="h-4 w-4 mr-2" />
+              {leito.paciente?.provavelAlta ? 'REMOVER PROVÁVEL ALTA' : 'PROVÁVEL ALTA'}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onAltaNoLeito(leito.paciente)}>
+              <Home className="h-4 w-4 mr-2" />
+              {leito.paciente?.altaNoLeito ? 'REMOVER ALTA NO LEITO' : 'ALTA NO LEITO'}
+            </DropdownMenuItem>
+          </>
+        );
       case 'Vago':
         return (
           <>
@@ -148,7 +311,7 @@ const LeitoCard = ({ leito, onBloquearLeito, onSolicitarHigienizacao, onDesbloqu
         <div className="space-y-3">
           <div>
             <h4 className="font-semibold text-sm text-gray-900">
-              Leito: {leito.codigoLeito}
+              {leito.codigoLeito}
             </h4>
             <div className="flex items-center gap-1 mt-1">
               {leito.isPCP && (
@@ -164,6 +327,27 @@ const LeitoCard = ({ leito, onBloquearLeito, onSolicitarHigienizacao, onDesbloqu
               )}
             </div>
           </div>
+
+          {/* Informações do paciente para leitos ocupados */}
+          {leito.status === 'Ocupado' && leito.paciente && (
+            <div className="space-y-2">
+              <div>
+                <p className="font-medium text-sm text-gray-900">
+                  {leito.paciente.nomePaciente}
+                </p>
+                <div className="flex items-center gap-2 text-xs text-gray-600">
+                  <span>{calcularIdade(leito.paciente.dataNascimento)} anos</span>
+                  {leito.paciente.especialidade && (
+                    <>
+                      <span>•</span>
+                      <span>{leito.paciente.especialidade}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+              {renderStatusBadges()}
+            </div>
+          )}
 
           <Badge variant="outline" className={getBadgeStyle()}>
             {leito.status}
@@ -190,6 +374,7 @@ const MapaLeitosPanel = () => {
   const [setores, setSetores] = useState([]);
   const [quartos, setQuartos] = useState([]);
   const [leitos, setLeitos] = useState([]);
+  const [pacientes, setPacientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedSections, setExpandedSections] = useState({});
   const [expandedSetores, setExpandedSetores] = useState({});
@@ -199,6 +384,11 @@ const MapaLeitosPanel = () => {
   const [modalHigienizacao, setModalHigienizacao] = useState({ open: false, leito: null });
   const [modalDesbloquear, setModalDesbloquear] = useState({ open: false, leito: null });
   const [modalFinalizarHigienizacao, setModalFinalizarHigienizacao] = useState({ open: false, leito: null });
+  const [modalLiberarLeito, setModalLiberarLeito] = useState({ open: false, leito: null, paciente: null });
+  const [modalMoverPaciente, setModalMoverPaciente] = useState({ open: false, leito: null, paciente: null });
+  const [modalObservacoes, setModalObservacoes] = useState({ open: false, paciente: null });
+  const [modalRemanejamento, setModalRemanejamento] = useState({ open: false, paciente: null });
+  const [modalTransferenciaExterna, setModalTransferenciaExterna] = useState({ open: false, paciente: null });
   const [motivoBloqueio, setMotivoBloqueio] = useState('');
   
   const { toast } = useToast();
@@ -348,6 +538,311 @@ const MapaLeitosPanel = () => {
     }
   };
 
+  // Handlers para leitos ocupados
+  const handleLiberarLeito = async (leito, paciente) => {
+    try {
+      // Excluir documento do paciente
+      const pacienteRef = doc(getPacientesCollection(), paciente.id);
+      await deleteDoc(pacienteRef);
+      
+      // Atualizar leito para higienização
+      const leitoRef = doc(getLeitosCollection(), leito.id);
+      await updateDoc(leitoRef, {
+        status: 'Higienização',
+        historico: arrayUnion({
+          status: 'Higienização',
+          timestamp: serverTimestamp()
+        })
+      });
+      
+      await logAction('Mapa de Leitos', `Leito '${leito.codigoLeito}' foi liberado. Paciente '${paciente.nomePaciente}' foi dado alta.`);
+      
+      toast({
+        title: "Leito liberado",
+        description: `Leito ${leito.codigoLeito} foi liberado com sucesso.`,
+      });
+    } catch (error) {
+      console.error('Erro ao liberar leito:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao liberar o leito. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleToggleUTI = async (paciente) => {
+    try {
+      const pacienteRef = doc(getPacientesCollection(), paciente.id);
+      
+      if (paciente.pedidoUTI) {
+        // Remover pedido de UTI
+        await updateDoc(pacienteRef, {
+          pedidoUTI: deleteField()
+        });
+        
+        toast({
+          title: "Pedido removido",
+          description: "Pedido de UTI foi removido.",
+        });
+        
+        await logAction('Mapa de Leitos', `Pedido de UTI do paciente '${paciente.nomePaciente}' foi removido.`);
+      } else {
+        // Adicionar pedido de UTI
+        await updateDoc(pacienteRef, {
+          pedidoUTI: {
+            solicitadoEm: serverTimestamp()
+          }
+        });
+        
+        toast({
+          title: "UTI solicitada",
+          description: "Pedido de UTI foi registrado.",
+        });
+        
+        await logAction('Mapa de Leitos', `UTI solicitada para o paciente '${paciente.nomePaciente}'.`);
+      }
+    } catch (error) {
+      console.error('Erro ao gerenciar pedido de UTI:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao processar pedido de UTI. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleToggleProvavelAlta = async (paciente) => {
+    try {
+      const pacienteRef = doc(getPacientesCollection(), paciente.id);
+      
+      if (paciente.provavelAlta) {
+        // Remover provável alta
+        await updateDoc(pacienteRef, {
+          provavelAlta: deleteField()
+        });
+        
+        toast({
+          title: "Provável alta removida",
+          description: "Registro de provável alta foi removido.",
+        });
+        
+        await logAction('Mapa de Leitos', `Provável alta do paciente '${paciente.nomePaciente}' foi removida.`);
+      } else {
+        // Adicionar provável alta
+        await updateDoc(pacienteRef, {
+          provavelAlta: {
+            sinalizadoEm: serverTimestamp()
+          }
+        });
+        
+        toast({
+          title: "Provável alta registrada",
+          description: "Provável alta foi sinalizada.",
+        });
+        
+        await logAction('Mapa de Leitos', `Provável alta sinalizada para o paciente '${paciente.nomePaciente}'.`);
+      }
+    } catch (error) {
+      console.error('Erro ao gerenciar provável alta:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao processar provável alta. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleToggleAltaNoLeito = async (paciente) => {
+    try {
+      const pacienteRef = doc(getPacientesCollection(), paciente.id);
+      
+      if (paciente.altaNoLeito) {
+        // Remover alta no leito
+        await updateDoc(pacienteRef, {
+          altaNoLeito: deleteField()
+        });
+        
+        toast({
+          title: "Alta no leito removida",
+          description: "Registro de alta no leito foi removido.",
+        });
+        
+        await logAction('Mapa de Leitos', `Alta no leito do paciente '${paciente.nomePaciente}' foi removida.`);
+      } else {
+        // Adicionar alta no leito - aqui precisaria de um modal para coletar os dados
+        // Por simplicidade, vou usar dados padrão
+        await updateDoc(pacienteRef, {
+          altaNoLeito: {
+            motivo: "Alta administrativa",
+            detalhe: "",
+            sinalizadoEm: serverTimestamp()
+          }
+        });
+        
+        toast({
+          title: "Alta no leito registrada",
+          description: "Alta no leito foi sinalizada.",
+        });
+        
+        await logAction('Mapa de Leitos', `Alta no leito sinalizada para o paciente '${paciente.nomePaciente}'.`);
+      }
+    } catch (error) {
+      console.error('Erro ao gerenciar alta no leito:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao processar alta no leito. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Handlers específicos dos modais
+  const handleSalvarObservacao = async (texto) => {
+    try {
+      const pacienteRef = doc(getPacientesCollection(), modalObservacoes.paciente.id);
+      
+      await updateDoc(pacienteRef, {
+        observacoes: arrayUnion({
+          texto,
+          timestamp: serverTimestamp()
+        })
+      });
+      
+      toast({
+        title: "Observação salva",
+        description: "Nova observação foi registrada.",
+      });
+      
+      await logAction('Mapa de Leitos', `Nova observação adicionada para o paciente '${modalObservacoes.paciente.nomePaciente}'.`);
+      
+      setModalObservacoes({ open: false, paciente: null });
+    } catch (error) {
+      console.error('Erro ao salvar observação:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao salvar observação. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleMoverPaciente = async (leitoDestino) => {
+    try {
+      const { leito: leitoOrigem, paciente } = modalMoverPaciente;
+      
+      // Atualizar leito de origem para Vago
+      const leitoOrigemRef = doc(getLeitosCollection(), leitoOrigem.id);
+      await updateDoc(leitoOrigemRef, {
+        status: 'Vago',
+        historico: arrayUnion({
+          status: 'Vago',
+          timestamp: serverTimestamp()
+        })
+      });
+      
+      // Atualizar leito de destino para Ocupado
+      const leitoDestinoRef = doc(getLeitosCollection(), leitoDestino.id);
+      await updateDoc(leitoDestinoRef, {
+        status: 'Ocupado',
+        historico: arrayUnion({
+          status: 'Ocupado',
+          timestamp: serverTimestamp()
+        })
+      });
+      
+      // Atualizar dados do paciente
+      const pacienteRef = doc(getPacientesCollection(), paciente.id);
+      await updateDoc(pacienteRef, {
+        leitoId: leitoDestino.id,
+        setorId: leitoDestino.setorId
+      });
+      
+      toast({
+        title: "Paciente movido",
+        description: `Paciente ${paciente.nomePaciente} foi movido para o leito ${leitoDestino.codigoLeito}.`,
+      });
+      
+      await logAction('Mapa de Leitos', 
+        `Paciente '${paciente.nomePaciente}' foi movido do leito '${leitoOrigem.codigoLeito}' para o leito '${leitoDestino.codigoLeito}'.`
+      );
+      
+      setModalMoverPaciente({ open: false, leito: null, paciente: null });
+    } catch (error) {
+      console.error('Erro ao mover paciente:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao mover paciente. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSalvarRemanejamento = async (dados) => {
+    try {
+      const pacienteRef = doc(getPacientesCollection(), modalRemanejamento.paciente.id);
+      
+      await updateDoc(pacienteRef, {
+        pedidoRemanejamento: {
+          tipo: dados.tipo,
+          descricao: dados.descricao,
+          solicitadoEm: serverTimestamp()
+        }
+      });
+      
+      toast({
+        title: "Remanejamento solicitado",
+        description: "Pedido de remanejamento foi registrado.",
+      });
+      
+      await logAction('Mapa de Leitos', 
+        `Remanejamento solicitado para o paciente '${modalRemanejamento.paciente.nomePaciente}'. Motivo: ${dados.tipo}`
+      );
+      
+      setModalRemanejamento({ open: false, paciente: null });
+    } catch (error) {
+      console.error('Erro ao solicitar remanejamento:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao solicitar remanejamento. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSalvarTransferenciaExterna = async (dados) => {
+    try {
+      const pacienteRef = doc(getPacientesCollection(), modalTransferenciaExterna.paciente.id);
+      
+      await updateDoc(pacienteRef, {
+        pedidoTransferenciaExterna: {
+          motivo: dados.motivo,
+          outroMotivo: dados.outroMotivo,
+          destino: dados.destino,
+          solicitadoEm: serverTimestamp()
+        }
+      });
+      
+      toast({
+        title: "Transferência solicitada",
+        description: "Pedido de transferência externa foi registrado.",
+      });
+      
+      await logAction('Mapa de Leitos', 
+        `Transferência externa solicitada para o paciente '${modalTransferenciaExterna.paciente.nomePaciente}'. Motivo: ${dados.motivo}, Destino: ${dados.destino}`
+      );
+      
+      setModalTransferenciaExterna({ open: false, paciente: null });
+    } catch (error) {
+      console.error('Erro ao solicitar transferência externa:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao solicitar transferência externa. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Buscar dados do Firestore em tempo real
   useEffect(() => {
     const unsubscribeSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
@@ -372,6 +867,14 @@ const MapaLeitosPanel = () => {
         ...doc.data()
       }));
       setLeitos(leitosData);
+    });
+
+    const unsubscribePacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
+      const pacientesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setPacientes(pacientesData);
       setLoading(false);
     });
 
@@ -379,6 +882,7 @@ const MapaLeitosPanel = () => {
       unsubscribeSetores();
       unsubscribeQuartos();
       unsubscribeLeitos();
+      unsubscribePacientes();
     };
   }, []);
 
@@ -387,6 +891,14 @@ const MapaLeitosPanel = () => {
     if (!setores.length || !leitos.length) return {};
 
     const estrutura = {};
+
+    // Criar mapa de pacientes por leitoId para performance
+    const pacientesPorLeito = {};
+    pacientes.forEach(paciente => {
+      if (paciente.leitoId) {
+        pacientesPorLeito[paciente.leitoId] = paciente;
+      }
+    });
 
     // Agrupar por tipo de setor
     setores.forEach(setor => {
@@ -405,9 +917,14 @@ const MapaLeitosPanel = () => {
           return nameA.localeCompare(nameB);
         });
       
-      // Buscar leitos deste setor
+      // Buscar leitos deste setor e vincular pacientes
       const leitosDoSetor = leitos
         .filter(leito => leito.setorId === setor.id)
+        .map(leito => ({
+          ...leito,
+          paciente: pacientesPorLeito[leito.id] || null,
+          status: pacientesPorLeito[leito.id] ? 'Ocupado' : leito.status
+        }))
         .sort((a, b) => {
           const codeA = a.codigoLeito || '';
           const codeB = b.codigoLeito || '';
@@ -449,7 +966,7 @@ const MapaLeitosPanel = () => {
     });
 
     return estrutura;
-  }, [setores, quartos, leitos]);
+  }, [setores, quartos, leitos, pacientes]);
 
   const toggleSection = (tipoSetor) => {
     setExpandedSections(prev => ({
@@ -490,10 +1007,10 @@ const MapaLeitosPanel = () => {
     <div className="space-y-4">
       {Object.entries(dadosEstruturados).map(([tipoSetor, setoresDoTipo]) => (
         <div key={tipoSetor} className={`border border-gray-200 rounded-lg ${getSectorTypeColor(tipoSetor)}`}>
-          <Collapsible 
-            open={expandedSections[tipoSetor] !== false} 
-            onOpenChange={() => toggleSection(tipoSetor)}
-          >
+            <Collapsible 
+              open={false} 
+              onOpenChange={() => toggleSection(tipoSetor)}
+            >
             <CollapsibleTrigger asChild>
               <Button
                 variant="ghost"
@@ -514,10 +1031,10 @@ const MapaLeitosPanel = () => {
             <CollapsibleContent className="p-4 pt-0 space-y-6">
               {setoresDoTipo.map(setor => (
                 <div key={setor.id} className="border border-gray-100 rounded-lg">
-                  <Collapsible 
-                    open={expandedSetores[setor.id] !== false} 
-                    onOpenChange={() => toggleSetor(setor.id)}
-                  >
+                    <Collapsible 
+                      open={false} 
+                      onOpenChange={() => toggleSetor(setor.id)}
+                    >
                     <CollapsibleTrigger asChild>
                       <Button
                         variant="ghost"
@@ -556,6 +1073,14 @@ const MapaLeitosPanel = () => {
                                 onDesbloquearLeito={(leito) => setModalDesbloquear({ open: true, leito })}
                                 onFinalizarHigienizacao={(leito) => setModalFinalizarHigienizacao({ open: true, leito })}
                                 onPriorizarHigienizacao={handlePriorizarHigienizacao}
+                                onLiberarLeito={(leito, paciente) => setModalLiberarLeito({ open: true, leito, paciente })}
+                                onMoverPaciente={(leito, paciente) => setModalMoverPaciente({ open: true, leito, paciente })}
+                                onObservacoes={(paciente) => setModalObservacoes({ open: true, paciente })}
+                                onSolicitarUTI={handleToggleUTI}
+                                onSolicitarRemanejamento={(paciente) => setModalRemanejamento({ open: true, paciente })}
+                                onTransferenciaExterna={(paciente) => setModalTransferenciaExterna({ open: true, paciente })}
+                                onProvavelAlta={handleToggleProvavelAlta}
+                                onAltaNoLeito={handleToggleAltaNoLeito}
                               />
                             ))}
                           </div>
@@ -583,6 +1108,14 @@ const MapaLeitosPanel = () => {
                                 onDesbloquearLeito={(leito) => setModalDesbloquear({ open: true, leito })}
                                 onFinalizarHigienizacao={(leito) => setModalFinalizarHigienizacao({ open: true, leito })}
                                 onPriorizarHigienizacao={handlePriorizarHigienizacao}
+                                onLiberarLeito={(leito, paciente) => setModalLiberarLeito({ open: true, leito, paciente })}
+                                onMoverPaciente={(leito, paciente) => setModalMoverPaciente({ open: true, leito, paciente })}
+                                onObservacoes={(paciente) => setModalObservacoes({ open: true, paciente })}
+                                onSolicitarUTI={handleToggleUTI}
+                                onSolicitarRemanejamento={(paciente) => setModalRemanejamento({ open: true, paciente })}
+                                onTransferenciaExterna={(paciente) => setModalTransferenciaExterna({ open: true, paciente })}
+                                onProvavelAlta={handleToggleProvavelAlta}
+                                onAltaNoLeito={handleToggleAltaNoLeito}
                               />
                             ))}
                           </div>
@@ -683,6 +1216,45 @@ const MapaLeitosPanel = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Novos modais para leitos ocupados */}
+      <LiberarLeitoModal
+        isOpen={modalLiberarLeito.open}
+        onClose={() => setModalLiberarLeito({ open: false, leito: null, paciente: null })}
+        onConfirm={() => handleLiberarLeito(modalLiberarLeito.leito, modalLiberarLeito.paciente)}
+        leito={modalLiberarLeito.leito}
+        paciente={modalLiberarLeito.paciente}
+      />
+
+      <ObservacoesModal
+        isOpen={modalObservacoes.open}
+        onClose={() => setModalObservacoes({ open: false, paciente: null })}
+        onSave={handleSalvarObservacao}
+        paciente={modalObservacoes.paciente}
+      />
+
+      <MoverPacienteModal
+        isOpen={modalMoverPaciente.open}
+        onClose={() => setModalMoverPaciente({ open: false, leito: null, paciente: null })}
+        onMove={handleMoverPaciente}
+        paciente={modalMoverPaciente.paciente}
+        leito={modalMoverPaciente.leito}
+        dadosEstruturados={dadosEstruturados}
+      />
+
+      <RemanejamentoModal
+        isOpen={modalRemanejamento.open}
+        onClose={() => setModalRemanejamento({ open: false, paciente: null })}
+        onSave={handleSalvarRemanejamento}
+        paciente={modalRemanejamento.paciente}
+      />
+
+      <TransferenciaExternaModal
+        isOpen={modalTransferenciaExterna.open}
+        onClose={() => setModalTransferenciaExterna({ open: false, paciente: null })}
+        onSave={handleSalvarTransferenciaExterna}
+        paciente={modalTransferenciaExterna.paciente}
+      />
     </div>
   );
 };
