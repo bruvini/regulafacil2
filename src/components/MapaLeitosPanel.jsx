@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -333,27 +334,14 @@ const LeitoCard = ({
   return (
     <Card className={getCardStyle()}>
       <CardContent className="p-4 relative">
-        {/* Dropdown de ações */}
-        <div className="absolute top-2 right-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6">
-                <MoreVertical className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              {renderActions()}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
 
-        {/* Conteúdo do card */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h4 className="font-semibold text-sm text-gray-900">
+        {/* Cabeçalho com layout corrigido */}
+        <div className="flex justify-between items-start mb-3">
+          <div className="flex-1 min-w-0">
+            <h4 className="font-semibold text-sm text-gray-900 mb-2">
               {leito.codigoLeito}
             </h4>
-            <div className="flex items-center gap-1">
+            <div className="flex flex-wrap gap-1">
               {leito.isPCP && (
                 <Badge variant="secondary" className="text-xs">
                   PCP
@@ -370,6 +358,21 @@ const LeitoCard = ({
               )}
             </div>
           </div>
+          {/* Menu de ações */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0">
+                <MoreVertical className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              {renderActions()}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {/* Conteúdo do card */}
+        <div className="space-y-3">
 
           {/* Informações do paciente para leitos ocupados */}
           {leito.status === 'Ocupado' && leito.paciente && (
@@ -417,8 +420,7 @@ const MapaLeitosPanel = () => {
   const [loading, setLoading] = useState(true);
   const [expandedSections, setExpandedSections] = useState({});
   const [expandedSetores, setExpandedSetores] = useState({});
-  
-  // Estado dos filtros
+  // Estados dos filtros
   const [filtros, setFiltros] = useState({
     busca: '',
     status: [],
@@ -1151,19 +1153,6 @@ const MapaLeitosPanel = () => {
     });
   };
 
-  const toggleSection = (tipoSetor) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [tipoSetor]: !prev[tipoSetor]
-    }));
-  };
-
-  const toggleSetor = (setorId) => {
-    setExpandedSetores(prev => ({
-      ...prev,
-      [setorId]: !prev[setorId]
-    }));
-  };
 
   if (loading) {
     return (
@@ -1335,55 +1324,37 @@ const MapaLeitosPanel = () => {
           </p>
         </div>
       ) : (
-        Object.entries(dadosFiltrados).map(([tipoSetor, setoresDoTipo]) => (
-          <div key={tipoSetor} className={`border border-gray-200 rounded-lg ${getSectorTypeColor(tipoSetor)}`}>
-            <Collapsible 
-              open={expandedSections[tipoSetor] !== false} 
-              onOpenChange={() => toggleSection(tipoSetor)}
-            >
-              <CollapsibleTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className="w-full justify-between p-4 h-auto text-left hover:bg-gray-50"
-                >
-                  <div>
-                    <h2 className="text-xl font-semibold text-gray-900">
-                      {tipoSetor}
-                    </h2>
-                    <p className="text-sm text-muted-foreground">
-                      {setoresDoTipo.length} setor(es)
-                    </p>
-                  </div>
-                  <ChevronDown className="h-5 w-5 transition-transform duration-200" />
-                </Button>
-              </CollapsibleTrigger>
+        <Accordion type="single" collapsible className="space-y-4">
+          {Object.entries(dadosFiltrados).map(([tipoSetor, setoresDoTipo]) => (
+            <AccordionItem key={tipoSetor} value={tipoSetor} className={`border border-gray-200 rounded-lg ${getSectorTypeColor(tipoSetor)}`}>
+              <AccordionTrigger className="w-full justify-between p-4 h-auto text-left hover:bg-gray-50">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    {tipoSetor}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    {setoresDoTipo.length} setor(es)
+                  </p>
+                </div>
+              </AccordionTrigger>
               
-              <CollapsibleContent className="p-4 pt-0 space-y-6">
-                {setoresDoTipo.map(setor => (
-                  <div key={setor.id} className="border border-gray-100 rounded-lg">
-                    <Collapsible 
-                      open={expandedSetores[setor.id] !== false} 
-                      onOpenChange={() => toggleSetor(setor.id)}
-                    >
-                      <CollapsibleTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          className="w-full justify-between p-3 h-auto text-left hover:bg-gray-50"
-                        >
-                          <div>
-                            <h3 className="text-lg font-medium text-gray-800">
-                              {setor.nomeSetor} ({setor.siglaSetor})
-                            </h3>
-                            <p className="text-sm text-muted-foreground">
-                              {(setor.quartos.length > 0 ? setor.quartos.length + " quarto(s), " : "") + 
-                               (setor.leitosSemQuarto.length + setor.quartos.reduce((acc, q) => acc + q.leitos.length, 0)) + " leito(s)"}
-                            </p>
-                          </div>
-                          <ChevronDown className="h-4 w-4 transition-transform duration-200" />
-                        </Button>
-                      </CollapsibleTrigger>
+              <AccordionContent className="p-4 pt-0">
+                <Accordion type="single" collapsible className="space-y-6">
+                  {setoresDoTipo.map(setor => (
+                    <AccordionItem key={setor.id} value={setor.id} className="border border-gray-100 rounded-lg">
+                      <AccordionTrigger className="w-full justify-between p-3 h-auto text-left hover:bg-gray-50">
+                        <div>
+                          <h3 className="text-lg font-medium text-gray-800">
+                            {setor.nomeSetor} ({setor.siglaSetor})
+                          </h3>
+                          <p className="text-sm text-muted-foreground">
+                            {(setor.quartos.length > 0 ? setor.quartos.length + " quarto(s), " : "") + 
+                             (setor.leitosSemQuarto.length + setor.quartos.reduce((acc, q) => acc + q.leitos.length, 0)) + " leito(s)"}
+                          </p>
+                        </div>
+                      </AccordionTrigger>
                       
-                      <CollapsibleContent className="p-3 pt-0 space-y-4">
+                      <AccordionContent className="p-3 pt-0 space-y-4">
                         {/* Renderizar quartos (não são acordeões, apenas containers) */}
                         {setor.quartos.map(quarto => (
                           <div key={quarto.id} className="bg-gray-50 rounded-lg p-4">
@@ -1395,7 +1366,7 @@ const MapaLeitosPanel = () => {
                             </h4>
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                               {quarto.leitos.map(leito => (
-                                <LeitoCard 
+                                <MemoizedLeitoCard
                                   key={leito.id} 
                                   leito={leito}
                                   onBloquearLeito={(leito) => setModalBloquear({ open: true, leito })}
@@ -1430,7 +1401,7 @@ const MapaLeitosPanel = () => {
                             ) : null}
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                               {setor.leitosSemQuarto.map(leito => (
-                                <LeitoCard 
+                                <MemoizedLeitoCard 
                                   key={leito.id} 
                                   leito={leito}
                                   onBloquearLeito={(leito) => setModalBloquear({ open: true, leito })}
@@ -1451,14 +1422,14 @@ const MapaLeitosPanel = () => {
                             </div>
                           </div>
                         )}
-                      </CollapsibleContent>
-                    </Collapsible>
-                  </div>
-                ))}
-              </CollapsibleContent>
-            </Collapsible>
-          </div>
-        ))
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
       )}
       
       {/* Modal para Bloquear Leito */}
@@ -1596,5 +1567,8 @@ const MapaLeitosPanel = () => {
     </div>
   );
 };
+
+// Memoizar LeitoCard para melhorar performance
+const MemoizedLeitoCard = React.memo(LeitoCard);
 
 export default MapaLeitosPanel;

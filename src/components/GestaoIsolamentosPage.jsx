@@ -158,23 +158,25 @@ const GestaoIsolamentosPage = () => {
         <CardHeader>
           <CardTitle>Ferramentas</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <Button 
-            variant="outline" 
-            className="w-full justify-start gap-3"
-            onClick={() => setShowGerenciarInfeccoes(true)}
-          >
-            <Settings className="h-4 w-4" />
-            Gerenciar Infecções
-          </Button>
-          <Button 
-            variant="outline" 
-            className="w-full justify-start gap-3"
-            onClick={() => setShowGerenciarIsolamentos(true)}
-          >
-            <UserCog className="h-4 w-4" />
-            Gerenciar Isolamentos de Pacientes
-          </Button>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Button 
+              variant="outline" 
+              className="flex flex-col items-center justify-center h-16 gap-2"
+              onClick={() => setShowGerenciarInfeccoes(true)}
+            >
+              <Settings className="h-4 w-4" />
+              <span className="text-xs text-center">Gerenciar Infecções</span>
+            </Button>
+            <Button 
+              variant="outline" 
+              className="flex flex-col items-center justify-center h-16 gap-2"
+              onClick={() => setShowGerenciarIsolamentos(true)}
+            >
+              <UserCog className="h-4 w-4" />
+              <span className="text-xs text-center">Gerenciar Isolamentos</span>
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
