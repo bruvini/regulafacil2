@@ -56,6 +56,7 @@ import MapaLeitosPanel from './MapaLeitosPanel';
 import RegulacaoLeitosPage from './RegulacaoLeitosPage';
 import IndicadoresGeraisPanel from './IndicadoresGeraisPanel';
 import GestaoIsolamentosPage from './GestaoIsolamentosPage';
+import CentralHigienizacaoPage from './CentralHigienizacaoPage';
 
 // Dados de navegação
 const navigationItems = [
@@ -699,12 +700,7 @@ const RegulaFacil = () => {
       case "mapa-leitos":
         return <MapaLeitosPage />;
       case "central-higienizacao":
-        return (
-          <DevelopmentPage
-            title="Central de Higienização"
-            description="Controle de limpeza e desinfecção"
-          />
-        );
+        return <CentralHigienizacaoPage />;
       case "gestao-isolamentos":
         return <GestaoIsolamentosPage />;
       case "marcacao-cirurgica":
