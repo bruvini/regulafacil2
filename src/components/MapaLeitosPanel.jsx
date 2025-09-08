@@ -3,6 +3,9 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
@@ -23,7 +26,9 @@ import {
   StickyNote,
   AlertTriangle,
   Calendar,
-  LogOut
+  LogOut,
+  Search,
+  Filter
 } from 'lucide-react';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -371,8 +376,6 @@ const LeitoCard = ({
 
 // Componente principal MapaLeitosPanel
 const MapaLeitosPanel = () => {
-  console.log('MapaLeitosPanel component loading...');
-  
   const [setores, setSetores] = useState([]);
   const [quartos, setQuartos] = useState([]);
   const [leitos, setLeitos] = useState([]);
@@ -380,6 +383,21 @@ const MapaLeitosPanel = () => {
   const [loading, setLoading] = useState(true);
   const [expandedSections, setExpandedSections] = useState({});
   const [expandedSetores, setExpandedSetores] = useState({});
+  
+  // Estado dos filtros
+  const [filtros, setFiltros] = useState({
+    busca: '',
+    status: [],
+    sexo: [],
+    especialidade: '',
+    isPCP: false,
+    comPedidoUTI: false,
+    comProvavelAlta: false,
+    comAltaNoLeito: false,
+    comSolicitacaoRemanejamento: false,
+    comPedidoTransferenciaExterna: false
+  });
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   
   // Estados dos modais
   const [modalBloquear, setModalBloquear] = useState({ open: false, leito: null });
@@ -574,8 +592,6 @@ const MapaLeitosPanel = () => {
   };
 
   const handleToggleUTI = async (paciente) => {
-    console.log('handleToggleUTI called with:', paciente);
-    console.log('Function exists:', typeof handleToggleUTI);
     try {
       const pacienteRef = doc(getPacientesCollection(), paciente.id);
       
@@ -615,9 +631,6 @@ const MapaLeitosPanel = () => {
       });
     }
   };
-
-  // Debug: Verify function exists
-  console.log('handleToggleUTI function defined:', typeof handleToggleUTI);
 
   const handleToggleProvavelAlta = async (paciente) => {
     try {
@@ -893,6 +906,17 @@ const MapaLeitosPanel = () => {
     };
   }, []);
 
+  // Obter especialidades únicas para o filtro
+  const especialidadesUnicas = useMemo(() => {
+    const especialidades = new Set();
+    pacientes.forEach(paciente => {
+      if (paciente.especialidade) {
+        especialidades.add(paciente.especialidade);
+      }
+    });
+    return Array.from(especialidades).sort();
+  }, [pacientes]);
+
   // Processar dados em estrutura hierárquica
   const dadosEstruturados = useMemo(() => {
     if (!setores.length || !leitos.length) return {};
@@ -975,6 +999,105 @@ const MapaLeitosPanel = () => {
     return estrutura;
   }, [setores, quartos, leitos, pacientes]);
 
+  // Aplicar filtros aos dados estruturados
+  const dadosFiltrados = useMemo(() => {
+    const estruturaFiltrada = {};
+    
+    Object.entries(dadosEstruturados).forEach(([tipoSetor, setoresDoTipo]) => {
+      const setoresFiltrados = [];
+      
+      setoresDoTipo.forEach(setor => {
+        const setorFiltrado = { ...setor };
+        
+        // Filtrar quartos e seus leitos
+        const quartosFiltrados = setor.quartos.map(quarto => ({
+          ...quarto,
+          leitos: quarto.leitos.filter(leito => aplicarFiltrosAoLeito(leito))
+        })).filter(quarto => quarto.leitos.length > 0);
+        
+        // Filtrar leitos sem quarto
+        const leitosSemQuartoFiltrados = setor.leitosSemQuarto.filter(leito => aplicarFiltrosAoLeito(leito));
+        
+        setorFiltrado.quartos = quartosFiltrados;
+        setorFiltrado.leitosSemQuarto = leitosSemQuartoFiltrados;
+        
+        // Só incluir setor se tiver leitos após filtragem
+        if (quartosFiltrados.length > 0 || leitosSemQuartoFiltrados.length > 0) {
+          setoresFiltrados.push(setorFiltrado);
+        }
+      });
+      
+      // Só incluir tipo de setor se tiver setores após filtragem
+      if (setoresFiltrados.length > 0) {
+        estruturaFiltrada[tipoSetor] = setoresFiltrados;
+      }
+    });
+    
+    return estruturaFiltrada;
+  }, [dadosEstruturados, filtros]);
+
+  const aplicarFiltrosAoLeito = (leito) => {
+    // Filtro de busca rápida
+    if (filtros.busca.trim()) {
+      const termoBusca = filtros.busca.trim().toUpperCase();
+      const codigoLeito = (leito.codigoLeito || '').toUpperCase();
+      const nomePaciente = leito.paciente ? (leito.paciente.nomePaciente || '').toUpperCase() : '';
+      
+      if (!codigoLeito.includes(termoBusca) && !nomePaciente.includes(termoBusca)) {
+        return false;
+      }
+    }
+    
+    // Filtro por status
+    if (filtros.status.length > 0 && !filtros.status.includes(leito.status)) {
+      return false;
+    }
+    
+    // Filtros específicos de leitos ocupados
+    if (leito.status === 'Ocupado' && leito.paciente) {
+      const paciente = leito.paciente;
+      
+      // Filtro por sexo
+      if (filtros.sexo.length > 0 && !filtros.sexo.includes(paciente.sexo)) {
+        return false;
+      }
+      
+      // Filtro por especialidade
+      if (filtros.especialidade && paciente.especialidade !== filtros.especialidade) {
+        return false;
+      }
+      
+      // Filtros booleanos de indicadores
+      if (filtros.comPedidoUTI && !paciente.pedidoUTI) return false;
+      if (filtros.comProvavelAlta && !paciente.provavelAlta) return false;
+      if (filtros.comAltaNoLeito && !paciente.altaNoLeito) return false;
+      if (filtros.comSolicitacaoRemanejamento && !paciente.pedidoRemanejamento) return false;
+      if (filtros.comPedidoTransferenciaExterna && !paciente.pedidoTransferenciaExterna) return false;
+    }
+    
+    // Filtro PCP
+    if (filtros.isPCP && !leito.isPCP) {
+      return false;
+    }
+    
+    return true;
+  };
+
+  const limparFiltros = () => {
+    setFiltros({
+      busca: '',
+      status: [],
+      sexo: [],
+      especialidade: '',
+      isPCP: false,
+      comPedidoUTI: false,
+      comProvavelAlta: false,
+      comAltaNoLeito: false,
+      comSolicitacaoRemanejamento: false,
+      comPedidoTransferenciaExterna: false
+    });
+  };
+
   const toggleSection = (tipoSetor) => {
     setExpandedSections(prev => ({
       ...prev,
@@ -1012,10 +1135,157 @@ const MapaLeitosPanel = () => {
 
   return (
     <div className="space-y-4">
-      {Object.entries(dadosEstruturados).map(([tipoSetor, setoresDoTipo]) => (
+      {/* Painel de Filtros */}
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
+        {/* Busca Rápida */}
+        <div className="flex items-center gap-4 mb-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <Input
+              placeholder="Pesquisar por nome do paciente ou código do leito..."
+              value={filtros.busca}
+              onChange={(e) => setFiltros(prev => ({ ...prev, busca: e.target.value }))}
+              className="pl-10"
+            />
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => setFiltrosAbertos(!filtrosAbertos)}
+            className="flex items-center gap-2"
+          >
+            <Filter className="h-4 w-4" />
+            Filtros Avançados
+            <ChevronDown className={`h-4 w-4 transition-transform ${filtrosAbertos ? 'rotate-180' : ''}`} />
+          </Button>
+        </div>
+
+        {/* Filtros Avançados */}
+        <Collapsible open={filtrosAbertos} onOpenChange={setFiltrosAbertos}>
+          <CollapsibleContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-4 border-t">
+              {/* Status do Leito */}
+              <div>
+                <h4 className="font-medium mb-3">Status do Leito</h4>
+                <div className="space-y-2">
+                  {['Vago', 'Ocupado', 'Higienização', 'Bloqueado'].map(status => (
+                    <div key={status} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`status-${status}`}
+                        checked={filtros.status.includes(status)}
+                        onCheckedChange={(checked) => {
+                          setFiltros(prev => ({
+                            ...prev,
+                            status: checked
+                              ? [...prev.status, status]
+                              : prev.status.filter(s => s !== status)
+                          }));
+                        }}
+                      />
+                      <label htmlFor={`status-${status}`} className="text-sm">
+                        {status}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sexo do Paciente */}
+              <div>
+                <h4 className="font-medium mb-3">Sexo do Paciente</h4>
+                <div className="space-y-2">
+                  {[{ value: 'M', label: 'Masculino' }, { value: 'F', label: 'Feminino' }].map(sexo => (
+                    <div key={sexo.value} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`sexo-${sexo.value}`}
+                        checked={filtros.sexo.includes(sexo.value)}
+                        onCheckedChange={(checked) => {
+                          setFiltros(prev => ({
+                            ...prev,
+                            sexo: checked
+                              ? [...prev.sexo, sexo.value]
+                              : prev.sexo.filter(s => s !== sexo.value)
+                          }));
+                        }}
+                      />
+                      <label htmlFor={`sexo-${sexo.value}`} className="text-sm">
+                        {sexo.label}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Especialidade */}
+              <div>
+                <h4 className="font-medium mb-3">Especialidade</h4>
+                <Select 
+                  value={filtros.especialidade} 
+                  onValueChange={(value) => setFiltros(prev => ({ ...prev, especialidade: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma especialidade" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Todas</SelectItem>
+                    {especialidadesUnicas.map(especialidade => (
+                      <SelectItem key={especialidade} value={especialidade}>
+                        {especialidade}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Indicadores de Paciente */}
+              <div className="md:col-span-2 lg:col-span-3">
+                <h4 className="font-medium mb-3">Indicadores de Paciente</h4>
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                  {[
+                    { key: 'isPCP', label: 'Leito PCP' },
+                    { key: 'comPedidoUTI', label: 'Com Pedido de UTI' },
+                    { key: 'comProvavelAlta', label: 'Com Provável Alta' },
+                    { key: 'comAltaNoLeito', label: 'Com Alta no Leito' },
+                    { key: 'comSolicitacaoRemanejamento', label: 'Com Solicitação de Remanejamento' },
+                    { key: 'comPedidoTransferenciaExterna', label: 'Com Pedido de Transferência Externa' }
+                  ].map(filtro => (
+                    <div key={filtro.key} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={filtro.key}
+                        checked={filtros[filtro.key]}
+                        onCheckedChange={(checked) => {
+                          setFiltros(prev => ({ ...prev, [filtro.key]: checked }));
+                        }}
+                      />
+                      <label htmlFor={filtro.key} className="text-sm">
+                        {filtro.label}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Botão Limpar Filtros */}
+            <div className="flex justify-end pt-4 border-t">
+              <Button variant="outline" onClick={limparFiltros}>
+                Limpar Filtros
+              </Button>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      </div>
+
+      {Object.keys(dadosFiltrados).length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">
+            Nenhum leito encontrado com os filtros aplicados.
+          </p>
+        </div>
+      ) : (
+        Object.entries(dadosFiltrados).map(([tipoSetor, setoresDoTipo]) => (
         <div key={tipoSetor} className={`border border-gray-200 rounded-lg ${getSectorTypeColor(tipoSetor)}`}>
             <Collapsible 
-              open={false} 
+              open={expandedSections[tipoSetor] !== false} 
               onOpenChange={() => toggleSection(tipoSetor)}
             >
             <CollapsibleTrigger asChild>
@@ -1039,7 +1309,7 @@ const MapaLeitosPanel = () => {
               {setoresDoTipo.map(setor => (
                 <div key={setor.id} className="border border-gray-100 rounded-lg">
                     <Collapsible 
-                      open={false} 
+                      open={expandedSetores[setor.id] !== false} 
                       onOpenChange={() => toggleSetor(setor.id)}
                     >
                     <CollapsibleTrigger asChild>

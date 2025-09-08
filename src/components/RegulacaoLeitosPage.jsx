@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { 
@@ -16,15 +16,90 @@ import {
   Sparkles,
   PieChart
 } from "lucide-react";
+import { 
+  getSetoresCollection, 
+  getLeitosCollection,
+  getPacientesCollection,
+  onSnapshot
+} from '@/lib/firebase';
 import ImportarPacientesMVModal from './ImportarPacientesMVModal';
+import IndicadoresGeraisPanel from './IndicadoresGeraisPanel';
+import MapaLeitosPanel from './MapaLeitosPanel';
 
 const RegulacaoLeitosPage = () => {
   const [showImportModal, setShowImportModal] = useState(false);
+  const [setores, setSetores] = useState([]);
+  const [leitos, setLeitos] = useState([]);
+  const [pacientes, setPacientes] = useState([]);
+  const [activeTab, setActiveTab] = useState('indicadores'); // indicadores, mapa
+
+  // Buscar dados do Firestore em tempo real
+  useEffect(() => {
+    const unsubscribeSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
+      const setoresData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setSetores(setoresData);
+    });
+
+    const unsubscribeLeitos = onSnapshot(getLeitosCollection(), (snapshot) => {
+      const leitosData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setLeitos(leitosData);
+    });
+
+    const unsubscribePacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
+      const pacientesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setPacientes(pacientesData);
+    });
+
+    return () => {
+      unsubscribeSetores();
+      unsubscribeLeitos();
+      unsubscribePacientes();
+    };
+  }, []);
 
   return (
     <div className="p-6 space-y-6">
-      {/* Seção 1: Cabeçalho do Dashboard */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Painel de Indicadores Estratégicos */}
+      <IndicadoresGeraisPanel 
+        setores={setores}
+        leitos={leitos}
+        pacientes={pacientes}
+      />
+
+      {/* Abas de Navegação */}
+      <div className="flex items-center gap-2 border-b">
+        <Button
+          variant={activeTab === 'indicadores' ? 'default' : 'ghost'}
+          onClick={() => setActiveTab('indicadores')}
+          className="rounded-b-none"
+        >
+          <TrendingUp className="h-4 w-4 mr-2" />
+          Indicadores e Regulação
+        </Button>
+        <Button
+          variant={activeTab === 'mapa' ? 'default' : 'ghost'}
+          onClick={() => setActiveTab('mapa')}
+          className="rounded-b-none"
+        >
+          <BedDouble className="h-4 w-4 mr-2" />
+          Painel e Mapa de Leitos
+        </Button>
+      </div>
+
+      {/* Conteúdo das Abas */}
+      {activeTab === 'indicadores' && (
+        <>
+          {/* Seção 1: Cabeçalho do Dashboard */}
+          <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Coluna 1: Indicadores Principais */}
         <Card className="shadow-card">
           <CardHeader>
@@ -215,6 +290,19 @@ const RegulacaoLeitosPage = () => {
           </Card>
         </div>
       </section>
+        </>
+      )}
+
+      {/* Aba do Mapa de Leitos */}
+      {activeTab === 'mapa' && (
+        <div className="space-y-6">
+          <div className="flex items-center gap-3">
+            <BedDouble className="h-6 w-6 text-primary" />
+            <h1 className="text-2xl font-bold text-gray-900">Painel e Mapa de Leitos</h1>
+          </div>
+          <MapaLeitosPanel />
+        </div>
+      )}
 
       {/* Modal de Importação */}
       <ImportarPacientesMVModal 
