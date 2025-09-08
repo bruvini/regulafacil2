@@ -499,54 +499,56 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
         </AlertDescription>
       </Alert>
 
-      {setoresFaltantes.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Setores que precisam ser cadastrados:</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="p-3 bg-muted rounded-md">
-              <code className="text-sm">{setoresFaltantes.join(', ')}</code>
-            </div>
-            <Button 
-              size="sm" 
-              variant="outline" 
-              onClick={() => copyToClipboard(setoresFaltantes.join(', '))}
-              className="w-full"
-            >
-              <Copy className="h-4 w-4 mr-2" />
-              Copiar Lista de Setores
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {Object.keys(leitosFaltantes).length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Leitos que precisam ser cadastrados:</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {Object.entries(leitosFaltantes).map(([setor, leitos]) => (
-              <div key={setor} className="space-y-2">
-                <p className="text-sm font-medium">{setor}:</p>
-                <div className="p-3 bg-muted rounded-md">
-                  <code className="text-sm">{leitos.join(', ')}</code>
-                </div>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  onClick={() => copyToClipboard(leitos.join(', '))}
-                  className="w-full"
-                >
-                  <Copy className="h-4 w-4 mr-2" />
-                  Copiar Leitos do {setor}
-                </Button>
+      <div className="max-h-[40vh] overflow-y-auto space-y-4">
+        {setoresFaltantes.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Setores que precisam ser cadastrados:</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="p-3 bg-muted rounded-md">
+                <code className="text-sm">{setoresFaltantes.join(', ')}</code>
               </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={() => copyToClipboard(setoresFaltantes.join(', '))}
+                className="w-full"
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                Copiar Lista de Setores
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {Object.keys(leitosFaltantes).length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Leitos que precisam ser cadastrados:</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {Object.entries(leitosFaltantes).map(([setor, leitos]) => (
+                <div key={setor} className="space-y-2">
+                  <p className="text-sm font-medium">{setor}:</p>
+                  <div className="p-3 bg-muted rounded-md">
+                    <code className="text-sm">{leitos.join(', ')}</code>
+                  </div>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => copyToClipboard(leitos.join(', '))}
+                    className="w-full"
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar Leitos do {setor}
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       <div className="flex gap-3">
         <Button onClick={handleClose} variant="outline" className="flex-1">

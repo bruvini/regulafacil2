@@ -562,15 +562,17 @@ const MapaLeitosPanel = () => {
                         </div>
                       ))}
 
-                      {/* Renderizar leitos sem quarto */}
+                      {/* Renderizar leitos sem quarto (apenas se o setor tiver quartos cadastrados) */}
                       {setor.leitosSemQuarto.length > 0 && (
                         <div>
-                          <h4 className="text-md font-medium text-gray-700 mb-3 flex items-center gap-2">
-                            🏥 Leitos sem quarto
-                            <Badge variant="outline" className="text-xs">
-                              {setor.leitosSemQuarto.length} leito(s)
-                            </Badge>
-                          </h4>
+                          {setor.quartos.length > 0 ? (
+                            <h4 className="text-md font-medium text-gray-700 mb-3 flex items-center gap-2">
+                              🏥 Leitos sem quarto
+                              <Badge variant="outline" className="text-xs">
+                                {setor.leitosSemQuarto.length} leito(s)
+                              </Badge>
+                            </h4>
+                          ) : null}
                           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                             {setor.leitosSemQuarto.map(leito => (
                               <LeitoCard 
