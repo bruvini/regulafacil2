@@ -34,6 +34,10 @@ import {
   getLeitosCollection, 
   getPacientesCollection 
 } from '@/lib/firebase';
+import { 
+  PATIENTS_COLLECTION_PATH,
+  BEDS_COLLECTION_PATH
+} from '@/lib/firebase-constants';
 import { writeBatch } from 'firebase/firestore';
 import { logAction } from '@/lib/auditoria';
 import { toast } from 'sonner';
@@ -260,14 +264,14 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
 
       // Executar altas (deletar pacientes)
       processedData.altas.forEach(paciente => {
-        const pacienteRef = doc(db, 'artifacts/regulafacil/public/data/pacientes', paciente.id);
+        const pacienteRef = doc(db, PATIENTS_COLLECTION_PATH, paciente.id);
         batch.delete(pacienteRef);
         leitosParaAtualizar.add(paciente.leitoId);
       });
 
       // Executar movimentações
       processedData.movimentacoes.forEach(({ paciente, dadosNovos }) => {
-        const pacienteRef = doc(db, 'artifacts/regulafacil/public/data/pacientes', paciente.id);
+        const pacienteRef = doc(db, PATIENTS_COLLECTION_PATH, paciente.id);
         batch.update(pacienteRef, {
           leitoId: dadosNovos.leitoId,
           setorId: dadosNovos.setorId,
@@ -309,7 +313,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
 
       // Atualizar status de todos os leitos afetados
       leitosParaAtualizar.forEach(leitoId => {
-        const leitoRef = doc(db, 'artifacts/regulafacil/public/data/leitos', leitoId);
+        const leitoRef = doc(db, BEDS_COLLECTION_PATH, leitoId);
         const novoStatus = pacientesFinais[leitoId] ? 'Ocupado' : 'Vago';
         batch.update(leitoRef, { 
           status: novoStatus,

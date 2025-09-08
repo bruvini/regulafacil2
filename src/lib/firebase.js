@@ -16,15 +16,21 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// App ID for collection paths
-const appId = 'regulafacil';
+// Import centralized path constants
+import { 
+  SECTORS_COLLECTION_PATH,
+  BEDS_COLLECTION_PATH,
+  ROOMS_COLLECTION_PATH,
+  AUDIT_COLLECTION_PATH,
+  PATIENTS_COLLECTION_PATH
+} from './firebase-constants';
 
-// Collection references
-export const getSetoresCollection = () => collection(db, 'artifacts', appId, 'public', 'data', 'setores');
-export const getLeitosCollection = () => collection(db, 'artifacts', appId, 'public', 'data', 'leitos');
-export const getQuartosCollection = () => collection(db, 'artifacts', appId, 'public', 'data', 'quartos');
-export const getAuditoriaCollection = () => collection(db, 'artifacts', appId, 'public', 'data', 'auditoria');
-export const getPacientesCollection = () => collection(db, 'artifacts', appId, 'public', 'data', 'pacientes');
+// Collection references using centralized constants
+export const getSetoresCollection = () => collection(db, SECTORS_COLLECTION_PATH);
+export const getLeitosCollection = () => collection(db, BEDS_COLLECTION_PATH);
+export const getQuartosCollection = () => collection(db, ROOMS_COLLECTION_PATH);
+export const getAuditoriaCollection = () => collection(db, AUDIT_COLLECTION_PATH);
+export const getPacientesCollection = () => collection(db, PATIENTS_COLLECTION_PATH);
 
 // Export Firebase utilities
 export { 
