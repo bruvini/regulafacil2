@@ -45,6 +45,7 @@ import {
   ArrowRightLeft,
 } from 'lucide-react';
 import { cn } from "@/lib/utils";
+import GerenciamentoLeitosModal from './GerenciamentoLeitosModal';
 
 // Dados de navegação
 const navigationItems = [
@@ -452,11 +453,14 @@ const HomePage = ({ onNavigate }) => {
 
 // Componente da página Mapa de Leitos
 const MapaLeitosPage = () => {
+  const [showGerenciamentoModal, setShowGerenciamentoModal] = useState(false);
+
   const ferramentas = [
     {
       id: "gerenciamento-leitos",
       title: "Gerenciamento de Leitos",
       icon: Settings2,
+      onClick: () => setShowGerenciamentoModal(true),
     },
     {
       id: "relatorio-isolamento",
@@ -513,6 +517,7 @@ const MapaLeitosPage = () => {
                   key={ferramenta.id}
                   variant="ghost"
                   className="w-full justify-start gap-3 p-4 bg-slate-100 hover:bg-blue-100 rounded-lg"
+                  onClick={ferramenta.onClick}
                 >
                   <Icon className="h-5 w-5" />
                   <span className="text-sm font-medium">
@@ -543,6 +548,12 @@ const MapaLeitosPage = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Modal de Gerenciamento de Leitos */}
+      <GerenciamentoLeitosModal 
+        isOpen={showGerenciamentoModal}
+        onClose={() => setShowGerenciamentoModal(false)}
+      />
     </div>
   );
 };
