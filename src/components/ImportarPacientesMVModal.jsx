@@ -110,13 +110,13 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
 
     setoresSnapshot.forEach(docSnap => {
       const data = docSnap.data();
-      const key = (data.nome || '').toString().trim().toUpperCase();
+      const key = (data.nomeSetor || '').toString().trim().toUpperCase();
       setores[key] = { id: docSnap.id, ...data };
     });
 
     leitosSnapshot.forEach(docSnap => {
       const data = docSnap.data();
-      const key = (data.codigo || '').toString().trim().toUpperCase();
+      const key = (data.codigoLeito || '').toString().trim().toUpperCase();
       leitos[key] = { id: docSnap.id, ...data };
     });
 
@@ -129,9 +129,9 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     // Diagnóstico: visualizar dados buscados do Firestore
     try {
       console.log('--- DADOS BUSCADOS DO FIRESTORE (SETORES) ---');
-      console.table(Object.entries(setores).map(([k, v]) => ({ key: k, id: v.id, nome: (v.nome || '').toString(), sigla: v.sigla || '' })));
+      console.table(Object.entries(setores).map(([k, v]) => ({ key: k, id: v.id, nome: (v.nomeSetor || '').toString(), sigla: v.sigla || '' })));
       console.log('--- DADOS BUSCADOS DO FIRESTORE (LEITOS) ---');
-      console.table(Object.entries(leitos).map(([k, v]) => ({ key: k, id: v.id, codigo: (v.codigo || '').toString(), setorId: v.setorId || '' })));
+      console.table(Object.entries(leitos).map(([k, v]) => ({ key: k, id: v.id, codigo: (v.codigoLeito || '').toString(), setorId: v.setorId || '' })));
     } catch (_) { /* noop for environments without console.table */ }
 
     return { setores, leitos, pacientes };
