@@ -399,12 +399,20 @@ const MapaLeitosPanel = () => {
       // Buscar quartos deste setor
       const quartosDoSetor = quartos
         .filter(quarto => quarto.setorId === setor.id)
-        .sort((a, b) => a.nomeQuarto.localeCompare(b.nomeQuarto)); // Sort rooms by name
+        .sort((a, b) => {
+          const nameA = a.nomeQuarto || '';
+          const nameB = b.nomeQuarto || '';
+          return nameA.localeCompare(nameB);
+        });
       
       // Buscar leitos deste setor
       const leitosDoSetor = leitos
         .filter(leito => leito.setorId === setor.id)
-        .sort((a, b) => a.codigoLeito.localeCompare(b.codigoLeito)); // Sort beds by code
+        .sort((a, b) => {
+          const codeA = a.codigoLeito || '';
+          const codeB = b.codigoLeito || '';
+          return codeA.localeCompare(codeB);
+        });
 
       // Separar leitos em quartos e sem quarto
       const leitosComQuarto = [];
@@ -413,7 +421,11 @@ const MapaLeitosPanel = () => {
       const quartosComLeitos = quartosDoSetor.map(quarto => {
         const leitosDoQuarto = leitosDoSetor
           .filter(leito => quarto.leitosIds && quarto.leitosIds.includes(leito.id))
-          .sort((a, b) => a.codigoLeito.localeCompare(b.codigoLeito)); // Sort beds by code
+          .sort((a, b) => {
+            const codeA = a.codigoLeito || '';
+            const codeB = b.codigoLeito || '';
+            return codeA.localeCompare(codeB);
+          });
         
         // Remover leitos que estão em quartos da lista de leitos sem quarto
         leitosDoQuarto.forEach(leito => {
