@@ -18,7 +18,8 @@ import {
 } from "lucide-react";
 import ImportarPacientesMVModal from './ImportarPacientesMVModal';
 import AguardandoRegulacaoPanel from './AguardandoRegulacaoPanel';
-
+import FilaEsperaUTIPanel from './FilaEsperaUTIPanel';
+import TransferenciaExternaPanel from './TransferenciaExternaPanel';
 const RegulacaoLeitosPage = () => {
   const [showImportModal, setShowImportModal] = useState(false);
 
@@ -116,6 +117,12 @@ const RegulacaoLeitosPage = () => {
             <AguardandoRegulacaoPanel />
           </div>
 
+          {/* Linha: Fila UTI + Transferência Externa */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 col-span-full">
+            <FilaEsperaUTIPanel />
+            <TransferenciaExternaPanel />
+          </div>
+
           {/* Outros Cards em Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {/* Card 2: Regulações em Andamento */}
@@ -124,36 +131,6 @@ const RegulacaoLeitosPage = () => {
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Loader className="h-5 w-5 text-orange-600" />
                   Regulações em Andamento
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  Os dados serão carregados e exibidos aqui.
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* Card 3: Pacientes Aguardando UTI */}
-            <Card className="shadow-card card-interactive border-red-200">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <BedDouble className="h-5 w-5 text-red-600" />
-                  Fila de Espera - UTI
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  Os dados serão carregados e exibidos aqui.
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* Card 4: Pacientes Aguardando Transf. Externa */}
-            <Card className="shadow-card card-interactive">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Truck className="h-5 w-5 text-green-600" />
-                  Aguardando Transferência Externa
                 </CardTitle>
               </CardHeader>
               <CardContent>

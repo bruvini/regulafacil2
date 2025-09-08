@@ -114,13 +114,20 @@ const AguardandoRegulacaoPanel = () => {
   // Filtrar pacientes pelos setores específicos
   const setoresRegulacao = ["PS DECISÃO CLINICA", "PS DECISÃO CIRURGICA", "CC - RECUPERAÇÃO"];
   
+  const getSetorByName = (nome) => setores.find((s) => s?.nomeSetor === nome);
+
   const pacientesPorSetor = setoresRegulacao.reduce((acc, nomeSetor) => {
-    const setor = setores.find(s => s.nomeSetor === nomeSetor);
-    if (setor) {
-      acc[nomeSetor] = pacientes.filter(p => p.codigoSetor === setor.codigoSetor);
-    } else {
-      acc[nomeSetor] = [];
-    }
+    const setorRef = getSetorByName(nomeSetor);
+    acc[nomeSetor] = pacientes.filter((p) => {
+      const nomeDoSetorDoPaciente = p?.setor?.nomeSetor;
+      const codigoSetorDoPaciente = p?.codigoSetor;
+      const codigoSetorAlvo = setorRef?.codigoSetor;
+      // Prioridade: comparar por nomeSetor dentro de p.setor; fallback para codigoSetor
+      return (
+        nomeDoSetorDoPaciente === nomeSetor ||
+        (codigoSetorDoPaciente && codigoSetorAlvo && codigoSetorDoPaciente === codigoSetorAlvo)
+      );
+    });
     return acc;
   }, {});
 
