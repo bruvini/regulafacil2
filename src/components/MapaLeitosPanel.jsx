@@ -1283,129 +1283,130 @@ const MapaLeitosPanel = () => {
         </div>
       ) : (
         Object.entries(dadosFiltrados).map(([tipoSetor, setoresDoTipo]) => (
-        <div key={tipoSetor} className={`border border-gray-200 rounded-lg ${getSectorTypeColor(tipoSetor)}`}>
+          <div key={tipoSetor} className={`border border-gray-200 rounded-lg ${getSectorTypeColor(tipoSetor)}`}>
             <Collapsible 
               open={expandedSections[tipoSetor] !== false} 
               onOpenChange={() => toggleSection(tipoSetor)}
             >
-            <CollapsibleTrigger asChild>
-              <Button
-                variant="ghost"
-                className="w-full justify-between p-4 h-auto text-left hover:bg-gray-50"
-              >
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900">
-                    {tipoSetor}
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    {setoresDoTipo.length} setor(es)
-                  </p>
-                </div>
-                <ChevronDown className="h-5 w-5 transition-transform duration-200" />
-              </Button>
-            </CollapsibleTrigger>
-            
-            <CollapsibleContent className="p-4 pt-0 space-y-6">
-              {setoresDoTipo.map(setor => (
-                <div key={setor.id} className="border border-gray-100 rounded-lg">
+              <CollapsibleTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-between p-4 h-auto text-left hover:bg-gray-50"
+                >
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900">
+                      {tipoSetor}
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      {setoresDoTipo.length} setor(es)
+                    </p>
+                  </div>
+                  <ChevronDown className="h-5 w-5 transition-transform duration-200" />
+                </Button>
+              </CollapsibleTrigger>
+              
+              <CollapsibleContent className="p-4 pt-0 space-y-6">
+                {setoresDoTipo.map(setor => (
+                  <div key={setor.id} className="border border-gray-100 rounded-lg">
                     <Collapsible 
                       open={expandedSetores[setor.id] !== false} 
                       onOpenChange={() => toggleSetor(setor.id)}
                     >
-                    <CollapsibleTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        className="w-full justify-between p-3 h-auto text-left hover:bg-gray-50"
-                      >
-                        <div>
-                          <h3 className="text-lg font-medium text-gray-800">
-                            {setor.nomeSetor} ({setor.siglaSetor})
-                          </h3>
-                          <p className="text-sm text-muted-foreground">
-                            {(setor.quartos.length > 0 ? setor.quartos.length + " quarto(s), " : "") + 
-                             (setor.leitosSemQuarto.length + setor.quartos.reduce((acc, q) => acc + q.leitos.length, 0)) + " leito(s)"}
-                          </p>
-                        </div>
-                        <ChevronDown className="h-4 w-4 transition-transform duration-200" />
-                      </Button>
-                    </CollapsibleTrigger>
-                    
-                    <CollapsibleContent className="p-3 pt-0 space-y-4">
-                      {/* Renderizar quartos (não são acordeões, apenas containers) */}
-                      {setor.quartos.map(quarto => (
-                        <div key={quarto.id} className="bg-gray-50 rounded-lg p-4">
-                          <h4 className="text-md font-medium text-gray-700 mb-3 flex items-center gap-2">
-                            📋 {quarto.nomeQuarto}
-                            <Badge variant="outline" className="text-xs">
-                              {quarto.leitos.length} leito(s)
-                            </Badge>
-                          </h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                            {quarto.leitos.map(leito => (
-                              <LeitoCard 
-                                key={leito.id} 
-                                leito={leito}
-                                onBloquearLeito={(leito) => setModalBloquear({ open: true, leito })}
-                                onSolicitarHigienizacao={(leito) => setModalHigienizacao({ open: true, leito })}
-                                onDesbloquearLeito={(leito) => setModalDesbloquear({ open: true, leito })}
-                                onFinalizarHigienizacao={(leito) => setModalFinalizarHigienizacao({ open: true, leito })}
-                                onPriorizarHigienizacao={handlePriorizarHigienizacao}
-                                onLiberarLeito={(leito, paciente) => setModalLiberarLeito({ open: true, leito, paciente })}
-                                onMoverPaciente={(leito, paciente) => setModalMoverPaciente({ open: true, leito, paciente })}
-                                onObservacoes={(paciente) => setModalObservacoes({ open: true, paciente })}
-                                onSolicitarUTI={handleToggleUTI}
-                                onSolicitarRemanejamento={(paciente) => setModalRemanejamento({ open: true, paciente })}
-                                onTransferenciaExterna={(paciente) => setModalTransferenciaExterna({ open: true, paciente })}
-                                onProvavelAlta={handleToggleProvavelAlta}
-                                onAltaNoLeito={handleToggleAltaNoLeito}
-                              />
-                            ))}
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          className="w-full justify-between p-3 h-auto text-left hover:bg-gray-50"
+                        >
+                          <div>
+                            <h3 className="text-lg font-medium text-gray-800">
+                              {setor.nomeSetor} ({setor.siglaSetor})
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                              {(setor.quartos.length > 0 ? setor.quartos.length + " quarto(s), " : "") + 
+                               (setor.leitosSemQuarto.length + setor.quartos.reduce((acc, q) => acc + q.leitos.length, 0)) + " leito(s)"}
+                            </p>
                           </div>
-                        </div>
-                      ))}
-
-                      {/* Renderizar leitos sem quarto (apenas se o setor tiver quartos cadastrados) */}
-                      {setor.leitosSemQuarto.length > 0 && (
-                        <div>
-                          {setor.quartos.length > 0 ? (
+                          <ChevronDown className="h-4 w-4 transition-transform duration-200" />
+                        </Button>
+                      </CollapsibleTrigger>
+                      
+                      <CollapsibleContent className="p-3 pt-0 space-y-4">
+                        {/* Renderizar quartos (não são acordeões, apenas containers) */}
+                        {setor.quartos.map(quarto => (
+                          <div key={quarto.id} className="bg-gray-50 rounded-lg p-4">
                             <h4 className="text-md font-medium text-gray-700 mb-3 flex items-center gap-2">
-                              🏥 Leitos sem quarto
+                              📋 {quarto.nomeQuarto}
                               <Badge variant="outline" className="text-xs">
-                                {setor.leitosSemQuarto.length} leito(s)
+                                {quarto.leitos.length} leito(s)
                               </Badge>
                             </h4>
-                          ) : null}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                            {setor.leitosSemQuarto.map(leito => (
-                              <LeitoCard 
-                                key={leito.id} 
-                                leito={leito}
-                                onBloquearLeito={(leito) => setModalBloquear({ open: true, leito })}
-                                onSolicitarHigienizacao={(leito) => setModalHigienizacao({ open: true, leito })}
-                                onDesbloquearLeito={(leito) => setModalDesbloquear({ open: true, leito })}
-                                onFinalizarHigienizacao={(leito) => setModalFinalizarHigienizacao({ open: true, leito })}
-                                onPriorizarHigienizacao={handlePriorizarHigienizacao}
-                                onLiberarLeito={(leito, paciente) => setModalLiberarLeito({ open: true, leito, paciente })}
-                                onMoverPaciente={(leito, paciente) => setModalMoverPaciente({ open: true, leito, paciente })}
-                                onObservacoes={(paciente) => setModalObservacoes({ open: true, paciente })}
-                                onSolicitarUTI={handleToggleUTI}
-                                onSolicitarRemanejamento={(paciente) => setModalRemanejamento({ open: true, paciente })}
-                                onTransferenciaExterna={(paciente) => setModalTransferenciaExterna({ open: true, paciente })}
-                                onProvavelAlta={handleToggleProvavelAlta}
-                                onAltaNoLeito={handleToggleAltaNoLeito}
-                              />
-                            ))}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                              {quarto.leitos.map(leito => (
+                                <LeitoCard 
+                                  key={leito.id} 
+                                  leito={leito}
+                                  onBloquearLeito={(leito) => setModalBloquear({ open: true, leito })}
+                                  onSolicitarHigienizacao={(leito) => setModalHigienizacao({ open: true, leito })}
+                                  onDesbloquearLeito={(leito) => setModalDesbloquear({ open: true, leito })}
+                                  onFinalizarHigienizacao={(leito) => setModalFinalizarHigienizacao({ open: true, leito })}
+                                  onPriorizarHigienizacao={handlePriorizarHigienizacao}
+                                  onLiberarLeito={(leito, paciente) => setModalLiberarLeito({ open: true, leito, paciente })}
+                                  onMoverPaciente={(leito, paciente) => setModalMoverPaciente({ open: true, leito, paciente })}
+                                  onObservacoes={(paciente) => setModalObservacoes({ open: true, paciente })}
+                                  onSolicitarUTI={handleToggleUTI}
+                                  onSolicitarRemanejamento={(paciente) => setModalRemanejamento({ open: true, paciente })}
+                                  onTransferenciaExterna={(paciente) => setModalTransferenciaExterna({ open: true, paciente })}
+                                  onProvavelAlta={handleToggleProvavelAlta}
+                                  onAltaNoLeito={handleToggleAltaNoLeito}
+                                />
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )}
-                    </CollapsibleContent>
-                  </Collapsible>
-                </div>
-              ))}
-            </CollapsibleContent>
-          </Collapsible>
-        </div>
-      ))}
+                        ))}
+
+                        {/* Renderizar leitos sem quarto (apenas se o setor tiver quartos cadastrados) */}
+                        {setor.leitosSemQuarto.length > 0 && (
+                          <div>
+                            {setor.quartos.length > 0 ? (
+                              <h4 className="text-md font-medium text-gray-700 mb-3 flex items-center gap-2">
+                                🏥 Leitos sem quarto
+                                <Badge variant="outline" className="text-xs">
+                                  {setor.leitosSemQuarto.length} leito(s)
+                                </Badge>
+                              </h4>
+                            ) : null}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                              {setor.leitosSemQuarto.map(leito => (
+                                <LeitoCard 
+                                  key={leito.id} 
+                                  leito={leito}
+                                  onBloquearLeito={(leito) => setModalBloquear({ open: true, leito })}
+                                  onSolicitarHigienizacao={(leito) => setModalHigienizacao({ open: true, leito })}
+                                  onDesbloquearLeito={(leito) => setModalDesbloquear({ open: true, leito })}
+                                  onFinalizarHigienizacao={(leito) => setModalFinalizarHigienizacao({ open: true, leito })}
+                                  onPriorizarHigienizacao={handlePriorizarHigienizacao}
+                                  onLiberarLeito={(leito, paciente) => setModalLiberarLeito({ open: true, leito, paciente })}
+                                  onMoverPaciente={(leito, paciente) => setModalMoverPaciente({ open: true, leito, paciente })}
+                                  onObservacoes={(paciente) => setModalObservacoes({ open: true, paciente })}
+                                  onSolicitarUTI={handleToggleUTI}
+                                  onSolicitarRemanejamento={(paciente) => setModalRemanejamento({ open: true, paciente })}
+                                  onTransferenciaExterna={(paciente) => setModalTransferenciaExterna({ open: true, paciente })}
+                                  onProvavelAlta={handleToggleProvavelAlta}
+                                  onAltaNoLeito={handleToggleAltaNoLeito}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </div>
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+        ))
+      )}
       
       {/* Modal para Bloquear Leito */}
       <Dialog open={modalBloquear.open} onOpenChange={(open) => setModalBloquear({ open, leito: null })}>
