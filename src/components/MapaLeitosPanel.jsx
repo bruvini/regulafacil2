@@ -389,7 +389,7 @@ const MapaLeitosPanel = () => {
     busca: '',
     status: [],
     sexo: [],
-    especialidade: '',
+    especialidade: 'all',
     isPCP: false,
     comPedidoUTI: false,
     comProvavelAlta: false,
@@ -1063,7 +1063,7 @@ const MapaLeitosPanel = () => {
       }
       
       // Filtro por especialidade
-      if (filtros.especialidade && paciente.especialidade !== filtros.especialidade) {
+      if (filtros.especialidade && filtros.especialidade !== 'all' && paciente.especialidade !== filtros.especialidade) {
         return false;
       }
       
@@ -1088,7 +1088,7 @@ const MapaLeitosPanel = () => {
       busca: '',
       status: [],
       sexo: [],
-      especialidade: '',
+      especialidade: 'all',
       isPCP: false,
       comPedidoUTI: false,
       comProvavelAlta: false,
@@ -1226,7 +1226,7 @@ const MapaLeitosPanel = () => {
                     <SelectValue placeholder="Selecione uma especialidade" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todas</SelectItem>
+                    <SelectItem value="all">Todas</SelectItem>
                     {especialidadesUnicas.map(especialidade => (
                       <SelectItem key={especialidade} value={especialidade}>
                         {especialidade}
