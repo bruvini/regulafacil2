@@ -80,11 +80,19 @@ const AguardandoRegulacaoPanel = () => {
     
     let dataObj;
     
-    // Se for uma string no formato dd/mm/aaaa
+    // Se for uma string no formato dd/mm/aaaa ou dd/mm/aaaa hh:mm
     if (typeof dataInternacao === 'string' && dataInternacao.includes('/')) {
-      const [dia, mes, ano] = dataInternacao.split('/');
-      dataObj = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
-    } 
+      const partes = dataInternacao.split(' ');
+      const [dia, mes, ano] = partes[0].split('/');
+      
+      if (partes.length > 1 && partes[1].includes(':')) {
+        // Incluir hora e minuto se disponível
+        const [hora, minuto] = partes[1].split(':');
+        dataObj = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia), parseInt(hora), parseInt(minuto));
+      } else {
+        dataObj = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+      }
+    }
     // Se for um timestamp do Firebase
     else if (dataInternacao && typeof dataInternacao.toDate === 'function') {
       dataObj = dataInternacao.toDate();
@@ -116,18 +124,19 @@ const AguardandoRegulacaoPanel = () => {
   
   const getSetorByName = (nome) => setores.find((s) => s?.nomeSetor === nome);
 
-  const pacientesPorSetor = setoresRegulacao.reduce((acc, nomeSetor) => {
-    const setorRef = getSetorByName(nomeSetor);
-    acc[nomeSetor] = pacientes.filter((p) => {
-      const nomeDoSetorDoPaciente = p?.setor?.nomeSetor;
-      const codigoSetorDoPaciente = p?.codigoSetor;
-      const codigoSetorAlvo = setorRef?.codigoSetor;
-      // Prioridade: comparar por nomeSetor dentro de p.setor; fallback para codigoSetor
-      return (
-        nomeDoSetorDoPaciente === nomeSetor ||
-        (codigoSetorDoPaciente && codigoSetorAlvo && codigoSetorDoPaciente === codigoSetorAlvo)
-      );
-    });
+  const pacientesPorSetor = setoresRegulacao.reduce((acc, nomeSetorAlvo) => {
+    // Primeiro, encontre o ID do setor que estamos procurando
+    const setorAlvo = setores.find(s => s.nomeSetor === nomeSetorAlvo);
+
+    // Se o setor não for encontrado nos dados carregados, retorne uma lista vazia para ele
+    if (!setorAlvo) {
+      acc[nomeSetorAlvo] = [];
+      return acc;
+    }
+
+    // Agora, filtre a lista de pacientes, comparando o setorId de cada paciente com o ID do setor alvo
+    acc[nomeSetorAlvo] = pacientes.filter(p => p.setorId === setorAlvo.id);
+
     return acc;
   }, {});
 

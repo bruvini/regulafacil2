@@ -43,12 +43,16 @@ const TransferenciaExternaPanel = () => {
     };
   }, []);
 
-  const getSiglaSetor = (p) => (
-    p?.setor?.siglaSetor ||
-    setores.find((s) => s?.codigoSetor && s.codigoSetor === p?.codigoSetor)?.siglaSetor ||
-    setores.find((s) => s?.nomeSetor && s.nomeSetor === p?.setor?.nomeSetor)?.siglaSetor ||
-    '—'
-  );
+  const getSiglaSetor = (paciente) => {
+    // A única forma confiável de encontrar o setor é pelo ID.
+    if (!paciente || !paciente.setorId || !setores || setores.length === 0) {
+      return '—';
+    }
+
+    const setorEncontrado = setores.find(s => s.id === paciente.setorId);
+
+    return setorEncontrado?.siglaSetor || '—';
+  };
 
   const getCodigoLeito = (p) => {
     const code = p?.codigoLeito || p?.leito?.codigoLeito || p?.leito?.codigo;
