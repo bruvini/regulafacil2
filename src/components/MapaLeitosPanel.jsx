@@ -371,6 +371,8 @@ const LeitoCard = ({
 
 // Componente principal MapaLeitosPanel
 const MapaLeitosPanel = () => {
+  console.log('MapaLeitosPanel component loading...');
+  
   const [setores, setSetores] = useState([]);
   const [quartos, setQuartos] = useState([]);
   const [leitos, setLeitos] = useState([]);
@@ -572,6 +574,8 @@ const MapaLeitosPanel = () => {
   };
 
   const handleToggleUTI = async (paciente) => {
+    console.log('handleToggleUTI called with:', paciente);
+    console.log('Function exists:', typeof handleToggleUTI);
     try {
       const pacienteRef = doc(getPacientesCollection(), paciente.id);
       
@@ -611,6 +615,9 @@ const MapaLeitosPanel = () => {
       });
     }
   };
+
+  // Debug: Verify function exists
+  console.log('handleToggleUTI function defined:', typeof handleToggleUTI);
 
   const handleToggleProvavelAlta = async (paciente) => {
     try {
