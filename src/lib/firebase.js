@@ -1,6 +1,6 @@
 // Firebase configuration and initialization
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, doc, addDoc, setDoc, deleteDoc, onSnapshot, query, getDocs, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, collection, doc, addDoc, setDoc, deleteDoc, updateDoc, onSnapshot, query, getDocs, serverTimestamp, arrayUnion, deleteField } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBvgWppRYjPIP22U9-vu-J2dwrhJ2Klvpc",
@@ -32,8 +32,11 @@ export {
   addDoc, 
   setDoc, 
   deleteDoc, 
+  updateDoc,
   onSnapshot, 
   query, 
   getDocs,
-  serverTimestamp 
+  serverTimestamp,
+  arrayUnion,
+  deleteField
 };
