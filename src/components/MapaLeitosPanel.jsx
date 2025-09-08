@@ -52,6 +52,7 @@ import ObservacoesModal from './modals/ObservacoesModal';
 import MoverPacienteModal from './modals/MoverPacienteModal';
 import RemanejamentoModal from './modals/RemanejamentoModal';
 import TransferenciaExternaModal from './modals/TransferenciaExternaModal';
+import AltaNoLeitoModal from './modals/AltaNoLeitoModal';
 
 // Color mapping for sector types
 const getSectorTypeColor = (tipoSetor) => {
@@ -109,8 +110,42 @@ const LeitoCard = ({
 
   const calcularIdade = (dataNascimento) => {
     if (!dataNascimento) return 'N/A';
+    
     try {
-      const nascimento = dataNascimento.toDate ? dataNascimento.toDate() : new Date(dataNascimento);
+      let nascimento;
+      
+      // Handle Firestore timestamp
+      if (dataNascimento.toDate) {
+        nascimento = dataNascimento.toDate();
+      } 
+      // Handle dd/mm/yyyy string format from XLS
+      else if (typeof dataNascimento === 'string' && dataNascimento.includes('/')) {
+        const partes = dataNascimento.split('/');
+        if (partes.length === 3) {
+          const dia = parseInt(partes[0], 10);
+          const mes = parseInt(partes[1], 10) - 1; // Month is 0-indexed in Date
+          const ano = parseInt(partes[2], 10);
+          
+          // Validate parts
+          if (!isNaN(dia) && !isNaN(mes) && !isNaN(ano)) {
+            nascimento = new Date(ano, mes, dia);
+          } else {
+            return 'N/A';
+          }
+        } else {
+          return 'N/A';
+        }
+      }
+      // Handle other date formats
+      else {
+        nascimento = new Date(dataNascimento);
+      }
+      
+      // Validate the date
+      if (isNaN(nascimento.getTime())) {
+        return 'N/A';
+      }
+      
       const hoje = new Date();
       const idade = hoje.getFullYear() - nascimento.getFullYear();
       const mesAtual = hoje.getMonth();
@@ -132,7 +167,7 @@ const LeitoCard = ({
       case 'Ocupado':
         const genderBorder = leito.paciente?.sexo === 'M' ? 'border-blue-500' : 
                            leito.paciente?.sexo === 'F' ? 'border-pink-500' : 'border-red-500';
-        return `bg-red-50 border-4 ${genderBorder} hover:shadow-lg transition-all shadow-sm`;
+        return `bg-white border-4 ${genderBorder} hover:shadow-lg transition-all shadow-sm`;
       case 'Vago':
         return "bg-white border-2 border-blue-200 hover:border-blue-300 transition-colors shadow-sm";
       case 'Bloqueado':
@@ -314,20 +349,27 @@ const LeitoCard = ({
 
         {/* Conteúdo do card */}
         <div className="space-y-3">
-          <div>
+          <div className="flex items-center justify-between">
             <h4 className="font-semibold text-sm text-gray-900">
               {leito.codigoLeito}
             </h4>
-            <div className="flex items-center gap-1 mt-1">
+            <div className="flex items-center gap-1">
               {leito.isPCP && (
                 <Badge variant="secondary" className="text-xs">
                   PCP
                 </Badge>
               )}
+              <Badge className={getBadgeStyle()}>
+                {leito.status}
+              </Badge>
               {leito.status === 'Higienização' && leito.higienizacaoPrioritaria && (
                 <Badge variant="destructive" className="text-xs flex items-center gap-1">
                   <Flame className="h-3 w-3" />
                   Prioridade
+                </Badge>
+              )}
+            </div>
+          </div>
                 </Badge>
               )}
             </div>
@@ -409,6 +451,7 @@ const MapaLeitosPanel = () => {
   const [modalObservacoes, setModalObservacoes] = useState({ open: false, paciente: null });
   const [modalRemanejamento, setModalRemanejamento] = useState({ open: false, paciente: null });
   const [modalTransferenciaExterna, setModalTransferenciaExterna] = useState({ open: false, paciente: null });
+  const [modalAltaNoLeito, setModalAltaNoLeito] = useState({ open: false, paciente: null });
   const [motivoBloqueio, setMotivoBloqueio] = useState('');
   
   const { toast } = useToast();
@@ -690,22 +733,8 @@ const MapaLeitosPanel = () => {
         
         await logAction('Mapa de Leitos', `Alta no leito do paciente '${paciente.nomePaciente}' foi removida.`);
       } else {
-        // Adicionar alta no leito - aqui precisaria de um modal para coletar os dados
-        // Por simplicidade, vou usar dados padrão
-        await updateDoc(pacienteRef, {
-          altaNoLeito: {
-            motivo: "Alta administrativa",
-            detalhe: "",
-            sinalizadoEm: serverTimestamp()
-          }
-        });
-        
-        toast({
-          title: "Alta no leito registrada",
-          description: "Alta no leito foi sinalizada.",
-        });
-        
-        await logAction('Mapa de Leitos', `Alta no leito sinalizada para o paciente '${paciente.nomePaciente}'.`);
+        // Abrir modal para coletar dados
+        setModalAltaNoLeito({ open: true, paciente });
       }
     } catch (error) {
       console.error('Erro ao gerenciar alta no leito:', error);
@@ -725,7 +754,7 @@ const MapaLeitosPanel = () => {
       await updateDoc(pacienteRef, {
         observacoes: arrayUnion({
           texto,
-          timestamp: serverTimestamp()
+          timestamp: new Date()
         })
       });
       
@@ -805,8 +834,8 @@ const MapaLeitosPanel = () => {
       await updateDoc(pacienteRef, {
         pedidoRemanejamento: {
           tipo: dados.tipo,
-          descricao: dados.descricao,
-          solicitadoEm: serverTimestamp()
+          detalhe: dados.detalhe,
+          solicitadoEm: new Date()
         }
       });
       
@@ -858,6 +887,38 @@ const MapaLeitosPanel = () => {
       toast({
         title: "Erro",
         description: "Erro ao solicitar transferência externa. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSalvarAltaNoLeito = async (dados) => {
+    try {
+      const pacienteRef = doc(getPacientesCollection(), modalAltaNoLeito.paciente.id);
+      
+      await updateDoc(pacienteRef, {
+        altaNoLeito: {
+          motivo: dados.motivo,
+          detalhe: dados.detalhe,
+          sinalizadoEm: new Date()
+        }
+      });
+      
+      toast({
+        title: "Alta no leito registrada",
+        description: "Alta no leito foi sinalizada.",
+      });
+      
+      await logAction('Mapa de Leitos', 
+        `Alta no leito sinalizada para o paciente '${modalAltaNoLeito.paciente.nomePaciente}'. Motivo: ${dados.motivo}`
+      );
+      
+      setModalAltaNoLeito({ open: false, paciente: null });
+    } catch (error) {
+      console.error('Erro ao registrar alta no leito:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao registrar alta no leito. Tente novamente.",
         variant: "destructive",
       });
     }
@@ -1532,6 +1593,13 @@ const MapaLeitosPanel = () => {
         onClose={() => setModalTransferenciaExterna({ open: false, paciente: null })}
         onSave={handleSalvarTransferenciaExterna}
         paciente={modalTransferenciaExterna.paciente}
+      />
+
+      <AltaNoLeitoModal
+        isOpen={modalAltaNoLeito.open}
+        onClose={() => setModalAltaNoLeito({ open: false, paciente: null })}
+        onSave={handleSalvarAltaNoLeito}
+        paciente={modalAltaNoLeito.paciente}
       />
     </div>
   );
