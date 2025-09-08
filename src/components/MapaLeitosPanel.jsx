@@ -14,6 +14,17 @@ import {
   onSnapshot 
 } from '@/lib/firebase';
 
+// Color mapping for sector types
+const getSectorTypeColor = (tipoSetor) => {
+  const colorMap = {
+    'Emergência': 'border-t-4 border-red-500',
+    'UTI': 'border-t-4 border-yellow-500', 
+    'Enfermaria': 'border-t-4 border-green-500',
+    'Centro Cirúrgico': 'border-t-4 border-purple-500'
+  };
+  return colorMap[tipoSetor] || 'border-t-4 border-gray-500';
+};
+
 // Componente LeitoCard
 const LeitoCard = ({ leito }) => {
   const getTempoNoStatus = () => {
@@ -103,6 +114,7 @@ const MapaLeitosPanel = () => {
   const [leitos, setLeitos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedSections, setExpandedSections] = useState({});
+  const [expandedSetores, setExpandedSetores] = useState({});
 
   // Buscar dados do Firestore em tempo real
   useEffect(() => {
@@ -153,19 +165,23 @@ const MapaLeitosPanel = () => {
       }
 
       // Buscar quartos deste setor
-      const quartosDoSetor = quartos.filter(quarto => quarto.setorId === setor.id);
+      const quartosDoSetor = quartos
+        .filter(quarto => quarto.setorId === setor.id)
+        .sort((a, b) => a.nomeQuarto.localeCompare(b.nomeQuarto)); // Sort rooms by name
       
       // Buscar leitos deste setor
-      const leitosDoSetor = leitos.filter(leito => leito.setorId === setor.id);
+      const leitosDoSetor = leitos
+        .filter(leito => leito.setorId === setor.id)
+        .sort((a, b) => a.codigoLeito.localeCompare(b.codigoLeito)); // Sort beds by code
 
       // Separar leitos em quartos e sem quarto
       const leitosComQuarto = [];
       const leitosSemQuarto = [...leitosDoSetor];
 
       const quartosComLeitos = quartosDoSetor.map(quarto => {
-        const leitosDoQuarto = leitosDoSetor.filter(leito => 
-          quarto.leitosIds && quarto.leitosIds.includes(leito.id)
-        );
+        const leitosDoQuarto = leitosDoSetor
+          .filter(leito => quarto.leitosIds && quarto.leitosIds.includes(leito.id))
+          .sort((a, b) => a.codigoLeito.localeCompare(b.codigoLeito)); // Sort beds by code
         
         // Remover leitos que estão em quartos da lista de leitos sem quarto
         leitosDoQuarto.forEach(leito => {
@@ -198,6 +214,13 @@ const MapaLeitosPanel = () => {
     }));
   };
 
+  const toggleSetor = (setorId) => {
+    setExpandedSetores(prev => ({
+      ...prev,
+      [setorId]: !prev[setorId]
+    }));
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -222,7 +245,7 @@ const MapaLeitosPanel = () => {
   return (
     <div className="space-y-4">
       {Object.entries(dadosEstruturados).map(([tipoSetor, setoresDoTipo]) => (
-        <div key={tipoSetor} className="border border-gray-200 rounded-lg">
+        <div key={tipoSetor} className={`border border-gray-200 rounded-lg ${getSectorTypeColor(tipoSetor)}`}>
           <Collapsible 
             open={expandedSections[tipoSetor] !== false} 
             onOpenChange={() => toggleSection(tipoSetor)}
@@ -246,44 +269,65 @@ const MapaLeitosPanel = () => {
             
             <CollapsibleContent className="p-4 pt-0 space-y-6">
               {setoresDoTipo.map(setor => (
-                <div key={setor.id} className="border-l-4 border-blue-500 pl-4">
-                  <h3 className="text-lg font-medium text-gray-800 mb-4">
-                    {setor.nomeSetor} ({setor.siglaSetor})
-                  </h3>
-                  
-                  {/* Renderizar quartos */}
-                  {setor.quartos.map(quarto => (
-                    <div key={quarto.id} className="mb-6">
-                      <h4 className="text-md font-medium text-gray-700 mb-3 flex items-center gap-2">
-                        📋 {quarto.nomeQuarto}
-                        <Badge variant="outline" className="text-xs">
-                          {quarto.leitos.length} leito(s)
-                        </Badge>
-                      </h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 ml-4">
-                        {quarto.leitos.map(leito => (
-                          <LeitoCard key={leito.id} leito={leito} />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+                <div key={setor.id} className="border border-gray-100 rounded-lg">
+                  <Collapsible 
+                    open={expandedSetores[setor.id] !== false} 
+                    onOpenChange={() => toggleSetor(setor.id)}
+                  >
+                    <CollapsibleTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-between p-3 h-auto text-left hover:bg-gray-50"
+                      >
+                        <div>
+                          <h3 className="text-lg font-medium text-gray-800">
+                            {setor.nomeSetor} ({setor.siglaSetor})
+                          </h3>
+                          <p className="text-sm text-muted-foreground">
+                            {(setor.quartos.length > 0 ? setor.quartos.length + " quarto(s), " : "") + 
+                             (setor.leitosSemQuarto.length + setor.quartos.reduce((acc, q) => acc + q.leitos.length, 0)) + " leito(s)"}
+                          </p>
+                        </div>
+                        <ChevronDown className="h-4 w-4 transition-transform duration-200" />
+                      </Button>
+                    </CollapsibleTrigger>
+                    
+                    <CollapsibleContent className="p-3 pt-0 space-y-4">
+                      {/* Renderizar quartos (não são acordeões, apenas containers) */}
+                      {setor.quartos.map(quarto => (
+                        <div key={quarto.id} className="bg-gray-50 rounded-lg p-4">
+                          <h4 className="text-md font-medium text-gray-700 mb-3 flex items-center gap-2">
+                            📋 {quarto.nomeQuarto}
+                            <Badge variant="outline" className="text-xs">
+                              {quarto.leitos.length} leito(s)
+                            </Badge>
+                          </h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                            {quarto.leitos.map(leito => (
+                              <LeitoCard key={leito.id} leito={leito} />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
 
-                  {/* Renderizar leitos sem quarto */}
-                  {setor.leitosSemQuarto.length > 0 && (
-                    <div className="mb-4">
-                      <h4 className="text-md font-medium text-gray-700 mb-3 flex items-center gap-2">
-                        🏥 Leitos sem quarto
-                        <Badge variant="outline" className="text-xs">
-                          {setor.leitosSemQuarto.length} leito(s)
-                        </Badge>
-                      </h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                        {setor.leitosSemQuarto.map(leito => (
-                          <LeitoCard key={leito.id} leito={leito} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                      {/* Renderizar leitos sem quarto */}
+                      {setor.leitosSemQuarto.length > 0 && (
+                        <div>
+                          <h4 className="text-md font-medium text-gray-700 mb-3 flex items-center gap-2">
+                            🏥 Leitos sem quarto
+                            <Badge variant="outline" className="text-xs">
+                              {setor.leitosSemQuarto.length} leito(s)
+                            </Badge>
+                          </h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                            {setor.leitosSemQuarto.map(leito => (
+                              <LeitoCard key={leito.id} leito={leito} />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </CollapsibleContent>
+                  </Collapsible>
                 </div>
               ))}
             </CollapsibleContent>

@@ -24,7 +24,8 @@ import {
   deleteDoc,
   doc,
   onSnapshot,
-  getDocs
+  getDocs,
+  serverTimestamp
 } from '@/lib/firebase';
 
 const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
@@ -58,6 +59,8 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
     setorId: '',
     leitosIds: []
   });
+
+  const [leitoSearch, setLeitoSearch] = useState('');
 
   const [activeTab, setActiveTab] = useState('setores');
   const [editingSetor, setEditingSetor] = useState(null);
@@ -183,7 +186,7 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
           setorId: leitoForm.setorId,
           status: "Vago",
           isPCP: codigos.length === 1 ? leitoForm.isPCP : false,
-          historico: []
+          historico: [{ status: 'Vago', timestamp: serverTimestamp() }]
         };
         await addDoc(getLeitosCollection(), leitoData);
       }
@@ -371,6 +374,7 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
                             <SelectItem value="Enfermaria">Enfermaria</SelectItem>
                             <SelectItem value="UTI">UTI</SelectItem>
                             <SelectItem value="Emergência">Emergência</SelectItem>
+                            <SelectItem value="Centro Cirúrgico">Centro Cirúrgico</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -527,41 +531,54 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
                       Nenhum leito cadastrado ainda.
                     </p>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left p-2">Código</th>
-                            <th className="text-left p-2">Setor</th>
-                            <th className="text-left p-2">Status</th>
-                            <th className="text-left p-2">PCP</th>
-                            <th className="text-left p-2">Ações</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {leitos.map((leito) => {
-                            const setor = setores.find(s => s.id === leito.setorId);
-                            return (
-                              <tr key={leito.id} className="border-b">
-                                <td className="p-2">{leito.codigoLeito}</td>
-                                <td className="p-2">{setor?.nomeSetor || 'N/A'}</td>
-                                <td className="p-2">{leito.status}</td>
-                                <td className="p-2">{leito.isPCP ? 'Sim' : 'Não'}</td>
-                                <td className="p-2">
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={() => handleDeleteLeito(leito.id)}
-                                    disabled={loading.leitos}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                    <div className="space-y-6">
+                      {/* Group beds by sector */}
+                      {setores.map((setor) => {
+                        const leitosDoSetor = leitos
+                          .filter(l => l.setorId === setor.id)
+                          .sort((a, b) => a.codigoLeito.localeCompare(b.codigoLeito));
+                        
+                        if (leitosDoSetor.length === 0) return null;
+                        
+                        return (
+                          <div key={setor.id} className="border rounded-lg p-4">
+                            <h4 className="font-semibold mb-3 text-primary">
+                              {setor.nomeSetor} ({setor.siglaSetor})
+                            </h4>
+                            <div className="overflow-x-auto">
+                              <table className="w-full border-collapse">
+                                <thead>
+                                  <tr className="border-b">
+                                    <th className="text-left p-2">Código</th>
+                                    <th className="text-left p-2">Status</th>
+                                    <th className="text-left p-2">PCP</th>
+                                    <th className="text-left p-2">Ações</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {leitosDoSetor.map((leito) => (
+                                    <tr key={leito.id} className="border-b">
+                                      <td className="p-2">{leito.codigoLeito}</td>
+                                      <td className="p-2">{leito.status}</td>
+                                      <td className="p-2">{leito.isPCP ? 'Sim' : 'Não'}</td>
+                                      <td className="p-2">
+                                        <Button
+                                          size="sm"
+                                          variant="destructive"
+                                          onClick={() => handleDeleteLeito(leito.id)}
+                                          disabled={loading.leitos}
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>
@@ -611,37 +628,54 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
                     {quartoForm.setorId && (
                       <div>
                         <Label>Leitos Disponíveis</Label>
+                        {/* Search field for beds */}
+                        <div className="mb-3">
+                          <Input
+                            placeholder="Pesquisar leito..."
+                            value={leitoSearch}
+                            onChange={(e) => setLeitoSearch(e.target.value)}
+                          />
+                        </div>
                         <div className="border rounded-md p-4 max-h-40 overflow-y-auto">
-                          {getLeitosDisponiveis(quartoForm.setorId).length === 0 ? (
-                            <p className="text-muted-foreground">Nenhum leito disponível neste setor</p>
-                          ) : (
-                            <div className="space-y-2">
-                              {getLeitosDisponiveis(quartoForm.setorId).map((leito) => (
-                                <div key={leito.id} className="flex items-center space-x-2">
-                                  <Checkbox
-                                    id={`leito-${leito.id}`}
-                                    checked={quartoForm.leitosIds.includes(leito.id)}
-                                    onCheckedChange={(checked) => {
-                                      if (checked) {
-                                        setQuartoForm({
-                                          ...quartoForm,
-                                          leitosIds: [...quartoForm.leitosIds, leito.id]
-                                        });
-                                      } else {
-                                        setQuartoForm({
-                                          ...quartoForm,
-                                          leitosIds: quartoForm.leitosIds.filter(id => id !== leito.id)
-                                        });
-                                      }
-                                    }}
-                                  />
-                                  <Label htmlFor={`leito-${leito.id}`}>
-                                    {leito.codigoLeito}
-                                  </Label>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          {(() => {
+                            const leitosDisponiveis = getLeitosDisponiveis(quartoForm.setorId)
+                              .filter(leito => 
+                                leito.codigoLeito.toLowerCase().includes(leitoSearch.toLowerCase())
+                              );
+                            
+                            return leitosDisponiveis.length === 0 ? (
+                              <p className="text-muted-foreground">
+                                {leitoSearch ? 'Nenhum leito encontrado com este código' : 'Nenhum leito disponível neste setor'}
+                              </p>
+                            ) : (
+                              <div className="space-y-2">
+                                {leitosDisponiveis.map((leito) => (
+                                  <div key={leito.id} className="flex items-center space-x-2">
+                                    <Checkbox
+                                      id={`leito-${leito.id}`}
+                                      checked={quartoForm.leitosIds.includes(leito.id)}
+                                      onCheckedChange={(checked) => {
+                                        if (checked) {
+                                          setQuartoForm({
+                                            ...quartoForm,
+                                            leitosIds: [...quartoForm.leitosIds, leito.id]
+                                          });
+                                        } else {
+                                          setQuartoForm({
+                                            ...quartoForm,
+                                            leitosIds: quartoForm.leitosIds.filter(id => id !== leito.id)
+                                          });
+                                        }
+                                      }}
+                                    />
+                                    <Label htmlFor={`leito-${leito.id}`}>
+                                      {leito.codigoLeito}
+                                    </Label>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     )}
@@ -659,6 +693,7 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
                           onClick={() => {
                             setEditingQuarto(null);
                             setQuartoForm({ id: '', nomeQuarto: '', setorId: '', leitosIds: [] });
+                            setLeitoSearch('');
                           }}
                         >
                           Cancelar
@@ -680,49 +715,61 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
                       Nenhum quarto cadastrado ainda.
                     </p>
                   ) : (
-                    <div className="space-y-4">
-                      {quartos.map((quarto) => {
-                        const setor = setores.find(s => s.id === quarto.setorId);
-                        const leitosDoQuarto = leitos.filter(l => quarto.leitosIds?.includes(l.id));
+                    <div className="space-y-6">
+                      {/* Group rooms by sector */}
+                      {setores.map((setor) => {
+                        const quartosDoSetor = quartos.filter(q => q.setorId === setor.id);
+                        
+                        if (quartosDoSetor.length === 0) return null;
+                        
                         return (
-                          <div key={quarto.id} className="border rounded-lg p-4">
-                            <div className="flex justify-between items-start mb-2">
-                              <div>
-                                <h4 className="font-semibold">{quarto.nomeQuarto}</h4>
-                                <p className="text-sm text-muted-foreground">
-                                  Setor: {setor?.nomeSetor || 'N/A'}
-                                </p>
-                              </div>
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleEditQuarto(quarto)}
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  onClick={() => handleDeleteQuarto(quarto.id)}
-                                  disabled={loading.quartos}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium mb-1">Leitos:</p>
-                              <div className="flex flex-wrap gap-2">
-                                {leitosDoQuarto.map((leito) => (
-                                  <span
-                                    key={leito.id}
-                                    className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded"
-                                  >
-                                    {leito.codigoLeito}
-                                  </span>
-                                ))}
-                              </div>
+                          <div key={setor.id} className="border rounded-lg p-4">
+                            <h4 className="font-semibold mb-4 text-primary">
+                              {setor.nomeSetor} ({setor.siglaSetor})
+                            </h4>
+                            <div className="space-y-4">
+                              {quartosDoSetor.map((quarto) => {
+                                const leitosDoQuarto = leitos.filter(l => quarto.leitosIds?.includes(l.id));
+                                return (
+                                  <div key={quarto.id} className="border rounded-lg p-4">
+                                    <div className="flex justify-between items-start mb-2">
+                                      <div>
+                                        <h5 className="font-semibold">{quarto.nomeQuarto}</h5>
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => handleEditQuarto(quarto)}
+                                        >
+                                          <Edit className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="destructive"
+                                          onClick={() => handleDeleteQuarto(quarto.id)}
+                                          disabled={loading.quartos}
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-medium mb-1">Leitos:</p>
+                                      <div className="flex flex-wrap gap-2">
+                                        {leitosDoQuarto.map((leito) => (
+                                          <span
+                                            key={leito.id}
+                                            className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded"
+                                          >
+                                            {leito.codigoLeito}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         );
