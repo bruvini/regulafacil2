@@ -4,7 +4,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { ChevronDown, MoreVertical, Loader2, Flame, Star } from 'lucide-react';
@@ -214,7 +214,7 @@ const MapaLeitosPanel = () => {
         motivoBloqueio: motivoBloqueio.trim(),
         historico: arrayUnion({
           status: 'Bloqueado',
-          timestamp: serverTimestamp()
+          timestamp: new Date()
         })
       });
       await logAction('Mapa de Leitos', `Leito '${modalBloquear.leito.codigoLeito}' foi bloqueado. Motivo: '${motivoBloqueio.trim()}'.`);
@@ -244,7 +244,7 @@ const MapaLeitosPanel = () => {
         higienizacaoPrioritaria: false,
         historico: arrayUnion({
           status: 'Higienização',
-          timestamp: serverTimestamp()
+          timestamp: new Date()
         })
       });
       await logAction('Mapa de Leitos', `Solicitada higienização para o leito '${leito.codigoLeito}'.`);
@@ -273,7 +273,7 @@ const MapaLeitosPanel = () => {
         motivoBloqueio: deleteField(),
         historico: arrayUnion({
           status: 'Vago',
-          timestamp: serverTimestamp()
+          timestamp: new Date()
         })
       });
       await logAction('Mapa de Leitos', `Leito '${leito.codigoLeito}' foi desbloqueado.`);
@@ -302,7 +302,7 @@ const MapaLeitosPanel = () => {
         higienizacaoPrioritaria: deleteField(),
         historico: arrayUnion({
           status: 'Vago',
-          timestamp: serverTimestamp()
+          timestamp: new Date()
         })
       });
       await logAction('Mapa de Leitos', `Higienização do leito '${leito.codigoLeito}' foi finalizada.`);
@@ -588,6 +588,7 @@ const MapaLeitosPanel = () => {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Bloquear Leito</DialogTitle>
+            <DialogDescription>Informe o motivo do bloqueio para confirmar a ação.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
