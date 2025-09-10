@@ -65,6 +65,7 @@ import RegulacaoLeitosPage from './RegulacaoLeitosPage';
 import IndicadoresGeraisPanel from './IndicadoresGeraisPanel';
 import GestaoIsolamentosPage from './GestaoIsolamentosPage';
 import CentralHigienizacaoPage from './CentralHigienizacaoPage';
+import GestaoUsuariosPage from './GestaoUsuariosPage';
 
 // Dados de navegação
 const navigationItems = [
@@ -821,12 +822,7 @@ const RegulaFacil = () => {
           />
         );
       case "gestao-usuarios":
-        return (
-          <DevelopmentPage
-            title="Gestão de Usuários"
-            description="Administração de usuários do sistema"
-          />
-        );
+        return <GestaoUsuariosPage />;
       case "gestao-pacientes":
         return (
           <DevelopmentPage

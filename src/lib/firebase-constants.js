@@ -9,6 +9,7 @@ export const ROOMS_COLLECTION_PATH = `${BASE_PATH}/quartos`;
 export const PATIENTS_COLLECTION_PATH = `${BASE_PATH}/pacientes`;
 export const AUDIT_COLLECTION_PATH = `${BASE_PATH}/auditoria`;
 export const INFECTIONS_COLLECTION_PATH = `${BASE_PATH}/infeccoes`;
+export const USERS_COLLECTION_PATH = `${BASE_PATH}/usuarios`;
 
 // Export individual path components for flexibility
 export const APP_ID = 'regulafacil';
