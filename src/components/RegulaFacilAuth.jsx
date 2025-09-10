@@ -380,11 +380,11 @@ const HomePage = ({ onNavigate, currentUser }) => {
     const diffDias = Math.floor(diffHoras / 24);
     if (diffDias < 7) return `há ${diffDias} dia${diffDias > 1 ? 's' : ''}`;
     
-    return format(data, 'dd/MM/yyyy \\\\'às\\\\' HH:mm', { locale: ptBR });
+    return format(data, 'dd/MM/yyyy \'às\' HH:mm', { locale: ptBR });
   };
 
   // Data atual formatada
-  const dataAtual = format(new Date(), 'EEEE, dd \\\\'de\\\\' MMMM \\\\'de\\\\' yyyy', { locale: ptBR });
+  const dataAtual = format(new Date(), 'EEEE, dd \'de\' MMMM \'de\' yyyy', { locale: ptBR });
 
   // Filtrar módulos baseado nas permissões
   const availableModules = moduleCards.filter(module => {
