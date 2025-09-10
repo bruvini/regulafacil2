@@ -50,10 +50,11 @@ const LeitoSelectionStep = ({
         const setor = setores.find((s) => s.id === leito.setorId);
         const status = leito.statusLeito || leito.status;
         
-        // Apenas leitos UTI com status correto
+        // Apenas leitos UTI com status correto e que NÃO estejam reservados/regulando
         return setor && 
                setor.tipoSetor === 'UTI' && 
-               ['Vago', 'Higienização'].includes(status);
+               ['Vago', 'Higienização'].includes(status) &&
+               !leito.regulacaoEmAndamento;
       });
     }
 
@@ -76,6 +77,7 @@ const LeitoSelectionStep = ({
       const status = leito.statusLeito || leito.status;
       if (!setor || setor.tipoSetor !== 'Enfermaria') return false;
       if (!['Vago', 'Higienização'].includes(status)) return false;
+      if (leito.regulacaoEmAndamento) return false; // Excluir leitos já reservados/regulando
       return true;
     });
 

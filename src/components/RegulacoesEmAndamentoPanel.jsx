@@ -8,12 +8,14 @@ import {
   getSetoresCollection, 
   getLeitosCollection,
   getPacientesCollection,
+  getInfeccoesCollection,
   onSnapshot,
   doc,
   updateDoc,
   deleteField,
   writeBatch,
   arrayUnion,
+  serverTimestamp,
   db
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
@@ -21,16 +23,18 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import ConcluirRegulacaoModal from './modals/ConcluirRegulacaoModal';
 import CancelarRegulacaoModal from './modals/CancelarRegulacaoModal';
-
+import AlterarRegulacaoModal from './modals/AlterarRegulacaoModal';
 const RegulacoesEmAndamentoPanel = () => {
   const [setores, setSetores] = useState([]);
   const [leitos, setLeitos] = useState([]);
+  const [infeccoes, setInfeccoes] = useState([]);
   const [regulacoes, setRegulacoes] = useState([]);
   const [loading, setLoading] = useState(true);
   
   // Estados dos modais
   const [modalConcluir, setModalConcluir] = useState({ open: false, paciente: null });
   const [modalCancelar, setModalCancelar] = useState({ open: false, paciente: null });
+  const [modalAlterar, setModalAlterar] = useState({ open: false, paciente: null });
   
   const { toast } = useToast();
   const { currentUser } = useAuth();
@@ -50,6 +54,14 @@ const RegulacoesEmAndamentoPanel = () => {
         ...doc.data()
       }));
       setLeitos(leitosData);
+    });
+
+    const unsubscribeInfeccoes = onSnapshot(getInfeccoesCollection(), (snapshot) => {
+      const infeccoesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setInfeccoes(infeccoesData);
     });
 
     const unsubscribePacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
@@ -72,6 +84,7 @@ const RegulacoesEmAndamentoPanel = () => {
     return () => {
       unsubscribeSetores();
       unsubscribeLeitos();
+      unsubscribeInfeccoes();
       unsubscribePacientes();
     };
   }, []);
@@ -123,14 +136,28 @@ const RegulacoesEmAndamentoPanel = () => {
     const { regulacaoAtiva } = paciente;
     const leitoOrigem = obterInfoLeito(regulacaoAtiva.leitoOrigemId);
     const leitoDestino = obterInfoLeito(regulacaoAtiva.leitoDestinoId);
+
+    // Mapear nomes das infecções (se disponíveis)
+    const nomesInfeccoes = (paciente.isolamentos || [])
+      .map((iso) => infeccoes.find((inf) => inf.id === iso.infecaoId)?.nomeInfeccao)
+      .filter(Boolean)
+      .join(', ');
+
+    const observacoes = paciente.observacoesNIR || paciente.observacoes || '';
     
-    const texto = `*REGULAÇÃO EM ANDAMENTO*
+    let texto = `*REGULAÇÃO EM ANDAMENTO*\n\n` +
+      `*Paciente:* _${paciente.nomePaciente}_\n` +
+      `*De:* _${leitoOrigem.siglaSetor} - ${leitoOrigem.codigo}_\n` +
+      `*Para:* _${leitoDestino.siglaSetor} - ${leitoDestino.codigo}_`;
 
-*Paciente:* _${paciente.nomePaciente}_
-*De:* _${leitoOrigem.siglaSetor} - ${leitoOrigem.codigo}_
-*Para:* _${leitoDestino.siglaSetor} - ${leitoDestino.codigo}_
+    if (nomesInfeccoes) {
+      texto += `\n*Isolamento:* _${nomesInfeccoes}_`;
+    }
+    if (observacoes.trim()) {
+      texto += `\n*Observações NIR:* _${observacoes.trim()}_`;
+    }
 
-_Regulação iniciada em ${calcularTempoRegulacao(regulacaoAtiva.iniciadoEm)}_`;
+    texto += `\n\n_Regulação iniciada há ${calcularTempoRegulacao(regulacaoAtiva.iniciadoEm).replace('Ativa há ', '')}_`;
 
     try {
       await navigator.clipboard.writeText(texto);
@@ -158,14 +185,15 @@ _Regulação iniciada em ${calcularTempoRegulacao(regulacaoAtiva.iniciadoEm)}_`;
       
       // 1. Atualizar documento do paciente
       const pacienteRef = doc(getPacientesCollection(), paciente.id);
+      const destinoSetorId = regulacaoAtiva.setorDestinoId || leitos.find(l => l.id === regulacaoAtiva.leitoDestinoId)?.setorId;
       const updatesPaciente = {
         regulacaoAtiva: deleteField(),
         leitoId: regulacaoAtiva.leitoDestinoId,
-        setorId: regulacaoAtiva.setorDestinoId
+        setorId: destinoSetorId
       };
       
       // Verificar se é UTI e remover pedidoUTI se necessário
-      const setorDestino = setores.find(s => s.id === regulacaoAtiva.setorDestinoId);
+      const setorDestino = setores.find(s => s.id === destinoSetorId);
       if (setorDestino?.tipoSetor === 'UTI' && paciente.pedidoUTI) {
         updatesPaciente.pedidoUTI = deleteField();
       }
@@ -372,7 +400,10 @@ _Regulação iniciada em ${calcularTempoRegulacao(regulacaoAtiva.iniciadoEm)}_`;
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button className="p-1.5 hover:bg-muted rounded-md transition-colors">
+                  <button 
+                    className="p-1.5 hover:bg-muted rounded-md transition-colors"
+                    onClick={() => setModalAlterar({ open: true, paciente })}
+                  >
                     <Pencil className="h-4 w-4 text-blue-600" />
                   </button>
                 </TooltipTrigger>

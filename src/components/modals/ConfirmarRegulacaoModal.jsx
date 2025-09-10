@@ -87,9 +87,9 @@ const ConfirmarRegulacaoModal = ({
       const dadosRegulacao = {
         leitoOrigemId: leitoOrigem.id,
         leitoDestinoId: leitoDestino.id,
+        setorDestinoId: leitoDestino.setorId,
         iniciadoEm: agora
       };
-
       // 1. Atualizar paciente - adicionar regulacaoAtiva
       const pacienteRef = doc(getPacientesCollection(), paciente.id);
       batch.update(pacienteRef, {
