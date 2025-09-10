@@ -65,7 +65,7 @@ import ProtectedRoute from './ProtectedRoute';
 
 // Import existing components
 import GerenciamentoLeitosModal from './GerenciamentoLeitosModal';
-import MapaLeitosPanel from './MapaLeitosPanel';
+import MapaLeitosPage from './MapaLeitosPage';
 import RegulacaoLeitosPage from './RegulacaoLeitosPage';
 import IndicadoresGeraisPanel from './IndicadoresGeraisPanel';
 import GestaoIsolamentosPage from './GestaoIsolamentosPage';
@@ -529,7 +529,7 @@ const RegulaFacilApp = () => {
             case "regulacao-leitos":
               return <RegulacaoLeitosPage />;
             case "mapa-leitos":
-              return <MapaLeitosPanel />;
+              return <MapaLeitosPage />;
             case "central-higienizacao":
               return <CentralHigienizacaoPage />;
             case "gestao-isolamentos":

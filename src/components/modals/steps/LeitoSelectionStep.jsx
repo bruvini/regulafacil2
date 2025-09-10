@@ -2,7 +2,8 @@ import React, { useMemo } from 'react';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Bed, AlertCircle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Loader2, Bed, AlertCircle, Search } from "lucide-react";
 
 const LeitoSelectionStep = ({ 
   dados, 
@@ -10,6 +11,7 @@ const LeitoSelectionStep = ({
   modo = 'enfermaria', 
   onLeitoSelect 
 }) => {
+  const [termoBusca, setTermoBusca] = React.useState('');
   // Função para calcular idade
   const calcularIdade = (dataNascimento) => {
     if (!dataNascimento) return 0;
@@ -50,11 +52,15 @@ const LeitoSelectionStep = ({
         const setor = setores.find((s) => s.id === leito.setorId);
         const status = leito.statusLeito || leito.status;
         
-        // Apenas leitos UTI com status correto e que NÃO estejam reservados/regulando
+        // CORREÇÃO CRÍTICA: Excluir leitos já em regulação (reservados)
+        if (leito.regulacaoEmAndamento && Object.keys(leito.regulacaoEmAndamento).length > 0) {
+          return false;
+        }
+        
+        // Apenas leitos UTI com status correto
         return setor && 
                setor.tipoSetor === 'UTI' && 
-               ['Vago', 'Higienização'].includes(status) &&
-               !leito.regulacaoEmAndamento;
+               ['Vago', 'Higienização'].includes(status);
       });
     }
 
@@ -77,7 +83,12 @@ const LeitoSelectionStep = ({
       const status = leito.statusLeito || leito.status;
       if (!setor || setor.tipoSetor !== 'Enfermaria') return false;
       if (!['Vago', 'Higienização'].includes(status)) return false;
-      if (leito.regulacaoEmAndamento) return false; // Excluir leitos já reservados/regulando
+      
+      // CORREÇÃO CRÍTICA: Excluir leitos já em regulação (reservados)
+      if (leito.regulacaoEmAndamento && Object.keys(leito.regulacaoEmAndamento).length > 0) {
+        return false;
+      }
+      
       return true;
     });
 
@@ -88,9 +99,11 @@ const LeitoSelectionStep = ({
       const setor = setores.find((s) => s.id === leito.setorId);
       if (!setor) return;
 
-      // REGRA 1: Leito PCP (Idade)
-      if (leito.isPCP) {
-        if (idadePaciente < 18 || idadePaciente > 60) return;
+      // REGRA 1: Leito PCP (Idade) - Verificação explícita obrigatória
+      if (leito.isPCP === true) {
+        if (idadePaciente < 18 || idadePaciente > 60) {
+          return; // Descarta leito se idade não está na faixa 18-60
+        }
       }
 
       const avulso = isLeitoAvulso(leito);
@@ -132,11 +145,17 @@ const LeitoSelectionStep = ({
     return getLeitosCompatíveis(paciente, dados, modo);
   }, [dados, paciente, modo]);
 
-  // Agrupar leitos por setor e ordenar por codigoLeito
+  // Filtrar leitos por termo de busca e agrupar por setor
   const leitosPorSetor = useMemo(() => {
+    // Primeiro aplicar filtro de busca
+    const leitosFiltrados = leitosCompativeis.filter(leito => {
+      if (!termoBusca.trim()) return true;
+      return leito.codigoLeito.toLowerCase().includes(termoBusca.toLowerCase().trim());
+    });
+
     const grupos = {};
     
-    leitosCompativeis.forEach(leito => {
+    leitosFiltrados.forEach(leito => {
       const setor = dados.setores.find(s => s.id === leito.setorId);
       const nomeSetor = setor?.nomeSetor || 'Setor Desconhecido';
       
@@ -157,7 +176,7 @@ const LeitoSelectionStep = ({
     });
 
     return grupos;
-  }, [leitosCompativeis, dados.setores]);
+  }, [leitosCompativeis, dados.setores, termoBusca]);
 
   const handleLeitoClick = (leito) => {
     const setor = dados.setores.find(s => s.id === leito.setorId);
@@ -177,6 +196,9 @@ const LeitoSelectionStep = ({
     );
   }
 
+  // Verificar se há leitos após filtragem
+  const temLeitosDisponiveis = Object.keys(leitosPorSetor).length > 0;
+
   if (leitosCompativeis.length === 0) {
     return (
       <div className="text-center py-8 space-y-3">
@@ -189,8 +211,29 @@ const LeitoSelectionStep = ({
   }
 
   return (
-    <ScrollArea className="max-h-96">
-      <Accordion type="single" collapsible className="space-y-2">
+    <div className="space-y-4">
+      {/* Campo de Busca */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Buscar leito por código..."
+          value={termoBusca}
+          onChange={(e) => setTermoBusca(e.target.value)}
+          className="pl-10"
+        />
+      </div>
+
+      {/* Lista de Leitos */}
+      {!temLeitosDisponiveis ? (
+        <div className="text-center py-8 space-y-3">
+          <AlertCircle className="h-12 w-12 text-amber-500 mx-auto" />
+          <p className="text-muted-foreground">
+            Nenhum leito compatível encontrado, verifique o leito digitado ou se não há alguma condição que torna o leito pesquisado incompatível (idade, sexo, isolamento, status).
+          </p>
+        </div>
+      ) : (
+        <ScrollArea className="max-h-[60vh]">
+          <Accordion type="single" collapsible className="space-y-2">
         {Object.entries(leitosPorSetor).map(([nomeSetor, leitosDoSetor]) => (
           <AccordionItem key={nomeSetor} value={nomeSetor} className="border rounded-lg">
             <AccordionTrigger className="px-4 py-3 hover:no-underline">
@@ -232,9 +275,11 @@ const LeitoSelectionStep = ({
               </div>
             </AccordionContent>
           </AccordionItem>
-        ))}
-      </Accordion>
-    </ScrollArea>
+          ))}
+          </Accordion>
+        </ScrollArea>
+      )}
+    </div>
   );
 };
 

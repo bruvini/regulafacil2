@@ -224,10 +224,80 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
 
   // Nova função para análise após validação
   const analyzeAndProceed = async (pacientesArquivo, setores, leitos, pacientes) => {
-    // Análise de reconciliação
-    const altas = [];
-    const movimentacoes = [];
-    const internacoes = [];
+  // PARTE 1: SINCRONIZAÇÃO INTELIGENTE DE REGULAÇÕES
+  const regulacoesProcessadas = {
+    concluidas: [],
+    conflitos: []
+  };
+
+  // Buscar pacientes com regulação ativa
+  const pacientesComRegulacao = Object.values(pacientes).filter(p => p.regulacaoAtiva);
+  
+  for (const pacienteDB of pacientesComRegulacao) {
+    const pacienteArquivo = pacientesArquivoMap[pacienteDB.nomePaciente];
+    
+    if (!pacienteArquivo) {
+      // Paciente com regulação não encontrado na planilha - pode ter tido alta
+      continue;
+    }
+
+    const { regulacaoAtiva } = pacienteDB;
+    const leitoOrigemId = regulacaoAtiva.leitoOrigemId;
+    const leitoDestinoId = regulacaoAtiva.leitoDestinoId;
+    const leitoAtualArquivo = leitos[pacienteArquivo.codigoLeito];
+
+    if (!leitoAtualArquivo) continue;
+
+    // Cenário A: Paciente ainda na origem - continua pendente
+    if (leitoAtualArquivo.id === leitoOrigemId) {
+      continue; // Nenhuma ação necessária
+    }
+
+    // Cenário B: Regulação concluída com sucesso (destino exato)
+    if (leitoAtualArquivo.id === leitoDestinoId) {
+      regulacoesProcessadas.concluidas.push({
+        paciente: pacienteDB,
+        leitoDestino: leitoAtualArquivo,
+        tipo: 'exato'
+      });
+      continue;
+    }
+
+    // Cenário C: Regulação por aproximação (mesmo setor do destino)
+    const leitoDestinoDB = leitos[Object.keys(leitos).find(k => leitos[k].id === leitoDestinoId)];
+    const setorDestinoId = leitoDestinoDB?.setorId;
+
+    if (setorDestinoId && leitoAtualArquivo.setorId === setorDestinoId) {
+      // Verificar conflitos: o leito atual já está ocupado por outro paciente?
+      const outrosPacientesNesteLeito = Object.values(pacientesArquivoMap).filter(p => 
+        p.nomePaciente !== pacienteDB.nomePaciente && 
+        leitos[p.codigoLeito]?.id === leitoAtualArquivo.id
+      );
+
+      if (outrosPacientesNesteLeito.length > 0) {
+        // CONFLITO: Leito ocupado por outro paciente
+        regulacoesProcessadas.conflitos.push({
+          pacienteRegulado: pacienteDB.nomePaciente,
+          leitoConflito: pacienteArquivo.codigoLeito,
+          pacienteConflitante: outrosPacientesNesteLeito[0].nomePaciente
+        });
+        continue;
+      }
+
+      // Sem conflito - marcar para conclusão por aproximação
+      regulacoesProcessadas.concluidas.push({
+        paciente: pacienteDB,
+        leitoDestino: leitoAtualArquivo,
+        leitoOriginalmente: leitoDestinoDB,
+        tipo: 'aproximacao'
+      });
+    }
+  }
+
+  // PARTE 2: ANÁLISE TRADICIONAL DE RECONCILIAÇÃO
+  const altas = [];
+  const movimentacoes = [];
+  const internacoes = [];
 
     // Pacientes no arquivo (por nome)
     const pacientesArquivoMap = {};
@@ -279,7 +349,8 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       novosSetores: [],
       novosLeitos: [],
       setores,
-      leitos
+      leitos,
+      regulacoesProcessadas // Adicionar dados de regulações
     });
 
     setSyncSummary({
@@ -287,7 +358,9 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       movimentacoes: movimentacoes.length,
       internacoes: internacoes.length,
       novosSetores: 0,
-      novosLeitos: 0
+      novosLeitos: 0,
+      regulacoesConcluidas: regulacoesProcessadas.concluidas.length,
+      regulacoesConflitos: regulacoesProcessadas.conflitos.length
     });
 
     setCurrentStep('confirmation');
@@ -336,6 +409,66 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
         leitosParaAtualizar.add(paciente.leitoId);
       });
 
+      // EXECUTAR CONCLUSÕES AUTOMÁTICAS DE REGULAÇÕES
+      if (processedData.regulacoesProcessadas && processedData.regulacoesProcessadas.concluidas) {
+        processedData.regulacoesProcessadas.concluidas.forEach(({ paciente, leitoDestino, leitoOriginalmente }) => {
+          const pacienteRef = doc(db, PATIENTS_COLLECTION_PATH, paciente.id);
+          
+          // Remover regulacaoAtiva e atualizar posição do paciente
+          batch.update(pacienteRef, {
+            regulacaoAtiva: deleteField(),
+            leitoId: leitoDestino.id,
+            setorId: leitoDestino.setorId
+          });
+
+          // Se o paciente tinha pedido de UTI e foi para UTI, remover o pedido
+          const setorDestino = processedData.setores[Object.keys(processedData.setores).find(k => 
+            processedData.setores[k].id === leitoDestino.setorId
+          )];
+          
+          if (paciente.pedidoUTI && setorDestino?.tipoSetor === 'UTI') {
+            batch.update(pacienteRef, {
+              pedidoUTI: deleteField()
+            });
+          }
+
+          // Atualizar leito de origem (liberá-lo)
+          const leitoOrigemRef = doc(db, BEDS_COLLECTION_PATH, paciente.regulacaoAtiva.leitoOrigemId);
+          batch.update(leitoOrigemRef, {
+            regulacaoEmAndamento: deleteField(),
+            status: 'Higienização',
+            historico: arrayUnion({
+              status: 'Higienização',
+              timestamp: serverTimestamp()
+            })
+          });
+
+          // Atualizar leito de destino (ocupá-lo)
+          const leitoDestinoRef = doc(db, BEDS_COLLECTION_PATH, leitoDestino.id);
+          batch.update(leitoDestinoRef, {
+            regulacaoEmAndamento: deleteField(),
+            status: 'Ocupado',
+            historico: arrayUnion({
+              status: 'Ocupado',
+              timestamp: serverTimestamp()
+            })
+          });
+
+          // Se foi regulação por aproximação, liberar leito originalmente destinado
+          if (leitoOriginalmente && leitoOriginalmente.id !== leitoDestino.id) {
+            const leitoOriginalRef = doc(db, BEDS_COLLECTION_PATH, leitoOriginalmente.id);
+            batch.update(leitoOriginalRef, {
+              regulacaoEmAndamento: deleteField(),
+              status: 'Vago',
+              historico: arrayUnion({
+                status: 'Vago',
+                timestamp: serverTimestamp()
+              })
+            });
+          }
+        });
+      }
+
       // Atualizar status dos leitos afetados
       const pacientesFinais = {};
       
@@ -367,10 +500,19 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       await batch.commit();
 
       // Log de auditoria
-      await logAction(
-        'Regulação de Leitos', 
-        `Sincronização via MV concluída: ${syncSummary.altas} altas, ${syncSummary.movimentacoes} movimentações, ${syncSummary.internacoes} internações.`
-      );
+      let logMessage = `Sincronização via MV concluída: ${syncSummary.altas} altas, ${syncSummary.movimentacoes} movimentações, ${syncSummary.internacoes} internações`;
+      
+      if (syncSummary.regulacoesConcluidas > 0) {
+        logMessage += `, ${syncSummary.regulacoesConcluidas} regulações concluídas automaticamente`;
+      }
+      
+      if (syncSummary.regulacoesConflitos > 0) {
+        logMessage += `, ${syncSummary.regulacoesConflitos} conflitos de regulação detectados`;
+      }
+      
+      logMessage += '.';
+      
+      await logAction('Regulação de Leitos', logMessage);
 
       setCurrentStep('completed');
       toast.success('Sincronização concluída com sucesso!');
@@ -680,6 +822,38 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
             <p className="text-xs text-muted-foreground">Novas internações</p>
           </CardContent>
         </Card>
+
+        {/* Regulações Concluídas */}
+        {syncSummary.regulacoesConcluidas > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-blue-500" />
+                Regulações Automáticas
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{syncSummary.regulacoesConcluidas}</p>
+              <p className="text-xs text-muted-foreground">Concluídas automaticamente</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Conflitos de Regulação */}
+        {syncSummary.regulacoesConflitos > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-red-500" />
+                Conflitos
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{syncSummary.regulacoesConflitos}</p>
+              <p className="text-xs text-muted-foreground">Regulações com conflito</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <div className="flex gap-3">
