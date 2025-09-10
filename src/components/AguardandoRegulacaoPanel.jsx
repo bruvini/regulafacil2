@@ -12,7 +12,6 @@ import {
   onSnapshot
 } from '@/lib/firebase';
 import RegularPacienteModal from '@/components/modals/RegularPacienteModal';
-import ConfirmarRegulacaoModal from '@/components/modals/ConfirmarRegulacaoModal';
 
 const AguardandoRegulacaoPanel = () => {
   const [setores, setSetores] = useState([]);
@@ -20,9 +19,7 @@ const AguardandoRegulacaoPanel = () => {
   const [leitos, setLeitos] = useState([]);
   const [infeccoes, setInfeccoes] = useState([]);
   const [modalRegularAberto, setModalRegularAberto] = useState(false);
-  const [modalConfirmarAberto, setModalConfirmarAberto] = useState(false);
   const [pacienteSelecionado, setPacienteSelecionado] = useState(null);
-  const [leitoSelecionado, setLeitoSelecionado] = useState(null);
 
   useEffect(() => {
     const unsubscribeSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
@@ -175,31 +172,6 @@ const AguardandoRegulacaoPanel = () => {
     setModalRegularAberto(true);
   };
 
-  const handleLeitoSelecionado = (leitoDestino) => {
-    // Buscar o leito atual do paciente
-    const leitoOrigem = leitos.find(l => l.id === pacienteSelecionado.leitoId);
-    
-    if (!leitoOrigem) {
-      console.error('Leito de origem não encontrado');
-      return;
-    }
-
-    // Buscar dados do setor de origem
-    const setorOrigem = setores.find(s => s.id === leitoOrigem.setorId);
-    const leitoOrigemCompleto = {
-      ...leitoOrigem,
-      siglaSetor: setorOrigem?.siglaSetor || setorOrigem?.nomeSetor,
-      nomeSetor: setorOrigem?.nomeSetor
-    };
-
-    setLeitoSelecionado({
-      origem: leitoOrigemCompleto,
-      destino: leitoDestino
-    });
-    
-    setModalConfirmarAberto(true);
-  };
-
   const fecharModais = () => {
     setModalRegularAberto(false);
     setModalConfirmarAberto(false);
@@ -326,19 +298,9 @@ const AguardandoRegulacaoPanel = () => {
         isOpen={modalRegularAberto}
         onClose={fecharModais}
         paciente={pacienteSelecionado}
-        onLeitoSelecionado={handleLeitoSelecionado}
+        modo="enfermaria"
+        infeccoes={infeccoes}
       />
-      
-      {leitoSelecionado && (
-        <ConfirmarRegulacaoModal
-          isOpen={modalConfirmarAberto}
-          onClose={fecharModais}
-          paciente={pacienteSelecionado}
-          leitoOrigem={leitoSelecionado.origem}
-          leitoDestino={leitoSelecionado.destino}
-          infeccoes={infeccoes}
-        />
-      )}
     </Card>
   );
 };

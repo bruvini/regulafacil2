@@ -3,7 +3,14 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArrowRightCircle, Truck, XCircle } from "lucide-react";
 import { intervalToDuration } from 'date-fns';
-import { getPacientesCollection, getSetoresCollection, getLeitosCollection, onSnapshot } from '@/lib/firebase';
+import { 
+  getPacientesCollection, 
+  getSetoresCollection, 
+  getLeitosCollection,
+  getInfeccoesCollection,
+  onSnapshot 
+} from '@/lib/firebase';
+import RegularPacienteModal from '@/components/modals/RegularPacienteModal';
 
 const toDateSafe = (d) => {
   if (!d) return null;
@@ -25,6 +32,9 @@ const FilaEsperaUTIPanel = () => {
   const [pacientes, setPacientes] = useState([]);
   const [setores, setSetores] = useState([]);
   const [leitos, setLeitos] = useState([]);
+  const [infeccoes, setInfeccoes] = useState([]);
+  const [modalRegularAberto, setModalRegularAberto] = useState(false);
+  const [pacienteSelecionado, setPacienteSelecionado] = useState(null);
 
   useEffect(() => {
     const unsubPac = onSnapshot(getPacientesCollection(), (snap) => {
@@ -36,10 +46,14 @@ const FilaEsperaUTIPanel = () => {
     const unsubLei = onSnapshot(getLeitosCollection(), (snap) => {
       setLeitos(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
+    const unsubInf = onSnapshot(getInfeccoesCollection(), (snap) => {
+      setInfeccoes(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
     return () => {
       unsubPac();
       unsubSet();
       unsubLei();
+      unsubInf();
     };
   }, []);
 
@@ -61,7 +75,30 @@ const FilaEsperaUTIPanel = () => {
     return found?.codigoLeito || '—';
   };
 
-  const pedidos = pacientes.filter((p) => !!p?.pedidoUTI);
+  // Filtrar pacientes que têm pedido UTI, não estão em regulação ativa e não estão em UTI
+  const pedidos = pacientes.filter((p) => {
+    if (!p?.pedidoUTI) return false;
+    if (p?.regulacaoAtiva) return false;
+    
+    // Verificar se o paciente já está em UTI
+    const leitoAtual = leitos.find(l => l.id === p.leitoId);
+    if (leitoAtual) {
+      const setorAtual = setores.find(s => s.id === leitoAtual.setorId);
+      if (setorAtual?.tipoSetor === 'UTI') return false;
+    }
+    
+    return true;
+  });
+
+  const handleIniciarRegulacao = (paciente) => {
+    setPacienteSelecionado(paciente);
+    setModalRegularAberto(true);
+  };
+
+  const fecharModal = () => {
+    setModalRegularAberto(false);
+    setPacienteSelecionado(null);
+  };
 
   return (
     <Card className="shadow-card card-interactive">
@@ -91,7 +128,12 @@ const FilaEsperaUTIPanel = () => {
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <button className="p-1.5 hover:bg-muted rounded-md"><ArrowRightCircle className="h-4 w-4 text-primary" /></button>
+                          <button 
+                            className="p-1.5 hover:bg-muted rounded-md"
+                            onClick={() => handleIniciarRegulacao(p)}
+                          >
+                            <ArrowRightCircle className="h-4 w-4 text-primary" />
+                          </button>
                         </TooltipTrigger>
                         <TooltipContent><p>Regular Paciente</p></TooltipContent>
                       </Tooltip>
@@ -119,6 +161,15 @@ const FilaEsperaUTIPanel = () => {
           </div>
         )}
       </CardContent>
+
+      {/* Modal de Regulação */}
+      <RegularPacienteModal
+        isOpen={modalRegularAberto}
+        onClose={fecharModal}
+        paciente={pacienteSelecionado}
+        modo="uti"
+        infeccoes={infeccoes}
+      />
     </Card>
   );
 };
