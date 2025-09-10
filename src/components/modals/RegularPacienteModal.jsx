@@ -114,70 +114,75 @@ const RegularPacienteModal = ({ isOpen, onClose, paciente, onLeitoSelecionado })
     return idade;
   };
 
-  // Motor de Regras - Filtragem de Leitos Compatíveis
+  // Motor de Regras - Filtragem de Leitos Compatíveis (refatorado)
   const leitosCompativeis = useMemo(() => {
     if (dados.loading || !paciente) return [];
 
     const { leitos, quartos, setores, pacientes } = dados;
+
     const idadePaciente = calcularIdade(paciente.dataNascimento);
-    const isolamentosPaciente = paciente.isolamentos || [];
+    const normalizarIsolamentos = (lista) => (lista || []).map(i => i.infecaoId).sort().join('|');
+    const isolamentosPacienteKey = normalizarIsolamentos(paciente.isolamentos);
 
-    return leitos.filter(leito => {
-      // 1. Filtro de Status e Tipo
-      const setor = setores.find(s => s.id === leito.setorId);
+    const isLeitoAvulso = (leito) => {
+      if (leito.quartoId) return false;
+      if (Array.isArray(quartos) && quartos.length > 0) {
+        return !quartos.some(q => Array.isArray(q.leitosIds) && q.leitosIds.includes(leito.id));
+      }
+      return true;
+    };
+
+    // Passo A: Pré-filtragem básica
+    const candidatos = leitos.filter((leito) => {
+      const setor = setores.find((s) => s.id === leito.setorId);
+      const status = leito.statusLeito || leito.status;
       if (!setor || setor.tipoSetor !== 'Enfermaria') return false;
-      if (!['Vago', 'Higienização'].includes(leito.statusLeito)) return false;
+      if (!['Vago', 'Higienização'].includes(status)) return false;
+      return true;
+    });
 
-      // 2. Filtro de Idade (PCP)
-      if (leito.isPCP && (idadePaciente < 18 || idadePaciente > 60)) return false;
+    // Passo B: Regras detalhadas
+    const compativeis = candidatos.filter((leito) => {
+      const status = leito.statusLeito || leito.status;
+      const setor = setores.find((s) => s.id === leito.setorId);
+      if (!setor) return false;
 
-      // 3. Filtro de Sexo (para leitos em quartos)
-      if (leito.quartoId) {
-        const outrosPacientesNoQuarto = pacientes.filter(p => 
-          p.leitoId !== leito.id && // Não incluir o próprio paciente se já estiver no quarto
-          leitos.some(l => l.id === p.leitoId && l.quartoId === leito.quartoId)
-        );
+      // REGRA 1: Leito PCP (Idade)
+      if (leito.isPCP) {
+        if (idadePaciente < 18 || idadePaciente > 60) return false;
+      }
 
-        if (outrosPacientesNoQuarto.length > 0) {
-          const sexosDiferentes = outrosPacientesNoQuarto.some(p => p.sexo !== paciente.sexo);
+      const avulso = isLeitoAvulso(leito);
+
+      // REGRA 2: Lógica de quartos vs. leito avulso
+      let ocupantesDoQuarto = [];
+      if (!avulso && leito.quartoId) {
+        const leitosMesmoQuarto = leitos.filter((l) => l.quartoId === leito.quartoId && l.id !== leito.id);
+        ocupantesDoQuarto = pacientes.filter((p) => leitosMesmoQuarto.some((l) => l.id === p.leitoId));
+
+        // 2.2.a: Compatibilidade por sexo quando há ocupantes
+        if (ocupantesDoQuarto.length > 0) {
+          const sexosDiferentes = ocupantesDoQuarto.some((p) => p.sexo && paciente.sexo && p.sexo !== paciente.sexo);
           if (sexosDiferentes) return false;
         }
       }
 
-      // 4. Filtro de Isolamento (regra mais complexa)
-      if (leito.quartoId) {
-        const outrosPacientesNoQuarto = pacientes.filter(p => 
-          p.leitoId !== leito.id && // Não incluir o próprio paciente
-          leitos.some(l => l.id === p.leitoId && l.quartoId === leito.quartoId)
-        );
-
-        if (isolamentosPaciente.length === 0) {
-          // Paciente sem isolamento só pode ir onde nenhum outro tem isolamento
-          const algumOutroComIsolamento = outrosPacientesNoQuarto.some(p => 
-            p.isolamentos && p.isolamentos.length > 0
-          );
-          if (algumOutroComIsolamento) return false;
+      // REGRA 3: Compatibilidade de isolamento
+      if (!avulso) {
+        if (ocupantesDoQuarto.length === 0) {
+          // quarto vazio: ok
         } else {
-          // Paciente com isolamento
-          if (outrosPacientesNoQuarto.length > 0) {
-            // Todos os outros devem ter exatamente o mesmo conjunto de isolamentos
-            const isolamentosPacienteIds = isolamentosPaciente.map(i => i.infecaoId).sort();
-            
-            const todosComMesmosIsolamentos = outrosPacientesNoQuarto.every(outroP => {
-              const isolamentosOutro = outroP.isolamentos || [];
-              if (isolamentosOutro.length !== isolamentosPaciente.length) return false;
-              
-              const isolamentosOutroIds = isolamentosOutro.map(i => i.infecaoId).sort();
-              return JSON.stringify(isolamentosPacienteIds) === JSON.stringify(isolamentosOutroIds);
-            });
-
-            if (!todosComMesmosIsolamentos) return false;
-          }
+          // Todos ocupantes devem ter exatamente o mesmo conjunto de isolamentos do paciente
+          const matchTodos = ocupantesDoQuarto.every((p) => normalizarIsolamentos(p.isolamentos) === isolamentosPacienteKey);
+          if (!matchTodos) return false;
         }
       }
+      // Leito avulso: não há restrição de sexo; isolamento sempre compatível
 
       return true;
     });
+
+    return compativeis;
   }, [dados, paciente]);
 
   // Agrupar leitos por setor

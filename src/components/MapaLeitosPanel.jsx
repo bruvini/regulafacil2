@@ -608,7 +608,7 @@ const MapaLeitosPanel = () => {
         status: 'Higienização',
         historico: arrayUnion({
           status: 'Higienização',
-          timestamp: serverTimestamp()
+          timestamp: new Date()
         })
       });
       
