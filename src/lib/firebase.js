@@ -1,7 +1,34 @@
 // Firebase configuration and initialization
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, doc, addDoc, setDoc, deleteDoc, updateDoc, onSnapshot, query, getDocs, serverTimestamp, arrayUnion, deleteField, where, orderBy, limit } from 'firebase/firestore';
-import { getAuth, createUserWithEmailAndPassword, deleteUser, signInWithEmailAndPassword } from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  addDoc, 
+  setDoc, 
+  deleteDoc, 
+  updateDoc, 
+  onSnapshot, 
+  query, 
+  getDocs, 
+  getDoc,
+  serverTimestamp, 
+  arrayUnion, 
+  deleteField, 
+  where, 
+  orderBy, 
+  limit,
+  increment
+} from 'firebase/firestore';
+import { 
+  getAuth, 
+  createUserWithEmailAndPassword, 
+  deleteUser, 
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  updatePassword
+} from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBvgWppRYjPIP22U9-vu-J2dwrhJ2Klvpc",
@@ -51,13 +78,18 @@ export {
   onSnapshot, 
   query, 
   getDocs,
+  getDoc,
   serverTimestamp,
   arrayUnion,
   deleteField,
   where,
   orderBy,
   limit,
+  increment,
   createUserWithEmailAndPassword,
   deleteUser,
-  signInWithEmailAndPassword
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  updatePassword
 };
