@@ -8,12 +8,21 @@ import {
   getSetoresCollection, 
   getLeitosCollection,
   getPacientesCollection,
+  getInfeccoesCollection,
   onSnapshot
 } from '@/lib/firebase';
+import RegularPacienteModal from '@/components/modals/RegularPacienteModal';
+import ConfirmarRegulacaoModal from '@/components/modals/ConfirmarRegulacaoModal';
 
 const AguardandoRegulacaoPanel = () => {
   const [setores, setSetores] = useState([]);
   const [pacientes, setPacientes] = useState([]);
+  const [leitos, setLeitos] = useState([]);
+  const [infeccoes, setInfeccoes] = useState([]);
+  const [modalRegularAberto, setModalRegularAberto] = useState(false);
+  const [modalConfirmarAberto, setModalConfirmarAberto] = useState(false);
+  const [pacienteSelecionado, setPacienteSelecionado] = useState(null);
+  const [leitoSelecionado, setLeitoSelecionado] = useState(null);
 
   useEffect(() => {
     const unsubscribeSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
@@ -29,12 +38,32 @@ const AguardandoRegulacaoPanel = () => {
         id: doc.id,
         ...doc.data()
       }));
-      setPacientes(pacientesData);
+      // Filtrar pacientes que não estão em regulação ativa
+      const pacientesSemRegulacao = pacientesData.filter(p => !p.regulacaoAtiva);
+      setPacientes(pacientesSemRegulacao);
+    });
+
+    const unsubscribeLeitos = onSnapshot(getLeitosCollection(), (snapshot) => {
+      const leitosData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setLeitos(leitosData);
+    });
+
+    const unsubscribeInfeccoes = onSnapshot(getInfeccoesCollection(), (snapshot) => {
+      const infeccoesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setInfeccoes(infeccoesData);
     });
 
     return () => {
       unsubscribeSetores();
       unsubscribePacientes();
+      unsubscribeLeitos();
+      unsubscribeInfeccoes();
     };
   }, []);
 
@@ -140,6 +169,44 @@ const AguardandoRegulacaoPanel = () => {
     return acc;
   }, {});
 
+  // Handlers para os modais
+  const handleIniciarRegulacao = (paciente) => {
+    setPacienteSelecionado(paciente);
+    setModalRegularAberto(true);
+  };
+
+  const handleLeitoSelecionado = (leitoDestino) => {
+    // Buscar o leito atual do paciente
+    const leitoOrigem = leitos.find(l => l.id === pacienteSelecionado.leitoId);
+    
+    if (!leitoOrigem) {
+      console.error('Leito de origem não encontrado');
+      return;
+    }
+
+    // Buscar dados do setor de origem
+    const setorOrigem = setores.find(s => s.id === leitoOrigem.setorId);
+    const leitoOrigemCompleto = {
+      ...leitoOrigem,
+      siglaSetor: setorOrigem?.siglaSetor || setorOrigem?.nomeSetor,
+      nomeSetor: setorOrigem?.nomeSetor
+    };
+
+    setLeitoSelecionado({
+      origem: leitoOrigemCompleto,
+      destino: leitoDestino
+    });
+    
+    setModalConfirmarAberto(true);
+  };
+
+  const fecharModais = () => {
+    setModalRegularAberto(false);
+    setModalConfirmarAberto(false);
+    setPacienteSelecionado(null);
+    setLeitoSelecionado(null);
+  };
+
   const PacienteCard = ({ paciente, setor }) => {
     const idade = calcularIdade(paciente.dataNascimento);
     const sexoSigla = paciente.sexo === 'MASCULINO' ? 'M' : 'F';
@@ -179,7 +246,10 @@ const AguardandoRegulacaoPanel = () => {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button className="p-1.5 hover:bg-muted rounded-md transition-colors">
+                  <button 
+                    className="p-1.5 hover:bg-muted rounded-md transition-colors"
+                    onClick={() => handleIniciarRegulacao(paciente)}
+                  >
                     <ArrowRightCircle className="h-4 w-4 text-primary" />
                   </button>
                 </TooltipTrigger>
@@ -250,6 +320,25 @@ const AguardandoRegulacaoPanel = () => {
           ))}
         </div>
       </CardContent>
+
+      {/* Modais */}
+      <RegularPacienteModal
+        isOpen={modalRegularAberto}
+        onClose={fecharModais}
+        paciente={pacienteSelecionado}
+        onLeitoSelecionado={handleLeitoSelecionado}
+      />
+      
+      {leitoSelecionado && (
+        <ConfirmarRegulacaoModal
+          isOpen={modalConfirmarAberto}
+          onClose={fecharModais}
+          paciente={pacienteSelecionado}
+          leitoOrigem={leitoSelecionado.origem}
+          leitoDestino={leitoSelecionado.destino}
+          infeccoes={infeccoes}
+        />
+      )}
     </Card>
   );
 };

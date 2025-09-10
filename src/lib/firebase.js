@@ -18,7 +18,8 @@ import {
   where, 
   orderBy, 
   limit,
-  increment
+  increment,
+  writeBatch
 } from 'firebase/firestore';
 import { 
   getAuth, 
@@ -86,6 +87,7 @@ export {
   orderBy,
   limit,
   increment,
+  writeBatch,
   createUserWithEmailAndPassword,
   deleteUser,
   signInWithEmailAndPassword,
