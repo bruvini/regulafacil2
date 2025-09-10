@@ -174,9 +174,7 @@ const AguardandoRegulacaoPanel = () => {
 
   const fecharModais = () => {
     setModalRegularAberto(false);
-    setModalConfirmarAberto(false);
     setPacienteSelecionado(null);
-    setLeitoSelecionado(null);
   };
 
   const PacienteCard = ({ paciente, setor }) => {

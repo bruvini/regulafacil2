@@ -218,12 +218,12 @@ const LeitoSelectionStep = ({
                     <Badge 
                       variant="outline"
                       className={
-                        leito.statusLeito === 'Vago' 
+                        (leito.statusLeito || leito.status) === 'Vago' 
                           ? 'bg-green-500 text-white border-green-500' 
                           : 'bg-yellow-500 text-white border-yellow-500'
                       }
                     >
-                      {leito.statusLeito}
+                      {leito.statusLeito || leito.status}
                     </Badge>
                   </div>
                 ))}

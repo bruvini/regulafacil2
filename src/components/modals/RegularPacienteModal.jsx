@@ -6,6 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { ArrowLeft } from "lucide-react";
 import { 
   getLeitosCollection,
   getQuartosCollection,
@@ -92,6 +93,11 @@ const RegularPacienteModal = ({ isOpen, onClose, paciente, modo = 'enfermaria', 
     setModalStep('confirmacao');
   };
 
+  const handleVoltarSelecao = () => {
+    setModalStep('selecao');
+    setLeitoSelecionado(null);
+  };
+
   const getLeitoOrigem = () => {
     if (!paciente || !dados.leitos || !dados.setores) return null;
     
@@ -148,15 +154,41 @@ const RegularPacienteModal = ({ isOpen, onClose, paciente, modo = 'enfermaria', 
       </Dialog>
 
       {/* Modal de Confirmação */}
-      {leitoSelecionado && paciente && (
-        <ConfirmarRegulacaoModal
-          isOpen={modalStep === 'confirmacao'}
-          onClose={handleRegulacaoConcluida}
-          paciente={paciente}
-          leitoOrigem={getLeitoOrigem()}
-          leitoDestino={leitoSelecionado}
-          infeccoes={infeccoes}
-        />
+      {leitoSelecionado && paciente && modalStep === 'confirmacao' && (
+        <Dialog 
+          open={true} 
+          onOpenChange={() => {}}
+        >
+          <DialogContent 
+            className="max-w-lg"
+            onInteractOutside={(e) => e.preventDefault()}
+            onEscapeKeyDown={(e) => e.preventDefault()}
+          >
+            <DialogHeader>
+              <DialogTitle className="text-lg flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleVoltarSelecao}
+                  className="p-1 h-8 w-8"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+                Confirmar Regulação
+              </DialogTitle>
+            </DialogHeader>
+
+            <ConfirmarRegulacaoModal
+              isOpen={true}
+              onClose={handleRegulacaoConcluida}
+              paciente={paciente}
+              leitoOrigem={getLeitoOrigem()}
+              leitoDestino={leitoSelecionado}
+              infeccoes={infeccoes}
+              showAsContent={true}
+            />
+          </DialogContent>
+        </Dialog>
       )}
     </>
   );

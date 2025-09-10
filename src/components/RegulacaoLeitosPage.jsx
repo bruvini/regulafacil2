@@ -20,6 +20,7 @@ import ImportarPacientesMVModal from './ImportarPacientesMVModal';
 import AguardandoRegulacaoPanel from './AguardandoRegulacaoPanel';
 import FilaEsperaUTIPanel from './FilaEsperaUTIPanel';
 import TransferenciaExternaPanel from './TransferenciaExternaPanel';
+import RegulacoesEmAndamentoPanel from './RegulacoesEmAndamentoPanel';
 const RegulacaoLeitosPage = () => {
   const [showImportModal, setShowImportModal] = useState(false);
 
@@ -111,35 +112,18 @@ const RegulacaoLeitosPage = () => {
 
       {/* Seção 3: Painel Principal de Regulação */}
       <section>
-        <div className="grid grid-cols-1 gap-6">
-          {/* Painel de Pacientes Aguardando Regulação - OCUPA TODA A LARGURA */}
-          <div className="col-span-full">
-            <AguardandoRegulacaoPanel />
-          </div>
+        <div className="space-y-6">
+          {/* Painel de Pacientes Aguardando Regulação */}
+          <AguardandoRegulacaoPanel />
 
           {/* Linha: Fila UTI + Transferência Externa */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 col-span-full">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <FilaEsperaUTIPanel />
             <TransferenciaExternaPanel />
           </div>
 
           {/* Outros Cards em Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {/* Card 2: Regulações em Andamento */}
-            <Card className="shadow-card card-interactive">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Loader className="h-5 w-5 text-orange-600" />
-                  Regulações em Andamento
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  Os dados serão carregados e exibidos aqui.
-                </p>
-              </CardContent>
-            </Card>
-
             {/* Card 5: Marcação Cirúrgica */}
             <Card className="shadow-card card-interactive">
               <CardHeader>
@@ -169,21 +153,10 @@ const RegulacaoLeitosPage = () => {
                 </p>
               </CardContent>
             </Card>
-
-            {/* Card 7: Espaço para Futuro Uso */}
-            <Card className="shadow-card border-dashed border-muted-foreground/30 bg-muted/20">
-              <CardHeader>
-                <CardTitle className="text-lg text-muted-foreground">
-                  Painel Futuro
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground/70 text-sm">
-                  Espaço reservado para futuras funcionalidades.
-                </p>
-              </CardContent>
-            </Card>
           </div>
+
+          {/* Painel de Regulações em Andamento - ÚLTIMO ITEM */}
+          <RegulacoesEmAndamentoPanel />
         </div>
       </section>
 

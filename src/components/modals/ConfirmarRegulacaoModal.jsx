@@ -1,16 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Copy, Check } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import {
   writeBatch,
@@ -26,10 +19,10 @@ const ConfirmarRegulacaoModal = ({
   paciente, 
   leitoOrigem, 
   leitoDestino, 
-  infeccoes = []
+  infeccoes = [],
+  showAsContent = false 
 }) => {
   const [observacoes, setObservacoes] = useState('');
-  const [copiado, setCopiado] = useState(false);
   const [processando, setProcessando] = useState(false);
 
   // Gerar mensagem formatada para WhatsApp
@@ -74,10 +67,10 @@ const ConfirmarRegulacaoModal = ({
   const copiarMensagem = async () => {
     try {
       await navigator.clipboard.writeText(mensagemWhatsApp);
-      setCopiado(true);
-      setTimeout(() => setCopiado(false), 2000);
+      return true;
     } catch (error) {
       console.error('Erro ao copiar mensagem:', error);
+      return false;
     }
   };
 
@@ -133,7 +126,7 @@ const ConfirmarRegulacaoModal = ({
       await batch.commit();
 
       // Copiar mensagem para área de transferência
-      await copiarMensagem();
+      const copiou = await copiarMensagem();
 
       // Log de auditoria
       await logAction(
@@ -144,7 +137,7 @@ const ConfirmarRegulacaoModal = ({
       // Mostrar toast de sucesso
       toast({
         title: "Regulação confirmada!",
-        description: "Mensagem copiada para a área de transferência.",
+        description: copiou ? "Mensagem copiada para a área de transferência." : "Regulação concluída com sucesso.",
       });
 
       // Fechar modal
@@ -164,9 +157,65 @@ const ConfirmarRegulacaoModal = ({
 
   if (!paciente || !leitoOrigem || !leitoDestino) return null;
 
+  if (showAsContent) {
+    return (
+      <div className="space-y-4">
+        {/* Pré-visualização da mensagem */}
+        <div>
+          <label className="text-sm font-medium mb-2 block">
+            Mensagem para WhatsApp:
+          </label>
+          <Card className="p-4 bg-muted/50">
+            <pre className="text-sm whitespace-pre-wrap font-mono">
+              {mensagemWhatsApp}
+            </pre>
+          </Card>
+        </div>
+
+        {/* Campo de observações */}
+        <div>
+          <label className="text-sm font-medium mb-2 block">
+            Observações NIR (opcional):
+          </label>
+          <Textarea
+            placeholder="Adicionar observações opcionais..."
+            value={observacoes}
+            onChange={(e) => setObservacoes(e.target.value)}
+            className="min-h-[80px]"
+          />
+        </div>
+
+        {/* Botão de ação */}
+        <div className="flex justify-end gap-2 pt-4 border-t">
+          <Button 
+            variant="outline" 
+            onClick={onClose}
+            disabled={processando}
+          >
+            Cancelar
+          </Button>
+          <Button 
+            onClick={concluirRegulacao}
+            disabled={processando}
+            className="bg-primary hover:bg-primary/90"
+          >
+            {processando ? 'Processando...' : 'Concluir Regulação'}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+    <Dialog 
+      open={isOpen} 
+      onOpenChange={(open) => !open && !processando && onClose()}
+    >
+      <DialogContent 
+        className="max-w-lg"
+        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle className="text-lg">
             Confirmar Regulação
@@ -184,24 +233,6 @@ const ConfirmarRegulacaoModal = ({
                 <pre className="text-sm whitespace-pre-wrap font-mono">
                   {mensagemWhatsApp}
                 </pre>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={copiarMensagem}
-                  className="absolute top-2 right-2"
-                >
-                  {copiado ? (
-                    <>
-                      <Check className="h-3 w-3 mr-1" />
-                      Copiado
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-3 w-3 mr-1" />
-                      Copiar
-                    </>
-                  )}
-                </Button>
               </div>
             </Card>
           </div>
