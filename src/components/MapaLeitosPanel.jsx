@@ -164,6 +164,15 @@ const LeitoCard = ({
   };
 
   const getCardStyle = () => {
+    // Verificar se o leito está em regulação
+    if (leito.regulacaoEmAndamento) {
+      if (leito.regulacaoEmAndamento.tipo === 'ORIGEM') {
+        return "bg-orange-50 border-4 border-orange-500 hover:shadow-lg transition-all shadow-lg";
+      } else if (leito.regulacaoEmAndamento.tipo === 'DESTINO') {
+        return "bg-purple-50 border-4 border-purple-500 hover:shadow-lg transition-all shadow-lg";
+      }
+    }
+
     switch (leito.status) {
       case 'Ocupado':
         const genderBorder = leito.paciente?.sexo === 'M' ? 'border-blue-500' : 
@@ -181,6 +190,11 @@ const LeitoCard = ({
   };
 
   const getBadgeStyle = () => {
+    // Verificar se o leito está em regulação - DESTINO (Reservado)
+    if (leito.regulacaoEmAndamento?.tipo === 'DESTINO') {
+      return "bg-purple-100 text-purple-800 border-purple-200";
+    }
+
     switch (leito.status) {
       case 'Ocupado':
         return "bg-red-100 text-red-800 border-red-200";
@@ -348,7 +362,7 @@ const LeitoCard = ({
                 </Badge>
               )}
               <Badge className={getBadgeStyle()}>
-                {leito.status}
+                {leito.regulacaoEmAndamento?.tipo === 'DESTINO' ? 'RESERVADO' : leito.status}
               </Badge>
               {leito.status === 'Higienização' && leito.higienizacaoPrioritaria && (
                 <Badge variant="destructive" className="text-xs flex items-center gap-1">
@@ -374,8 +388,59 @@ const LeitoCard = ({
         {/* Conteúdo do card */}
         <div className="space-y-3">
 
-          {/* Informações do paciente para leitos ocupados */}
-          {leito.status === 'Ocupado' && leito.paciente && (
+          {/* Leito de ORIGEM em regulação */}
+          {leito.regulacaoEmAndamento?.tipo === 'ORIGEM' && leito.status === 'Ocupado' && leito.paciente && (
+            <div className="space-y-2">
+              <div>
+                <p className="font-medium text-sm text-gray-900">
+                  {leito.paciente.nomePaciente}
+                </p>
+                <div className="flex items-center gap-2 text-xs text-gray-600">
+                  <span>{calcularIdade(leito.paciente.dataNascimento)} anos</span>
+                  {leito.paciente.especialidade && (
+                    <>
+                      <span>•</span>
+                      <span>{leito.paciente.especialidade}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+              
+              {/* Badge especial para regulação */}
+              <div className="bg-orange-100 p-2 rounded border border-orange-300">
+                <div className="text-xs font-semibold text-orange-800">
+                  REGULADO PARA: {leito.regulacaoEmAndamento.leitoParceiroCodigo}
+                </div>
+              </div>
+              
+              {renderStatusBadges()}
+            </div>
+          )}
+
+          {/* Leito de DESTINO em regulação (Reservado) */}
+          {leito.regulacaoEmAndamento?.tipo === 'DESTINO' && (
+            <div className="space-y-2">
+              <div>
+                <p className="font-medium text-sm text-gray-900">
+                  {leito.regulacaoEmAndamento.pacienteNome}
+                </p>
+                <div className="text-xs text-gray-600">
+                  <span className="font-medium">Vindo de: </span>
+                  <span>{leito.regulacaoEmAndamento.leitoParceiroCodigo}</span>
+                </div>
+              </div>
+              
+              <div className="text-xs text-purple-700">
+                Regulação iniciada {formatDistanceToNow(
+                  leito.regulacaoEmAndamento.iniciadoEm?.toDate?.() || new Date(leito.regulacaoEmAndamento.iniciadoEm), 
+                  { addSuffix: true, locale: ptBR }
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Informações do paciente para leitos ocupados normais */}
+          {leito.status === 'Ocupado' && leito.paciente && !leito.regulacaoEmAndamento && (
             <div className="space-y-2">
               <div>
                 <p className="font-medium text-sm text-gray-900">
@@ -402,9 +467,12 @@ const LeitoCard = ({
             </div>
           )}
 
-          <div className="text-xs text-muted-foreground">
-            {getTempoNoStatus()}
-          </div>
+          {/* Tempo no status apenas para leitos não em regulação */}
+          {!leito.regulacaoEmAndamento && (
+            <div className="text-xs text-muted-foreground">
+              {getTempoNoStatus()}
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
