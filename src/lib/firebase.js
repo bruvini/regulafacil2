@@ -1,6 +1,6 @@
 // Firebase configuration and initialization
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, doc, addDoc, setDoc, deleteDoc, updateDoc, onSnapshot, query, getDocs, serverTimestamp, arrayUnion, deleteField, orderBy, limit } from 'firebase/firestore';
+import { getFirestore, collection, doc, addDoc, setDoc, deleteDoc, updateDoc, onSnapshot, query, getDocs, serverTimestamp, arrayUnion, deleteField, where, orderBy, limit } from 'firebase/firestore';
 import { getAuth, createUserWithEmailAndPassword, deleteUser, signInWithEmailAndPassword } from 'firebase/auth';
 
 const firebaseConfig = {
@@ -54,6 +54,7 @@ export {
   serverTimestamp,
   arrayUnion,
   deleteField,
+  where,
   orderBy,
   limit,
   createUserWithEmailAndPassword,

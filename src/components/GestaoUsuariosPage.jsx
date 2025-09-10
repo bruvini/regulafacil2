@@ -186,7 +186,7 @@ const ModalUsuario = ({ isOpen, onClose, modo, usuario, onSave }) => {
         });
       } else if (modo === 'editar') {
         // Atualizar no Firestore
-        const docRef = doc(db, getUsuariosCollection()._path, usuario.id);
+        const docRef = doc(getUsuariosCollection(), usuario.id);
         await setDoc(docRef, dadosUsuario, { merge: true });
 
         await logAction('Gestão de Usuários', `Usuário editado: ${dadosUsuario.nomeCompleto} (${dadosUsuario.emailInstitucional})`);
@@ -394,7 +394,7 @@ const GestaoUsuariosPage = () => {
       }
 
       // Excluir do Firestore
-      const docRef = doc(db, getUsuariosCollection()._path, usuario.id);
+      const docRef = doc(getUsuariosCollection(), usuario.id);
       await deleteDoc(docRef);
 
       await logAction('Gestão de Usuários', `Usuário excluído: ${usuario.nomeCompleto} (${usuario.emailInstitucional})`);
