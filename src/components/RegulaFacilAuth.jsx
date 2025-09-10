@@ -59,11 +59,9 @@ import {
 import { cn } from "@/lib/utils";
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useInactivityTimer } from '@/hooks/useInactivityTimer';
 import ProtectedRoute from './ProtectedRoute';
-import LoginPage from './LoginPage';
-import FirstAccessModal from './FirstAccessModal';
 
 // Import existing components
 import GerenciamentoLeitosModal from './GerenciamentoLeitosModal';
@@ -490,26 +488,12 @@ const HomePage = ({ onNavigate, currentUser }) => {
 const RegulaFacilApp = () => {
   const [currentPage, setCurrentPage] = useState("home");
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
-  const [showFirstAccessModal, setShowFirstAccessModal] = useState(false);
   
-  const { currentUser, logout, updateLoginAudit, checkFirstAccess } = useAuth();
+  const { currentUser, logout } = useAuth();
   
   // Hook para logout por inatividade
   useInactivityTimer();
 
-  // Verificar primeiro acesso após login
-  useEffect(() => {
-    if (currentUser && checkFirstAccess()) {
-      setShowFirstAccessModal(true);
-    } else if (currentUser && !checkFirstAccess()) {
-      // Atualizar auditoria para usuários que não são primeiro acesso
-      updateLoginAudit();
-    }
-  }, [currentUser, checkFirstAccess, updateLoginAudit]);
-
-  const handleFirstAccessComplete = () => {
-    setShowFirstAccessModal(false);
-  };
 
   // Navegação entre páginas
   const handleNavigate = (pageId) => {
@@ -642,58 +626,8 @@ const RegulaFacilApp = () => {
         <Footer />
       </div>
 
-      <FirstAccessModal
-        isOpen={showFirstAccessModal}
-        onComplete={handleFirstAccessComplete}
-      />
     </>
   );
 };
 
-// Componente Principal com Autenticação
-const RegulaFacilWithAuth = () => {
-  const { currentUser, loading } = useAuth();
-  const [showLogin, setShowLogin] = useState(false);
-
-  useEffect(() => {
-    if (!loading && !currentUser) {
-      setShowLogin(true);
-    } else if (currentUser) {
-      setShowLogin(false);
-    }
-  }, [currentUser, loading]);
-
-  const handleLoginSuccess = () => {
-    setShowLogin(false);
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-subtle flex items-center justify-center">
-        <Card className="shadow-card">
-          <CardContent className="p-8 text-center">
-            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Carregando...</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (showLogin || !currentUser) {
-    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
-  }
-
-  return <RegulaFacilApp />;
-};
-
-// Componente Final Exportado
-const RegulaFacil = () => {
-  return (
-    <AuthProvider>
-      <RegulaFacilWithAuth />
-    </AuthProvider>
-  );
-};
-
-export default RegulaFacil;
+export default RegulaFacilApp;

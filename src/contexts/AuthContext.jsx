@@ -29,6 +29,7 @@ export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authUser, setAuthUser] = useState(null); // Firebase Auth user
+  const [isFirstLogin, setIsFirstLogin] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -68,31 +69,67 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const result = await signInWithEmailAndPassword(auth, email, password);
-      return { success: true, user: result.user };
+      // Passo 1: Autenticar no Firebase Auth
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const authenticatedUser = userCredential.user;
+
+      // Passo 2: Buscar o perfil do usuário no Firestore
+      const userDocRef = doc(getUsuariosCollection(), authenticatedUser.uid);
+      const userDoc = await getDoc(userDocRef);
+      if (!userDoc.exists()) {
+        throw new Error('Perfil de usuário não encontrado no Firestore.');
+      }
+      const userProfile = userDoc.data();
+
+      // Atualiza estados globais imediatamente
+      setAuthUser(authenticatedUser);
+      setCurrentUser({
+        uid: authenticatedUser.uid,
+        email: authenticatedUser.email,
+        ...userProfile,
+      });
+
+      // Passo 3: Verificar se é o primeiro acesso
+      const firstAccess = userProfile.ultimoAcesso === null || userProfile.ultimoAcesso === undefined;
+      if (firstAccess) {
+        setIsFirstLogin(true);
+        return { success: true, firstLogin: true };
+      }
+
+      // Passo 4: Executar auditoria de login para usuários recorrentes
+      await updateDoc(userDocRef, {
+        qtdAcessos: increment(1),
+        ultimoAcesso: serverTimestamp(),
+      });
+      setIsFirstLogin(false);
+      return { success: true, firstLogin: false };
     } catch (error) {
       let message = 'Erro desconhecido. Tente novamente.';
-      
-      switch (error.code) {
-        case 'auth/user-not-found':
-          message = 'Usuário não encontrado. Por favor, solicite seu cadastro a um administrador do sistema.';
-          break;
-        case 'auth/wrong-password':
-          message = 'Senha não confere. Tente novamente ou utilize a opção abaixo.';
-          break;
-        case 'auth/invalid-email':
-          message = 'E-mail inválido.';
-          break;
-        case 'auth/user-disabled':
-          message = 'Esta conta foi desabilitada. Entre em contato com um administrador.';
-          break;
-        case 'auth/too-many-requests':
-          message = 'Muitas tentativas de login. Tente novamente em alguns minutos.';
-          break;
-        default:
-          message = 'Erro no login. Verifique suas credenciais e tente novamente.';
+
+      if (error?.message?.includes('Perfil de usuário')) {
+        message = error.message;
+      } else {
+        switch (error.code) {
+          case 'auth/user-not-found':
+            message = 'Usuário não encontrado. Por favor, solicite seu cadastro a um administrador do sistema.';
+            break;
+          case 'auth/wrong-password':
+            message = 'Senha não confere. Tente novamente ou utilize a opção abaixo.';
+            break;
+          case 'auth/invalid-email':
+            message = 'E-mail inválido.';
+            break;
+          case 'auth/user-disabled':
+            message = 'Esta conta foi desabilitada. Entre em contato com um administrador.';
+            break;
+          case 'auth/too-many-requests':
+            message = 'Muitas tentativas de login. Tente novamente em alguns minutos.';
+            break;
+          default:
+            message = 'Erro no login. Verifique suas credenciais e tente novamente.';
+        }
       }
-      
+
       return { success: false, error: message };
     }
   };
@@ -171,12 +208,14 @@ export const AuthProvider = ({ children }) => {
     currentUser,
     authUser,
     loading,
+    isFirstLogin,
+    setIsFirstLogin,
     login,
     logout,
     updateUserPassword,
     updateLoginAudit,
     checkFirstAccess,
-    hasPermission
+    hasPermission,
   };
 
   return (
