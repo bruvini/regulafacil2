@@ -1,17 +1,21 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { 
-  auth, 
+  auth,
+  db,
   signInWithEmailAndPassword, 
   signOut,
   onAuthStateChanged,
   updatePassword,
   doc,
-  getDoc,
   updateDoc,
   serverTimestamp,
-  increment
+  increment,
+  collection,
+  query,
+  where,
+  getDocs
 } from '@/lib/firebase';
-import { getUsuariosCollection } from '@/lib/firebase';
+import { USERS_COLLECTION_PATH } from '@/lib/firebase-constants';
 import { logAction } from '@/lib/auditoria';
 import { toast } from '@/components/ui/use-toast';
 
@@ -38,19 +42,22 @@ export const AuthProvider = ({ children }) => {
       if (user) {
         try {
           // Buscar dados do usuário no Firestore
-          const userDocRef = doc(getUsuariosCollection(), user.uid);
-          const userDoc = await getDoc(userDocRef);
-          
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
+          const usersRef = collection(db, USERS_COLLECTION_PATH);
+          const q = query(usersRef, where('uid', '==', user.uid));
+          const snapshot = await getDocs(q);
+
+          if (!snapshot.empty) {
+            const profileDoc = snapshot.docs[0];
+            const userData = profileDoc.data();
             setCurrentUser({
+              id: profileDoc.id,
               uid: user.uid,
               email: user.email,
               ...userData
             });
           } else {
             // Usuário não encontrado no Firestore
-            console.error('Usuário não encontrado no banco de dados');
+            console.error(`Usuário não encontrado no banco de dados para UID: ${user.uid}`);
             setCurrentUser(null);
           }
         } catch (error) {
@@ -73,13 +80,18 @@ export const AuthProvider = ({ children }) => {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const authenticatedUser = userCredential.user;
 
-      // Passo 2: Buscar o perfil do usuário no Firestore
-      const userDocRef = doc(getUsuariosCollection(), authenticatedUser.uid);
-      const userDoc = await getDoc(userDocRef);
-      if (!userDoc.exists()) {
+      // Passo 2: Buscar o perfil do usuário no Firestore USANDO QUERY POR CAMPO 'uid'
+      const usersRef = collection(db, USERS_COLLECTION_PATH);
+      const q = query(usersRef, where('uid', '==', authenticatedUser.uid));
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        console.error(`CRITICAL: Nenhum perfil encontrado no Firestore para o UID: ${authenticatedUser.uid}`);
         throw new Error('Perfil de usuário não encontrado no Firestore.');
       }
-      const userProfile = userDoc.data();
+
+      const userProfileDoc = snapshot.docs[0];
+      const userProfile = { id: userProfileDoc.id, ...userProfileDoc.data() };
 
       // Atualiza estados globais imediatamente
       setAuthUser(authenticatedUser);
@@ -97,7 +109,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       // Passo 4: Executar auditoria de login para usuários recorrentes
-      await updateDoc(userDocRef, {
+      await updateDoc(doc(usersRef, userProfile.id), {
         qtdAcessos: increment(1),
         ultimoAcesso: serverTimestamp(),
       });
@@ -166,9 +178,10 @@ export const AuthProvider = ({ children }) => {
 
   const updateLoginAudit = async () => {
     try {
-      if (!currentUser) return;
+      if (!currentUser || !currentUser.id) return;
       
-      const userDocRef = doc(getUsuariosCollection(), currentUser.uid);
+      const usersRef = collection(db, USERS_COLLECTION_PATH);
+      const userDocRef = doc(usersRef, currentUser.id);
       
       // Atualizar dados de acesso
       await updateDoc(userDocRef, {
