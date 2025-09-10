@@ -224,6 +224,12 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
 
   // Nova função para análise após validação
   const analyzeAndProceed = async (pacientesArquivo, setores, leitos, pacientes) => {
+  // MOVER DECLARAÇÃO DO pacientesArquivoMap PARA O INÍCIO (FIX DO BUG)
+  const pacientesArquivoMap = {};
+  pacientesArquivo.forEach(p => {
+    pacientesArquivoMap[p.nomePaciente] = p;
+  });
+
   // PARTE 1: SINCRONIZAÇÃO INTELIGENTE DE REGULAÇÕES
   const regulacoesProcessadas = {
     concluidas: [],
@@ -298,12 +304,6 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
   const altas = [];
   const movimentacoes = [];
   const internacoes = [];
-
-    // Pacientes no arquivo (por nome)
-    const pacientesArquivoMap = {};
-    pacientesArquivo.forEach(p => {
-      pacientesArquivoMap[p.nomePaciente] = p;
-    });
 
     // Regra 1: Altas (no Firestore mas não no arquivo)
     Object.keys(pacientes).forEach(nomePaciente => {

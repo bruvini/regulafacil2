@@ -109,24 +109,7 @@ const MapaLeitosPage = () => {
               onClick={() => setShowGerenciamentoModal(true)}
             >
               <Settings2 className="h-4 w-4" />
-              Gerenciar Leitos
-            </Button>
-            
-            <Button 
-              variant="outline" 
-              className="flex items-center gap-2"
-              onClick={() => setShowImportModal(true)}
-            >
-              <Upload className="h-4 w-4" />
-              Importar MV
-            </Button>
-            
-            <Button 
-              variant="outline" 
-              className="flex items-center gap-2"
-            >
-              <Download className="h-4 w-4" />
-              Exportar Dados
+              Gerenciar leitos
             </Button>
             
             <Button 
@@ -134,7 +117,31 @@ const MapaLeitosPage = () => {
               className="flex items-center gap-2"
             >
               <Activity className="h-4 w-4" />
-              Relatórios
+              Relatório de isolamentos
+            </Button>
+            
+            <Button 
+              variant="outline" 
+              className="flex items-center gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Relatório de leitos vagos
+            </Button>
+            
+            <Button 
+              variant="outline" 
+              className="flex items-center gap-2"
+            >
+              <Activity className="h-4 w-4" />
+              Boletim diário
+            </Button>
+
+            <Button 
+              variant="outline" 
+              className="flex items-center gap-2"
+            >
+              <Settings2 className="h-4 w-4" />
+              Reservas de leitos
             </Button>
           </div>
         </CardContent>
@@ -148,7 +155,7 @@ const MapaLeitosPage = () => {
             Mapa de Leitos
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="p-6">
           <MapaLeitosPanel />
         </CardContent>
       </Card>
