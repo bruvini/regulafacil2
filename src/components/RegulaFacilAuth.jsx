@@ -71,6 +71,7 @@ import IndicadoresGeraisPanel from './IndicadoresGeraisPanel';
 import GestaoIsolamentosPage from './GestaoIsolamentosPage';
 import CentralHigienizacaoPage from './CentralHigienizacaoPage';
 import GestaoUsuariosPage from './GestaoUsuariosPage';
+import GestaoEstrategicaPage from '../pages/GestaoEstrategicaPage';
 
 // Dados de navegação
 const navigationItems = [
@@ -561,7 +562,7 @@ const RegulaFacilApp = () => {
                 </div>
               );
             case "gestao-estrategica":
-              return <IndicadoresGeraisPanel />;
+              return <GestaoEstrategicaPage />;
             case "auditoria":
               return (
                 <div className="p-8 text-center">
