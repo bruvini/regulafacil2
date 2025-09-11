@@ -46,7 +46,7 @@ const IndicadoresGeraisPanel = ({ setores, leitos, pacientes }) => {
   };
 
   const indicadores = useMemo(() => {
-    if (!setores.length || !leitos.length) {
+    if (!setores?.length || !leitos?.length || !pacientes) {
       return {
         taxaOcupacao: 0,
         nivelPCP: { nivel: 'Rotina Diária', cor: 'blue', ocupados: 0 },
@@ -62,21 +62,21 @@ const IndicadoresGeraisPanel = ({ setores, leitos, pacientes }) => {
 
     // Criar mapa de pacientes por leitoId
     const pacientesPorLeito = {};
-    pacientes.forEach(paciente => {
+    (pacientes || []).forEach(paciente => {
       if (paciente.leitoId) {
         pacientesPorLeito[paciente.leitoId] = paciente;
       }
     });
 
     // Adicionar informações de paciente aos leitos e definir status
-    const leitosComPacientes = leitos.map(leito => ({
+    const leitosComPacientes = (leitos || []).map(leito => ({
       ...leito,
       paciente: pacientesPorLeito[leito.id] || null,
       status: pacientesPorLeito[leito.id] ? 'Ocupado' : leito.status
     }));
 
     // 1. Taxa de Ocupação Geral
-    const setoresOperacionais = setores.filter(setor => 
+    const setoresOperacionais = (setores || []).filter(setor => 
       ['UTI', 'Enfermaria', 'Emergência'].includes(setor.tipoSetor)
     );
     const leitosOperacionais = leitosComPacientes.filter(leito =>
@@ -93,7 +93,7 @@ const IndicadoresGeraisPanel = ({ setores, leitos, pacientes }) => {
       : 0;
 
     // 2. Status PCP
-    const setoresPCP = setores.filter(setor => 
+    const setoresPCP = (setores || []).filter(setor => 
       setor.nomeSetor === 'PS DECISÃO CIRURGICA' || setor.nomeSetor === 'PS DECISÃO CLINICA'
     );
     const leitosPCP = leitosComPacientes.filter(leito =>
@@ -116,7 +116,7 @@ const IndicadoresGeraisPanel = ({ setores, leitos, pacientes }) => {
     const leitosHigienizacao = leitosComPacientes.filter(leito => leito.status === 'Higienização');
     const leitosVagos = leitosComPacientes.filter(leito => leito.status === 'Vago');
     
-    const setoresRegulaveis = setores.filter(setor => 
+    const setoresRegulaveis = (setores || []).filter(setor => 
       ['Enfermaria', 'UTI'].includes(setor.tipoSetor)
     );
     const leitosVagosRegulaveis = leitosVagos.filter(leito =>
