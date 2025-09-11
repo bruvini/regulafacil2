@@ -54,7 +54,8 @@ import {
   AUDIT_COLLECTION_PATH,
   PATIENTS_COLLECTION_PATH,
   INFECTIONS_COLLECTION_PATH,
-  USERS_COLLECTION_PATH
+  USERS_COLLECTION_PATH,
+  RESERVAS_EXTERNAS_COLLECTION_PATH
 } from './firebase-constants';
 
 // Collection references using centralized constants
@@ -65,6 +66,7 @@ export const getAuditoriaCollection = () => collection(db, AUDIT_COLLECTION_PATH
 export const getPacientesCollection = () => collection(db, PATIENTS_COLLECTION_PATH);
 export const getInfeccoesCollection = () => collection(db, INFECTIONS_COLLECTION_PATH);
 export const getUsuariosCollection = () => collection(db, USERS_COLLECTION_PATH);
+export const getReservasExternasCollection = () => collection(db, RESERVAS_EXTERNAS_COLLECTION_PATH);
 
 // Export Firebase utilities
 export { 

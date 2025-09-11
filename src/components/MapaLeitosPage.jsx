@@ -24,6 +24,7 @@ import GerenciamentoLeitosModal from './GerenciamentoLeitosModal';
 import ImportarPacientesMVModal from './ImportarPacientesMVModal';
 import RelatorioIsolamentosModal from './modals/RelatorioIsolamentosModal';
 import RelatorioLeitosVagosModal from './modals/RelatorioLeitosVagosModal';
+import ReservasLeitosModal from './modals/ReservasLeitosModal';
 
 const MapaLeitosPage = () => {
   const [dados, setDados] = useState({
@@ -38,6 +39,7 @@ const MapaLeitosPage = () => {
   const [showImportModal, setShowImportModal] = useState(false);
   const [showRelatorioIsolamentosModal, setShowRelatorioIsolamentosModal] = useState(false);
   const [showRelatorioLeitosVagosModal, setShowRelatorioLeitosVagosModal] = useState(false);
+  const [showReservasLeitosModal, setShowReservasLeitosModal] = useState(false);
 
   // Carregar dados do Firestore
   useEffect(() => {
@@ -145,6 +147,7 @@ const MapaLeitosPage = () => {
             <Button 
               variant="outline" 
               className="flex items-center gap-2"
+              onClick={() => setShowReservasLeitosModal(true)}
             >
               <Settings2 className="h-4 w-4" />
               Reservas de leitos
@@ -185,6 +188,11 @@ const MapaLeitosPage = () => {
       <RelatorioLeitosVagosModal 
         isOpen={showRelatorioLeitosVagosModal} 
         onClose={() => setShowRelatorioLeitosVagosModal(false)} 
+      />
+
+      <ReservasLeitosModal 
+        isOpen={showReservasLeitosModal} 
+        onClose={() => setShowReservasLeitosModal(false)} 
       />
     </div>
   );
