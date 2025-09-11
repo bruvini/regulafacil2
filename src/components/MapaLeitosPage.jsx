@@ -22,6 +22,7 @@ import IndicadoresGeraisPanel from './IndicadoresGeraisPanel';
 import MapaLeitosPanel from './MapaLeitosPanel';
 import GerenciamentoLeitosModal from './GerenciamentoLeitosModal';
 import ImportarPacientesMVModal from './ImportarPacientesMVModal';
+import RelatorioIsolamentosModal from './modals/RelatorioIsolamentosModal';
 
 const MapaLeitosPage = () => {
   const [dados, setDados] = useState({
@@ -34,6 +35,7 @@ const MapaLeitosPage = () => {
 
   const [showGerenciamentoModal, setShowGerenciamentoModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showRelatorioIsolamentosModal, setShowRelatorioIsolamentosModal] = useState(false);
 
   // Carregar dados do Firestore
   useEffect(() => {
@@ -115,6 +117,7 @@ const MapaLeitosPage = () => {
             <Button 
               variant="outline" 
               className="flex items-center gap-2"
+              onClick={() => setShowRelatorioIsolamentosModal(true)}
             >
               <Activity className="h-4 w-4" />
               Relatório de isolamentos
@@ -169,6 +172,11 @@ const MapaLeitosPage = () => {
       <ImportarPacientesMVModal 
         isOpen={showImportModal} 
         onClose={() => setShowImportModal(false)} 
+      />
+      
+      <RelatorioIsolamentosModal 
+        isOpen={showRelatorioIsolamentosModal} 
+        onClose={() => setShowRelatorioIsolamentosModal(false)} 
       />
     </div>
   );
