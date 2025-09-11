@@ -23,6 +23,7 @@ import MapaLeitosPanel from './MapaLeitosPanel';
 import GerenciamentoLeitosModal from './GerenciamentoLeitosModal';
 import ImportarPacientesMVModal from './ImportarPacientesMVModal';
 import RelatorioIsolamentosModal from './modals/RelatorioIsolamentosModal';
+import RelatorioLeitosVagosModal from './modals/RelatorioLeitosVagosModal';
 
 const MapaLeitosPage = () => {
   const [dados, setDados] = useState({
@@ -36,6 +37,7 @@ const MapaLeitosPage = () => {
   const [showGerenciamentoModal, setShowGerenciamentoModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showRelatorioIsolamentosModal, setShowRelatorioIsolamentosModal] = useState(false);
+  const [showRelatorioLeitosVagosModal, setShowRelatorioLeitosVagosModal] = useState(false);
 
   // Carregar dados do Firestore
   useEffect(() => {
@@ -126,6 +128,7 @@ const MapaLeitosPage = () => {
             <Button 
               variant="outline" 
               className="flex items-center gap-2"
+              onClick={() => setShowRelatorioLeitosVagosModal(true)}
             >
               <Download className="h-4 w-4" />
               Relatório de leitos vagos
@@ -177,6 +180,11 @@ const MapaLeitosPage = () => {
       <RelatorioIsolamentosModal 
         isOpen={showRelatorioIsolamentosModal} 
         onClose={() => setShowRelatorioIsolamentosModal(false)} 
+      />
+      
+      <RelatorioLeitosVagosModal 
+        isOpen={showRelatorioLeitosVagosModal} 
+        onClose={() => setShowRelatorioLeitosVagosModal(false)} 
       />
     </div>
   );

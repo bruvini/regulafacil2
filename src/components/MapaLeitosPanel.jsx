@@ -467,6 +467,19 @@ const LeitoCard = ({
             </div>
           )}
 
+          {/* Informações de coorte para leitos vagos */}
+          {leito.status === 'Vago' && leito.contextoQuarto && (
+            <div className="text-xs bg-blue-50 border border-blue-200 p-2 rounded">
+              <strong className="text-blue-800">Coorte:</strong> 
+              <span className="text-blue-700">
+                {' '}Apenas {leito.contextoQuarto.sexo}
+                {leito.contextoQuarto.isolamentos.length > 0 && 
+                  ` com ${leito.contextoQuarto.isolamentos.map(i => i.sigla).join(', ')}`
+                }
+              </span>
+            </div>
+          )}
+
           {/* Tempo no status apenas para leitos não em regulação */}
           {!leito.regulacaoEmAndamento && (
             <div className="text-xs text-muted-foreground">
@@ -1074,11 +1087,52 @@ const MapaLeitosPanel = () => {
       // Buscar leitos deste setor e vincular pacientes
       const leitosDoSetor = leitos
         .filter(leito => leito.setorId === setor.id)
-        .map(leito => ({
-          ...leito,
-          paciente: pacientesPorLeito[leito.id] || null,
-          status: pacientesPorLeito[leito.id] ? 'Ocupado' : leito.status
-        }))
+        .map(leito => {
+          const leitoComPaciente = {
+            ...leito,
+            paciente: pacientesPorLeito[leito.id] || null,
+            status: pacientesPorLeito[leito.id] ? 'Ocupado' : leito.status,
+            contextoQuarto: null // Default
+          };
+
+          // LÓGICA DE COORTE - Enriquecimento do contextoQuarto
+          if (leito.quartoId && !pacientesPorLeito[leito.id]) { // Só para leitos vazios com quarto
+            // Encontrar quarto
+            const quartoDoLeito = quartos.find(q => q.id === leito.quartoId);
+            if (quartoDoLeito && quartoDoLeito.leitosIds) {
+              // Encontrar companheiros de quarto ocupados
+              const companheirosDeQuarto = quartoDoLeito.leitosIds
+                .map(leitoId => pacientesPorLeito[leitoId])
+                .filter(paciente => paciente != null);
+
+              if (companheirosDeQuarto.length > 0) {
+                // Usar dados do primeiro companheiro para determinar contexto
+                const primeiroCompanheiro = companheirosDeQuarto[0];
+                const sexoQuarto = primeiroCompanheiro.sexo === 'M' ? 'Masculino' : 'Feminino';
+                
+                // Coletar isolamentos únicos
+                const isolamentosQuarto = [];
+                if (primeiroCompanheiro.isolamentos && Array.isArray(primeiroCompanheiro.isolamentos)) {
+                  primeiroCompanheiro.isolamentos.forEach(isolamento => {
+                    if (isolamento.siglaInfeccao && !isolamentosQuarto.find(i => i.sigla === isolamento.siglaInfeccao)) {
+                      isolamentosQuarto.push({
+                        sigla: isolamento.siglaInfeccao,
+                        nome: isolamento.nomeInfeccao || isolamento.siglaInfeccao
+                      });
+                    }
+                  });
+                }
+
+                leitoComPaciente.contextoQuarto = {
+                  sexo: sexoQuarto,
+                  isolamentos: isolamentosQuarto.sort((a, b) => a.sigla.localeCompare(b.sigla))
+                };
+              }
+            }
+          }
+
+          return leitoComPaciente;
+        })
         .sort((a, b) => {
           const codeA = a.codigoLeito || '';
           const codeB = b.codigoLeito || '';
