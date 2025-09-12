@@ -485,7 +485,7 @@ const HomePage = ({ onNavigate, currentUser }) => {
   );
 };
 
-// Componente Principal Interno (após autenticação)
+// Componente Principal Interno (após autenticação) - Updated
 const RegulaFacilApp = () => {
   const [currentPage, setCurrentPage] = useState("home");
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
