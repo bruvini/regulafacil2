@@ -2,111 +2,289 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Copy, TrendingUp, Users, Activity } from 'lucide-react';
-import { toast } from 'sonner';
-import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
+import { Copy, Users, Target, TrendingUp, Info, Activity, Calendar, Clock, Building } from 'lucide-react';
+import { 
+  ResponsiveContainer, 
+  PieChart, 
+  Pie, 
+  Cell, 
+  Tooltip as RechartsTooltip, 
   Legend,
-  Tooltip as RechartsTooltip
+  ComposedChart,
+  Bar,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  BarChart
 } from 'recharts';
-import { getPacientesCollection, onSnapshot } from '@/lib/firebase';
-import { format } from 'date-fns';
+import { onSnapshot } from '@/lib/firebase';
+import { getPacientesCollection, getHistoricoOcupacoesCollection, getLeitosCollection, getSetoresCollection } from '@/lib/firebase';
+import { useToast } from '@/hooks/use-toast';
+import { Skeleton } from "@/components/ui/skeleton";
+import { format, getDay, getHours, startOfYear, endOfYear, eachMonthOfInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { calcularPermanenciaAtual, calcularPermanenciaEmDias } from '@/lib/historicoOcupacoes';
+import IndicadorInfoModal from '@/components/modals/IndicadorInfoModal';
 
-// Mapeamento de especialidades para agrupamento
+// Mapeamento de especialidades para agregação
 const mapeamentoEspecialidades = {
   'INTENSIVISTA': 'CLINICA GERAL',
   'RESIDENTE': 'CLINICA GERAL',
   'BUCOMAXILO': 'ODONTOLOGIA C.TRAUM.B.M.F.'
 };
 
-// Cores para o gráfico de pizza
-const COLORS = [
-  '#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', 
-  '#82CA9D', '#FFC658', '#FF7C7C', '#8DD1E1', '#D084D0',
-  '#87CEEB', '#DDA0DD', '#98FB98', '#F0E68C', '#FFB6C1'
-];
+// Cores para os gráficos
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF7C7C'];
+
+const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+const FAIXAS_HORARIO = ['0-6h', '6-12h', '12-18h', '18-24h'];
 
 const MapaLeitosDashboard = () => {
+  // Estados para dados
   const [pacientes, setPacientes] = useState([]);
+  const [historicoOcupacoes, setHistoricoOcupacoes] = useState([]);
+  const [leitos, setLeitos] = useState([]);
+  const [setores, setSetores] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // Estado para modal de informações
+  const [modalIndicador, setModalIndicador] = useState({ open: false, indicadorId: null });
+  
+  const { toast } = useToast();
 
-  // Buscar dados dos pacientes
+  // Buscar dados em tempo real
   useEffect(() => {
-    const unsubscribe = onSnapshot(getPacientesCollection(), (snapshot) => {
+    const unsubscribePacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
       const pacientesData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
       setPacientes(pacientesData);
+    });
+
+    const unsubscribeHistorico = onSnapshot(getHistoricoOcupacoesCollection(), (snapshot) => {
+      const historicoData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setHistoricoOcupacoes(historicoData);
+    });
+
+    const unsubscribeLeitos = onSnapshot(getLeitosCollection(), (snapshot) => {
+      const leitosData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setLeitos(leitosData);
+    });
+
+    const unsubscribeSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
+      const setoresData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setSetores(setoresData);
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribePacientes();
+      unsubscribeHistorico();
+      unsubscribeLeitos();
+      unsubscribeSetores();
+    };
   }, []);
 
-  // Processar dados para o gráfico
-  const dadosGrafico = useMemo(() => {
-    if (!pacientes.length) return [];
+  // Dados processados para o gráfico de pizza (especialidades)
+  const dadosEspecialidades = useMemo(() => {
+    if (!pacientes?.length) return [];
 
-    // Contar especialidades com mapeamento
-    const contagemEspecialidades = {};
-
+    const contagem = {};
+    
     pacientes.forEach(paciente => {
       if (paciente.especialidade) {
-        // Aplicar mapeamento se existir
         const especialidadeFinal = mapeamentoEspecialidades[paciente.especialidade] || paciente.especialidade;
-        
-        contagemEspecialidades[especialidadeFinal] = (contagemEspecialidades[especialidadeFinal] || 0) + 1;
+        contagem[especialidadeFinal] = (contagem[especialidadeFinal] || 0) + 1;
       }
     });
 
-    // Converter para array e ordenar por valor decrescente
-    const dadosArray = Object.entries(contagemEspecialidades).map(([name, value]) => ({
-      name,
-      value
-    }));
+    return Object.entries(contagem)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [pacientes]);
 
-    return dadosArray.sort((a, b) => b.value - a.value);
+  // Dados para Média de Permanência e Giro de Leitos por Mês
+  const dadosGiroPermanencia = useMemo(() => {
+    if (!historicoOcupacoes?.length || !leitos?.length) return [];
+
+    const anoAtual = new Date().getFullYear();
+    const meses = eachMonthOfInterval({
+      start: startOfYear(new Date(anoAtual, 0)),
+      end: endOfYear(new Date(anoAtual, 0))
+    });
+
+    return meses.map(mes => {
+      const mesNome = format(mes, 'MMM', { locale: ptBR });
+      
+      // Histórico do mês
+      const historicoMes = historicoOcupacoes.filter(ocupacao => {
+        if (!ocupacao.dataSaida) return false;
+        const dataSaida = ocupacao.dataSaida.toDate ? ocupacao.dataSaida.toDate() : new Date(ocupacao.dataSaida);
+        return dataSaida.getMonth() === mes.getMonth() && dataSaida.getFullYear() === anoAtual;
+      });
+
+      // Média de permanência
+      const mediaPermanencia = historicoMes.length > 0
+        ? historicoMes.reduce((acc, ocupacao) => {
+            const permanencia = calcularPermanenciaEmDias(ocupacao.dataEntrada, ocupacao.dataSaida);
+            return acc + permanencia;
+          }, 0) / historicoMes.length
+        : 0;
+
+      // Giro de leitos (aproximado)
+      const totalLeitos = leitos.filter(l => l.status !== 'BLOQUEADO').length || 1;
+      const giroLeitos = historicoMes.length / totalLeitos;
+
+      return {
+        mes: mesNome,
+        mediaPermanencia: Math.round(mediaPermanencia * 10) / 10,
+        giroLeitos: Math.round(giroLeitos * 100) / 100
+      };
+    });
+  }, [historicoOcupacoes, leitos]);
+
+  // Taxa de Ocupação por Tipo de Setor
+  const dadosTaxaOcupacao = useMemo(() => {
+    if (!leitos?.length || !setores?.length) return [];
+
+    const tiposSetor = ['Enfermaria', 'UTI', 'Emergência'];
+    
+    return tiposSetor.map(tipo => {
+      const setoresTipo = setores.filter(s => s.tipoSetor === tipo);
+      const leitosTipo = leitos.filter(l => 
+        setoresTipo.some(s => s.id === l.setorId)
+      );
+
+      const totalLeitos = leitosTipo.length;
+      const leitosDisponiveis = leitosTipo.filter(l => l.status !== 'BLOQUEADO').length;
+      const leitosOcupados = leitosTipo.filter(l => 
+        l.status === 'OCUPADO' || l.status === 'REGULADO' || l.status === 'RESERVADO'
+      ).length;
+
+      const taxaOcupacao = leitosDisponiveis > 0 
+        ? Math.round((leitosOcupados / leitosDisponiveis) * 100)
+        : 0;
+
+      return {
+        tipo,
+        taxaOcupacao,
+        ocupados: leitosOcupados,
+        disponiveis: leitosDisponiveis,
+        total: totalLeitos
+      };
+    });
+  }, [leitos, setores]);
+
+  // Dados para Heatmap de Internações por Horário
+  const dadosHeatmap = useMemo(() => {
+    const todasInternacoes = [
+      ...pacientes.map(p => p.dataInternacao).filter(Boolean),
+      ...historicoOcupacoes.map(h => h.dataEntrada).filter(Boolean)
+    ];
+
+    const matriz = {};
+    
+    DIAS_SEMANA.forEach(dia => {
+      matriz[dia] = {};
+      FAIXAS_HORARIO.forEach(faixa => {
+        matriz[dia][faixa] = 0;
+      });
+    });
+
+    todasInternacoes.forEach(data => {
+      const dataObj = data.toDate ? data.toDate() : new Date(data);
+      const diaSemana = DIAS_SEMANA[getDay(dataObj)];
+      const hora = getHours(dataObj);
+      
+      let faixaHorario;
+      if (hora >= 0 && hora < 6) faixaHorario = '0-6h';
+      else if (hora >= 6 && hora < 12) faixaHorario = '6-12h';
+      else if (hora >= 12 && hora < 18) faixaHorario = '12-18h';
+      else faixaHorario = '18-24h';
+
+      matriz[diaSemana][faixaHorario]++;
+    });
+
+    return matriz;
+  }, [pacientes, historicoOcupacoes]);
+
+  // Permanência por Especialidade (Pacientes Atuais)
+  const dadosPermanenciaEspecialidade = useMemo(() => {
+    if (!pacientes?.length) return [];
+
+    const grupos = {};
+    
+    pacientes.forEach(paciente => {
+      if (paciente.especialidade && paciente.dataInternacao) {
+        const especialidadeFinal = mapeamentoEspecialidades[paciente.especialidade] || paciente.especialidade;
+        
+        if (!grupos[especialidadeFinal]) {
+          grupos[especialidadeFinal] = { total: 0, count: 0 };
+        }
+        
+        const permanencia = calcularPermanenciaAtual(paciente.dataInternacao);
+        grupos[especialidadeFinal].total += permanencia;
+        grupos[especialidadeFinal].count++;
+      }
+    });
+
+    return Object.entries(grupos)
+      .map(([especialidade, dados]) => ({
+        especialidade,
+        mediaPermanencia: Math.round((dados.total / dados.count) * 10) / 10,
+        pacientes: dados.count
+      }))
+      .sort((a, b) => b.mediaPermanencia - a.mediaPermanencia)
+      .slice(0, 8); // Top 8
   }, [pacientes]);
 
   // Função para copiar relatório
-  const copiarRelatorio = async () => {
-    const dataHoraAtual = format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
+  const copiarRelatorio = () => {
+    const agora = new Date();
+    const dataHora = format(agora, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
     
-    let relatorio = `INTERNAÇÕES POR ESPECIALIDADE\n${dataHoraAtual}\n\n`;
+    let relatorio = `MAPA DE LEITOS - INDICADORES ESTRATÉGICOS\n${dataHora}\n\n`;
     
-    dadosGrafico.forEach(item => {
+    relatorio += `INTERNAÇÕES POR ESPECIALIDADE:\n`;
+    dadosEspecialidades.forEach(item => {
       relatorio += `${item.name}: ${item.value}\n`;
     });
-
-    try {
-      await navigator.clipboard.writeText(relatorio);
-      toast.success('Relatório copiado para a área de transferência!');
-    } catch (err) {
-      toast.error('Erro ao copiar relatório');
-      console.error('Erro ao copiar:', err);
-    }
+    
+    relatorio += `\nTAXA DE OCUPAÇÃO POR SETOR:\n`;
+    dadosTaxaOcupacao.forEach(item => {
+      relatorio += `${item.tipo}: ${item.taxaOcupacao}% (${item.ocupados}/${item.disponiveis})\n`;
+    });
+    
+    navigator.clipboard.writeText(relatorio);
+    toast({
+      title: "Relatório copiado!",
+      description: "Relatório foi copiado para a área de transferência.",
+    });
   };
 
-  // Tooltip customizado
-  const CustomTooltip = ({ active, payload, label }) => {
+  // Tooltip customizado para pizza
+  const CustomTooltip = ({ active, payload }) => {
     if (active && payload && payload.length) {
       const data = payload[0];
-      const total = dadosGrafico.reduce((sum, item) => sum + item.value, 0);
-      const porcentagem = total > 0 ? ((data.value / total) * 100).toFixed(1) : 0;
+      const total = dadosEspecialidades.reduce((sum, item) => sum + item.value, 0);
+      const percentage = ((data.value / total) * 100).toFixed(1);
       
       return (
-        <div className="bg-background border border-border rounded-lg p-3 shadow-lg">
-          <p className="font-medium text-foreground">{data.payload.name}</p>
-          <p className="text-sm text-muted-foreground">
-            Internações: <span className="font-medium text-foreground">{data.value}</span>
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Porcentagem: <span className="font-medium text-foreground">{porcentagem}%</span>
+        <div className="bg-white p-3 border rounded shadow-lg">
+          <p className="font-medium">{data.payload.name}</p>
+          <p className="text-sm text-gray-600">
+            {data.value} pacientes ({percentage}%)
           </p>
         </div>
       );
@@ -114,9 +292,8 @@ const MapaLeitosDashboard = () => {
     return null;
   };
 
-  // Label customizado para as fatias
   const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-    if (percent < 0.05) return null; // Não mostrar label para fatias menores que 5%
+    if (percent < 0.05) return null; // Não mostrar labels muito pequenos
     
     const RADIAN = Math.PI / 180;
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
@@ -130,55 +307,71 @@ const MapaLeitosDashboard = () => {
         fill="white" 
         textAnchor={x > cx ? 'start' : 'end'} 
         dominantBaseline="central"
-        className="text-xs font-medium"
+        fontSize="12"
+        fontWeight="bold"
       >
         {`${(percent * 100).toFixed(0)}%`}
       </text>
     );
   };
 
-  const totalInternacoes = dadosGrafico.reduce((sum, item) => sum + item.value, 0);
-  const especialidadesUnicas = dadosGrafico.length;
-
   if (loading) {
     return (
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <Card className="xl:col-span-2">
-          <CardContent className="p-8 text-center">
-            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Carregando dados...</p>
-          </CardContent>
-        </Card>
-        <div className="space-y-4">
-          {[1, 2, 3].map(i => (
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
             <Card key={i}>
               <CardContent className="p-6">
-                <div className="animate-pulse">
-                  <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
-                  <div className="h-8 bg-muted rounded w-1/2"></div>
-                </div>
+                <Skeleton className="h-16 w-full" />
               </CardContent>
             </Card>
           ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Skeleton className="h-96" />
+          <Skeleton className="h-96" />
         </div>
       </div>
     );
   }
 
+  const totalInternacoes = dadosEspecialidades.reduce((sum, item) => sum + item.value, 0);
+  const especialidadesUnicas = dadosEspecialidades.length;
+  const topEspecialidade = dadosEspecialidades[0];
+
   return (
-    <div className="space-y-6">
-      {/* Header com estatísticas gerais */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-100 rounded-lg">
+            <Activity className="h-6 w-6 text-blue-600" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Mapa de Leitos</h1>
+            <p className="text-muted-foreground">Indicadores estratégicos de ocupação e permanência</p>
+          </div>
+        </div>
+        <Button onClick={copiarRelatorio} variant="outline" className="flex items-center gap-2">
+          <Copy className="h-4 w-4" />
+          Copiar Relatório
+        </Button>
+      </div>
+
+      {/* Cards de Resumo */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Total de Internações</p>
-                <p className="text-3xl font-bold text-foreground">{totalInternacoes}</p>
+                <p className="text-sm text-muted-foreground">Internações Ativas</p>
+                <p className="text-2xl font-bold text-foreground">{totalInternacoes}</p>
               </div>
-              <div className="p-3 bg-blue-100 rounded-full">
-                <Users className="h-6 w-6 text-blue-600" />
-              </div>
+              <Users className="h-8 w-8 text-blue-600" />
             </div>
           </CardContent>
         </Card>
@@ -187,12 +380,10 @@ const MapaLeitosDashboard = () => {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Especialidades Ativas</p>
-                <p className="text-3xl font-bold text-foreground">{especialidadesUnicas}</p>
+                <p className="text-sm text-muted-foreground">Especialidades Ativas</p>
+                <p className="text-2xl font-bold text-foreground">{especialidadesUnicas}</p>
               </div>
-              <div className="p-3 bg-green-100 rounded-full">
-                <Activity className="h-6 w-6 text-green-600" />
-              </div>
+              <Target className="h-8 w-8 text-green-600" />
             </div>
           </CardContent>
         </Card>
@@ -201,116 +392,247 @@ const MapaLeitosDashboard = () => {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Especialidade Principal</p>
-                <p className="text-lg font-bold text-foreground">
-                  {dadosGrafico.length > 0 ? dadosGrafico[0].name : 'N/A'}
+                <p className="text-sm text-muted-foreground">Especialidade Principal</p>
+                <p className="text-lg font-bold text-foreground">{topEspecialidade?.name || 'N/A'}</p>
+                <p className="text-sm text-muted-foreground">{topEspecialidade?.value || 0} pacientes</p>
+              </div>
+              <TrendingUp className="h-8 w-8 text-orange-600" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Taxa Média Ocupação</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {dadosTaxaOcupacao.length > 0 
+                    ? Math.round(dadosTaxaOcupacao.reduce((acc, item) => acc + item.taxaOcupacao, 0) / dadosTaxaOcupacao.length)
+                    : 0}%
                 </p>
-                <Badge variant="secondary" className="mt-1">
-                  {dadosGrafico.length > 0 ? `${dadosGrafico[0].value} internações` : '0 internações'}
-                </Badge>
               </div>
-              <div className="p-3 bg-purple-100 rounded-full">
-                <TrendingUp className="h-6 w-6 text-purple-600" />
-              </div>
+              <Building className="h-8 w-8 text-purple-600" />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Gráfico principal e listagem */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Gráfico de Pizza */}
-        <Card className="xl:col-span-2">
-          <CardHeader>
+      {/* Gráficos Principais */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Gráfico de Pizza - Especialidades */}
+        <Card>
+          <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-xl font-bold">Distribuição por Especialidade</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                Distribuição por Especialidade
+              </CardTitle>
               <Button 
-                variant="outline" 
+                variant="ghost" 
                 size="sm"
-                onClick={copiarRelatorio}
-                className="gap-2"
+                onClick={() => setModalIndicador({ open: true, indicadorId: 'distribuicaoEspecialidades' })}
               >
-                <Copy className="h-4 w-4" />
-                Copiar Relatório
+                <Info className="h-4 w-4" />
               </Button>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="h-96">
-              {dadosGrafico.length > 0 ? (
+            {dadosEspecialidades.length > 0 ? (
+              <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={dadosGrafico}
+                      data={dadosEspecialidades}
                       cx="50%"
                       cy="50%"
                       labelLine={false}
                       label={renderCustomizedLabel}
-                      outerRadius={120}
+                      outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"
                     >
-                      {dadosGrafico.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={COLORS[index % COLORS.length]} 
-                        />
+                      {dadosEspecialidades.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
                     <RechartsTooltip content={<CustomTooltip />} />
-                    <Legend 
-                      verticalAlign="bottom" 
-                      height={36}
-                      formatter={(value, entry) => (
-                        <span className="text-sm text-foreground">{value}</span>
-                      )}
-                    />
+                    <Legend />
                   </PieChart>
                 </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">Nenhuma internação encontrada</p>
-                  </div>
-                </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="h-80 flex items-center justify-center text-muted-foreground">
+                Nenhum dado disponível
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Ranking das especialidades */}
+        {/* Gráfico Combinado - Permanência e Giro */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold">Ranking de Especialidades</CardTitle>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                Permanência e Giro por Mês
+              </CardTitle>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => setModalIndicador({ open: true, indicadorId: 'mediaPermanencia' })}
+              >
+                <Info className="h-4 w-4" />
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3 max-h-80 overflow-y-auto">
-              {dadosGrafico.map((item, index) => {
-                const porcentagem = totalInternacoes > 0 ? ((item.value / totalInternacoes) * 100).toFixed(1) : 0;
-                
-                return (
-                  <div key={item.name} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div 
-                        className="w-4 h-4 rounded-full"
-                        style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                      />
-                      <div>
-                        <p className="font-medium text-sm text-foreground">{item.name}</p>
-                        <p className="text-xs text-muted-foreground">{porcentagem}% do total</p>
-                      </div>
-                    </div>
-                    <Badge variant="secondary">
-                      {item.value}
-                    </Badge>
-                  </div>
-                );
-              })}
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={dadosGiroPermanencia}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="mes" />
+                  <YAxis yAxisId="left" />
+                  <YAxis yAxisId="right" orientation="right" />
+                  <RechartsTooltip />
+                  <Legend />
+                  <Bar yAxisId="left" dataKey="mediaPermanencia" fill="#8884d8" name="Média Permanência (dias)" />
+                  <Line yAxisId="right" type="monotone" dataKey="giroLeitos" stroke="#82ca9d" name="Giro de Leitos" />
+                </ComposedChart>
+              </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Segunda Linha de Gráficos */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Taxa de Ocupação por Setor */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle>Taxa de Ocupação por Tipo de Setor</CardTitle>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => setModalIndicador({ open: true, indicadorId: 'taxaOcupacao' })}
+              >
+                <Info className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={dadosTaxaOcupacao}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="tipo" />
+                  <YAxis />
+                  <RechartsTooltip 
+                    formatter={(value, name) => [`${value}%`, 'Taxa de Ocupação']}
+                    labelFormatter={(label) => `Setor: ${label}`}
+                  />
+                  <Bar dataKey="taxaOcupacao" fill="#ffc658" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Permanência por Especialidade */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle>Permanência Atual por Especialidade</CardTitle>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => setModalIndicador({ open: true, indicadorId: 'permanenciaAtualEspecialidade' })}
+              >
+                <Info className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {dadosPermanenciaEspecialidade.map((item, index) => (
+                <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                  <span className="text-sm font-medium truncate flex-1">{item.especialidade}</span>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline">{item.pacientes} pac.</Badge>
+                    <Badge variant="secondary">{item.mediaPermanencia} dias</Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Heatmap de Internações */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              Padrão de Internações por Dia e Horário
+            </CardTitle>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => setModalIndicador({ open: true, indicadorId: 'internacoesHorario' })}
+            >
+              <Info className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <div className="grid grid-cols-8 gap-2 min-w-[600px]">
+              <div></div> {/* Espaço vazio para header */}
+              {DIAS_SEMANA.map(dia => (
+                <div key={dia} className="text-center text-xs font-medium p-2 bg-muted rounded">
+                  {dia}
+                </div>
+              ))}
+              
+              {FAIXAS_HORARIO.map(faixa => (
+                <React.Fragment key={faixa}>
+                  <div className="text-xs font-medium p-2 bg-muted rounded flex items-center">
+                    <Clock className="h-3 w-3 mr-1" />
+                    {faixa}
+                  </div>
+                  {DIAS_SEMANA.map(dia => {
+                    const valor = dadosHeatmap[dia]?.[faixa] || 0;
+                    const maxValor = Math.max(...DIAS_SEMANA.flatMap(d => 
+                      FAIXAS_HORARIO.map(f => dadosHeatmap[d]?.[f] || 0)
+                    ));
+                    const intensidade = maxValor > 0 ? valor / maxValor : 0;
+                    
+                    return (
+                      <div 
+                        key={`${dia}-${faixa}`} 
+                        className="p-2 rounded text-center text-xs font-medium"
+                        style={{
+                          backgroundColor: `hsl(210, 100%, ${100 - (intensidade * 30)}%)`,
+                          color: intensidade > 0.5 ? 'white' : 'black'
+                        }}
+                      >
+                        {valor}
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Modal de Informações do Indicador */}
+      <IndicadorInfoModal 
+        isOpen={modalIndicador.open}
+        onClose={() => setModalIndicador({ open: false, indicadorId: null })}
+        indicadorId={modalIndicador.indicadorId}
+      />
     </div>
   );
 };

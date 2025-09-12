@@ -11,6 +11,8 @@ export const AUDIT_COLLECTION_PATH = `${BASE_PATH}/auditoria`;
 export const INFECTIONS_COLLECTION_PATH = `${BASE_PATH}/infeccoes`;
 export const USERS_COLLECTION_PATH = `${BASE_PATH}/usuarios`;
 export const RESERVAS_EXTERNAS_COLLECTION_PATH = `${BASE_PATH}/reservasExternas`;
+export const HISTORICO_OCUPACOES_COLLECTION_PATH = `${BASE_PATH}/historicoOcupacoes`;
+export const DEFINICOES_INDICADORES_COLLECTION_PATH = `${BASE_PATH}/definicoesIndicadores`;
 
 // Export individual path components for flexibility
 export const APP_ID = 'regulafacil';
