@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,8 +60,8 @@ import { cn } from "@/lib/utils";
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '@/contexts/AuthContext';
-import { useInactivityTimer } from '@/hooks/useInactivityTimer';
 import ProtectedRoute from './ProtectedRoute';
+import { toast } from '@/components/ui/use-toast';
 
 // Import existing components
 import GerenciamentoLeitosModal from './GerenciamentoLeitosModal';
@@ -492,8 +492,55 @@ const RegulaFacilApp = () => {
   
   const { currentUser, logout } = useAuth();
   
-  // Hook para logout por inatividade
-  useInactivityTimer();
+  // Controle de inatividade (logout automático)
+  const timeoutRef = useRef(null);
+  const warningTimeoutRef = useRef(null);
+  const warningShownRef = useRef(false);
+
+  const resetTimer = useCallback(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (warningTimeoutRef.current) clearTimeout(warningTimeoutRef.current);
+    warningShownRef.current = false;
+
+    if (!currentUser) return;
+
+    // Aviso 5 minutos antes (config: 120 min inatividade, aviso aos 115)
+    warningTimeoutRef.current = setTimeout(() => {
+      if (!warningShownRef.current) {
+        warningShownRef.current = true;
+        toast({
+          title: 'Sessão expirando',
+          description: 'Sua sessão expirará em 5 minutos por inatividade. Mova o mouse ou clique para continuar.',
+          duration: 10000,
+        });
+      }
+    }, 115 * 60 * 1000);
+
+    // Logout após 120 minutos
+    timeoutRef.current = setTimeout(() => {
+      toast({ title: 'Sessão expirada', description: 'Você foi deslogado por inatividade.', variant: 'destructive' });
+      logout();
+    }, 120 * 60 * 1000);
+  }, [currentUser, logout]);
+
+  const handleActivity = useCallback(() => {
+    resetTimer();
+  }, [resetTimer]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+    events.forEach((event) => document.addEventListener(event, handleActivity, { passive: true }));
+
+    resetTimer();
+
+    return () => {
+      events.forEach((event) => document.removeEventListener(event, handleActivity));
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (warningTimeoutRef.current) clearTimeout(warningTimeoutRef.current);
+    };
+  }, [currentUser, handleActivity, resetTimer]);
 
 
   // Navegação entre páginas
