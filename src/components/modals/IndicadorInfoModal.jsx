@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Info, TrendingUp, TrendingDown, Target, Calculator, Database, Filter, Exclude } from "lucide-react";
+import { Info, TrendingUp, TrendingDown, Target, Calculator, Database, Filter, X } from "lucide-react";
 import { getDefinicoesIndicadoresCollection, onSnapshot } from "@/lib/firebase";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -171,7 +171,7 @@ const IndicadorInfoModal = ({ isOpen, onClose, indicadorId }) => {
                   {indicador.criteriosExclusao && (
                     <div>
                       <p className="text-sm font-medium text-red-700 mb-1 flex items-center gap-1">
-                        <Exclude className="h-3 w-3" />
+                        <X className="h-3 w-3" />
                         Exclusão:
                       </p>
                       <p className="text-sm text-muted-foreground">
