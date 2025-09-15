@@ -34,7 +34,7 @@ const RegulacoesEmAndamentoPanel = () => {
   // Estados dos modais
   const [modalConcluir, setModalConcluir] = useState({ open: false, paciente: null });
   const [modalCancelar, setModalCancelar] = useState({ open: false, paciente: null });
-  const [modalAlterar, setModalAlterar] = useState({ open: false, paciente: null });
+  const [modalAlterar, setModalAlterar] = useState({ isOpen: false, regulacao: null });
   
   const { toast } = useToast();
   const { currentUser } = useAuth();
@@ -402,7 +402,7 @@ const RegulacoesEmAndamentoPanel = () => {
                 <TooltipTrigger asChild>
                   <button 
                     className="p-1.5 hover:bg-muted rounded-md transition-colors"
-                    onClick={() => setModalAlterar({ open: true, paciente })}
+                    onClick={() => setModalAlterar({ isOpen: true, regulacao: paciente })}
                   >
                     <Pencil className="h-4 w-4 text-blue-600" />
                   </button>
@@ -484,6 +484,14 @@ const RegulacoesEmAndamentoPanel = () => {
           leitoOrigem={obterInfoLeito(modalCancelar.paciente.regulacaoAtiva.leitoOrigemId)}
           leitoDestino={obterInfoLeito(modalCancelar.paciente.regulacaoAtiva.leitoDestinoId)}
           onConfirmar={handleCancelarRegulacao}
+        />
+      )}
+
+      {modalAlterar.regulacao && (
+        <AlterarRegulacaoModal
+          isOpen={modalAlterar.isOpen}
+          onClose={() => setModalAlterar({ isOpen: false, regulacao: null })}
+          regulacao={modalAlterar.regulacao}
         />
       )}
     </>

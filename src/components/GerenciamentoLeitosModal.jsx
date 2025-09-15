@@ -21,6 +21,7 @@ import {
   getQuartosCollection,
   addDoc,
   setDoc,
+  updateDoc,
   deleteDoc,
   doc,
   onSnapshot,
@@ -65,7 +66,9 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
 
   const [activeTab, setActiveTab] = useState('setores');
   const [editingSetor, setEditingSetor] = useState(null);
-  const [editingQuarto, setEditingQuarto] = useState(null);
+  const [itemEmEdicao, setItemEmEdicao] = useState(null);
+  const isEditandoLeito = itemEmEdicao?.tipo === 'leito';
+  const isEditandoQuarto = itemEmEdicao?.tipo === 'quarto';
   const { toast } = useToast();
 
   // Listeners em tempo real
@@ -101,6 +104,15 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
       unsubscribeLeitos();
       unsubscribeQuartos();
     };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setItemEmEdicao(null);
+      setLeitoForm({ setorId: '', codigosLeitos: '', isPCP: false });
+      setQuartoForm({ id: '', nomeQuarto: '', setorId: '', leitosIds: [] });
+      setLeitoSearch('');
+    }
   }, [isOpen]);
 
   // Funções CRUD para Setores
@@ -180,39 +192,88 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
       return;
     }
 
+    const codigos = leitoForm.codigosLeitos
+      .split(',')
+      .map(code => code.trim())
+      .filter(code => code);
+
+    if (isEditandoLeito && codigos.length !== 1) {
+      toast({
+        title: "Edição inválida",
+        description: "Informe apenas um código de leito ao editar.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setLoading(prev => ({ ...prev, leitos: true }));
 
     try {
-      const codigos = leitoForm.codigosLeitos.split(',').map(code => code.trim()).filter(code => code);
-      
-      for (const codigo of codigos) {
-        const leitoData = {
+      if (isEditandoLeito) {
+        const codigo = codigos[0] || '';
+        const leitoRef = doc(getLeitosCollection(), itemEmEdicao.id);
+        await updateDoc(leitoRef, {
           codigoLeito: codigo,
           setorId: leitoForm.setorId,
-          status: "Vago",
-          isPCP: codigos.length === 1 ? leitoForm.isPCP : false,
-          historico: [{ status: 'Vago', timestamp: new Date() }]
-        };
-        await addDoc(getLeitosCollection(), leitoData);
+          isPCP: leitoForm.isPCP
+        });
+
+        toast({ title: "Leito atualizado com sucesso!" });
+        await logAction(
+          'Gerenciamento de Leitos',
+          `Leito '${codigo || itemEmEdicao.codigoLeito}' foi atualizado.`
+        );
+      } else {
+        for (const codigo of codigos) {
+          const leitoData = {
+            codigoLeito: codigo,
+            setorId: leitoForm.setorId,
+            status: "Vago",
+            isPCP: codigos.length === 1 ? leitoForm.isPCP : false,
+            historico: [{ status: 'Vago', timestamp: new Date() }]
+          };
+          await addDoc(getLeitosCollection(), leitoData);
+        }
+
+        const setorNome = setores.find(s => s.id === leitoForm.setorId)?.nomeSetor || leitoForm.setorId;
+        toast({ title: `${codigos.length} leito(s) criado(s) com sucesso!` });
+        await logAction('Gerenciamento de Leitos', `${codigos.length} leito(s) foram criados no setor '${setorNome}'.`);
       }
 
-      const setorNome = setores.find(s => s.id === leitoForm.setorId)?.nomeSetor || leitoForm.setorId;
-      toast({ title: `${codigos.length} leito(s) criado(s) com sucesso!` });
-      await logAction('Gerenciamento de Leitos', `${codigos.length} leito(s) foram criados no setor '${setorNome}'.`);
       setLeitoForm({ setorId: '', codigosLeitos: '', isPCP: false });
+      setItemEmEdicao(null);
     } catch (error) {
-      toast({ 
-        title: "Erro ao salvar leito(s)", 
+      toast({
+        title: "Erro ao salvar leito(s)",
         description: error.message,
-        variant: "destructive" 
+        variant: "destructive"
       });
     } finally {
       setLoading(prev => ({ ...prev, leitos: false }));
     }
   };
 
+  const handleEditLeito = (leito) => {
+    setActiveTab('leitos');
+    setLeitoForm({
+      setorId: leito.setorId || '',
+      codigosLeitos: leito.codigoLeito || '',
+      isPCP: !!leito.isPCP
+    });
+    setItemEmEdicao({ ...leito, tipo: 'leito' });
+  };
+
+  const handleCancelarEdicaoLeito = () => {
+    setItemEmEdicao(null);
+    setLeitoForm({ setorId: '', codigosLeitos: '', isPCP: false });
+  };
+
   const handleDeleteLeito = async (leitoId) => {
     if (!confirm('Tem certeza que deseja excluir este leito?')) return;
+
+    if (isEditandoLeito && itemEmEdicao.id === leitoId) {
+      handleCancelarEdicaoLeito();
+    }
 
     setLoading(prev => ({ ...prev, leitos: true }));
     try {
@@ -252,23 +313,23 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
         leitosIds: quartoForm.leitosIds
       };
 
-      if (editingQuarto) {
-        await setDoc(doc(getQuartosCollection(), editingQuarto), quartoData);
+      if (isEditandoQuarto) {
+        const quartoRef = doc(getQuartosCollection(), itemEmEdicao.id);
+        await updateDoc(quartoRef, quartoData);
         toast({ title: "Quarto atualizado com sucesso!" });
         await logAction('Gerenciamento de Leitos', `Quarto '${quartoData.nomeQuarto}' foi atualizado.`);
-        setEditingQuarto(null);
       } else {
         await addDoc(getQuartosCollection(), quartoData);
         toast({ title: "Quarto criado com sucesso!" });
         await logAction('Gerenciamento de Leitos', `Quarto '${quartoData.nomeQuarto}' foi criado.`);
       }
 
-      setQuartoForm({ id: '', nomeQuarto: '', setorId: '', leitosIds: [] });
+      handleCancelarEdicaoQuarto();
     } catch (error) {
-      toast({ 
-        title: "Erro ao salvar quarto", 
+      toast({
+        title: "Erro ao salvar quarto",
         description: error.message,
-        variant: "destructive" 
+        variant: "destructive"
       });
     } finally {
       setLoading(prev => ({ ...prev, quartos: false }));
@@ -276,17 +337,23 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
   };
 
   const handleEditQuarto = (quarto) => {
+    setActiveTab('quartos');
     setQuartoForm({
       id: quarto.id,
       nomeQuarto: quarto.nomeQuarto,
       setorId: quarto.setorId,
       leitosIds: quarto.leitosIds || []
     });
-    setEditingQuarto(quarto.id);
+    setLeitoSearch('');
+    setItemEmEdicao({ ...quarto, tipo: 'quarto' });
   };
 
   const handleDeleteQuarto = async (quartoId) => {
     if (!confirm('Tem certeza que deseja excluir este quarto?')) return;
+
+    if (isEditandoQuarto && itemEmEdicao.id === quartoId) {
+      handleCancelarEdicaoQuarto();
+    }
 
     setLoading(prev => ({ ...prev, quartos: true }));
     try {
@@ -295,10 +362,10 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
       toast({ title: "Quarto excluído com sucesso!" });
       await logAction('Gerenciamento de Leitos', `Quarto '${quarto?.nomeQuarto || quartoId}' foi excluído.`);
     } catch (error) {
-      toast({ 
-        title: "Erro ao excluir quarto", 
+      toast({
+        title: "Erro ao excluir quarto",
         description: error.message,
-        variant: "destructive" 
+        variant: "destructive"
       });
     } finally {
       setLoading(prev => ({ ...prev, quartos: false }));
@@ -307,9 +374,22 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
 
   // Função para obter leitos disponíveis para quartos
   const getLeitosDisponiveis = (setorId) => {
+    if (!setorId) return [];
     const leitosDoSetor = leitos.filter(leito => leito.setorId === setorId);
-    const leitosEmQuartos = quartos.flatMap(quarto => quarto.leitosIds || []);
+    const quartoEmEdicaoId = isEditandoQuarto ? itemEmEdicao.id : null;
+    const leitosEmQuartos = quartos.flatMap(quarto => {
+      if (quarto.id === quartoEmEdicaoId) {
+        return [];
+      }
+      return quarto.leitosIds || [];
+    });
     return leitosDoSetor.filter(leito => !leitosEmQuartos.includes(leito.id));
+  };
+
+  const handleCancelarEdicaoQuarto = () => {
+    setItemEmEdicao(null);
+    setQuartoForm({ id: '', nomeQuarto: '', setorId: '', leitosIds: [] });
+    setLeitoSearch('');
   };
 
   // Verificar se PCP deve estar habilitado
@@ -475,7 +555,7 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
             <TabsContent value="leitos" className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Novo(s) Leito(s)</CardTitle>
+              <CardTitle>{isEditandoLeito ? 'Editar Leito' : 'Novo(s) Leito(s)'}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <form onSubmit={handleLeitoSubmit} className="space-y-4">
@@ -524,11 +604,26 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
                         }
                       </p>
                     </div>
-                    <Button type="submit" disabled={loading.leitos}>
-                      {loading.leitos && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      <Plus className="mr-2 h-4 w-4" />
-                      Adicionar Leito(s)
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button type="submit" disabled={loading.leitos}>
+                        {loading.leitos && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {isEditandoLeito ? (
+                          <Save className="mr-2 h-4 w-4" />
+                        ) : (
+                          <Plus className="mr-2 h-4 w-4" />
+                        )}
+                        {isEditandoLeito ? 'Salvar Leito' : 'Adicionar Leito(s)'}
+                      </Button>
+                      {isEditandoLeito && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleCancelarEdicaoLeito}
+                        >
+                          Cancelar
+                        </Button>
+                      )}
+                    </div>
                   </form>
                 </CardContent>
               </Card>
@@ -575,14 +670,23 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
                                       <td className="p-2">{leito.status}</td>
                                       <td className="p-2">{leito.isPCP ? 'Sim' : 'Não'}</td>
                                       <td className="p-2">
-                                        <Button
-                                          size="sm"
-                                          variant="destructive"
-                                          onClick={() => handleDeleteLeito(leito.id)}
-                                          disabled={loading.leitos}
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                        </Button>
+                                        <div className="flex gap-2">
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => handleEditLeito(leito)}
+                                          >
+                                            <Edit className="h-4 w-4" />
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="destructive"
+                                            onClick={() => handleDeleteLeito(leito.id)}
+                                            disabled={loading.leitos}
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </Button>
+                                        </div>
                                       </td>
                                     </tr>
                                   ))}
@@ -603,7 +707,7 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
               <Card>
                 <CardHeader>
                   <CardTitle>
-                    {editingQuarto ? 'Editar Quarto' : 'Novo Quarto'}
+                    {isEditandoQuarto ? 'Editar Quarto' : 'Novo Quarto'}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -699,15 +803,11 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
                         <Save className="mr-2 h-4 w-4" />
                         Salvar Quarto
                       </Button>
-                      {editingQuarto && (
-                        <Button 
-                          type="button" 
+                      {isEditandoQuarto && (
+                        <Button
+                          type="button"
                           variant="outline"
-                          onClick={() => {
-                            setEditingQuarto(null);
-                            setQuartoForm({ id: '', nomeQuarto: '', setorId: '', leitosIds: [] });
-                            setLeitoSearch('');
-                          }}
+                          onClick={handleCancelarEdicaoQuarto}
                         >
                           Cancelar
                         </Button>
