@@ -97,6 +97,36 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     });
   };
 
+  const parseDataHoraMV = (dataString) => {
+    if (!dataString || typeof dataString !== 'string') return null;
+
+    const trimmed = dataString.trim();
+    if (!trimmed) return null;
+
+    const [dataPart, timePart] = trimmed.split(' ').filter(Boolean);
+    if (!dataPart) return null;
+
+    const [diaStr, mesStr, anoStr] = dataPart.split('/');
+    const dia = parseInt(diaStr, 10);
+    const mes = parseInt(mesStr, 10);
+    const ano = parseInt(anoStr, 10);
+
+    if (Number.isNaN(dia) || Number.isNaN(mes) || Number.isNaN(ano)) return null;
+
+    let hora = 0;
+    let minuto = 0;
+    let segundo = 0;
+
+    if (timePart && timePart.includes(':')) {
+      const [horaStr, minutoStr, segundoStr] = timePart.split(':');
+      hora = parseInt(horaStr, 10) || 0;
+      minuto = parseInt(minutoStr, 10) || 0;
+      segundo = parseInt(segundoStr, 10) || 0;
+    }
+
+    return new Date(ano, mes - 1, dia, hora, minuto, segundo);
+  };
+
   const loadFirestoreData = async () => {
     const [setoresSnapshot, leitosSnapshot, pacientesSnapshot] = await Promise.all([
       getDocs(getSetoresCollection()),
@@ -387,7 +417,6 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
         batch.update(pacienteRef, {
           leitoId: dadosNovos.leitoId,
           setorId: dadosNovos.setorId,
-          dataInternacao: serverTimestamp(),
           especialidade: dadosNovos.especialidade
         });
         leitosParaAtualizar.add(paciente.leitoId); // Leito antigo
@@ -401,7 +430,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
           nomePaciente: paciente.nomePaciente,
           dataNascimento: paciente.dataNascimento,
           sexo: paciente.sexo,
-          dataInternacao: serverTimestamp(),
+          dataInternacao: parseDataHoraMV(paciente.dataInternacao) || serverTimestamp(),
           especialidade: paciente.especialidade,
           leitoId: paciente.leitoId,
           setorId: paciente.setorId
