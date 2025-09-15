@@ -11,11 +11,12 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { BedDouble, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  updateDoc, 
-  doc, 
+import {
+  updateDoc,
+  doc,
   db,
-  writeBatch
+  writeBatch,
+  arrayUnion
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
 
@@ -24,9 +25,12 @@ const SelecionarLeitoModal = ({ isOpen, onClose, reserva, leitos }) => {
 
   // Filtrar leitos disponíveis
   const leitosDisponiveis = useMemo(() => {
-    return leitos.filter(leito => 
+    return leitos.filter(leito =>
       (leito.status === 'Vago' || leito.status === 'Higienização') &&
-      (leito.tipoSetor === 'Enfermaria' || leito.tipoSetor === 'UTI')
+      (leito.tipoSetor === 'Enfermaria' || leito.tipoSetor === 'UTI') &&
+      !leito.reservaExterna &&
+      !leito.regulacaoReserva &&
+      !leito.regulacaoEmAndamento
     );
   }, [leitos]);
 
@@ -37,7 +41,8 @@ const SelecionarLeitoModal = ({ isOpen, onClose, reserva, leitos }) => {
       // Atualizar reserva com leito selecionado
       const reservaRef = doc(db, 'artifacts/regulafacil/public/data/reservasExternas', reserva.id);
       batch.update(reservaRef, {
-        leitoReservadoId: leito.id
+        leitoReservadoId: leito.id,
+        status: 'Reservado'
       });
 
       // Atualizar leito com informações da reserva
@@ -46,11 +51,25 @@ const SelecionarLeitoModal = ({ isOpen, onClose, reserva, leitos }) => {
         reservaExterna: {
           reservaId: reserva.id,
           pacienteNome: reserva.nomeCompleto,
+          pacienteSexo: reserva.sexo,
+          pacienteDataNascimento: reserva.dataNascimento,
           origem: reserva.origem,
-          detalheOrigem: reserva.origem === 'SISREG' 
+          detalheOrigem: reserva.origem === 'SISREG'
             ? `${reserva.instituicaoOrigem}, ${reserva.cidadeOrigem}`
-            : reserva.especialidadeOncologia
-        }
+            : reserva.especialidadeOncologia,
+          idSolicitacao: reserva.idSolicitacao || null,
+          instituicaoOrigem: reserva.instituicaoOrigem || null,
+          cidadeOrigem: reserva.cidadeOrigem || null,
+          especialidadeOncologia: reserva.especialidadeOncologia || null,
+          telefoneContato: reserva.telefoneContato || null,
+          isolamento: reserva.isolamento || 'NÃO'
+        },
+        status: 'Reservado',
+        historico: arrayUnion({
+          status: 'Reservado',
+          timestamp: new Date(),
+          origem: 'Reserva Externa'
+        })
       });
 
       await batch.commit();

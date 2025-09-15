@@ -15,12 +15,11 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { MessageSquare, Calendar, User, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  updateDoc, 
-  doc, 
-  db, 
-  arrayUnion, 
-  serverTimestamp 
+import {
+  updateDoc,
+  doc,
+  db,
+  arrayUnion
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
 
@@ -30,6 +29,14 @@ const InformacoesReservaModal = ({ isOpen, onClose, reserva }) => {
   const [salvandoObservacao, setSalvandoObservacao] = useState(false);
 
   if (!reserva) return null;
+
+  const statusStyles = {
+    'Aguardando Leito': 'border-blue-200 bg-blue-50 text-blue-700',
+    'Reservado': 'border-sky-200 bg-sky-50 text-sky-700',
+    'Cancelada': 'border-destructive/30 bg-destructive/10 text-destructive',
+    'Internado': 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  };
+  const statusBadgeClass = statusStyles[reserva?.status] || 'border-muted bg-muted/10 text-muted-foreground';
 
   const handleAdicionarObservacao = async () => {
     if (!novaObservacao.trim()) {
@@ -45,7 +52,7 @@ const InformacoesReservaModal = ({ isOpen, onClose, reserva }) => {
     try {
       const observacao = {
         texto: novaObservacao.trim(),
-        data: serverTimestamp(),
+        data: new Date(),
         usuarioNome: 'Usuário do Sistema' // TODO: Pegar do contexto de auth
       };
 
@@ -130,8 +137,8 @@ const InformacoesReservaModal = ({ isOpen, onClose, reserva }) => {
 
                 <div>
                   <Label className="font-semibold">Status</Label>
-                  <Badge variant={reserva.status === 'Ativa' ? 'default' : 'outline'}>
-                    {reserva.status}
+                  <Badge variant="outline" className={statusBadgeClass}>
+                    {reserva.status || 'Não informado'}
                   </Badge>
                 </div>
               </div>

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { 
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -17,16 +17,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { 
-  CalendarIcon, 
-  Info, 
-  X, 
-  BedDouble, 
-  UserCheck, 
-  Clock,
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog';
+import { differenceInHours, format, isValid, parse } from 'date-fns';
+import {
+  CalendarIcon,
+  Info,
+  X,
+  BedDouble,
+  UserCheck,
+  AlertTriangle,
   Plus,
   Trash2
 } from 'lucide-react';
@@ -50,8 +58,8 @@ import { ESPECIALIDADES_MEDICAS, ESPECIALIDADES_ONCOLOGIA } from '@/lib/constant
 // Sub-modais
 import InformacoesReservaModal from './InformacoesReservaModal';
 import SelecionarLeitoModal from './SelecionarLeitoModal';
-import CancelarReservaModal from './CancelarReservaModal';
-import ConfirmarInternacaoModal from './ConfirmarInternacaoModal';
+import CancelarReservaExternaModal from './CancelarReservaExternaModal';
+import ConfirmarInternacaoExternaModal from './ConfirmarInternacaoExternaModal';
 
 const ReservasLeitosModal = ({ isOpen, onClose }) => {
   const { toast } = useToast();
@@ -64,16 +72,17 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
 
   // Estados dos sub-modais
   const [subModals, setSubModals] = useState({
-    informacoes: { open: false, reserva: null },
-    selecionarLeito: { open: false, reserva: null },
-    cancelarReserva: { open: false, reserva: null },
-    confirmarInternacao: { open: false, reserva: null }
+    informacoes: { open: false, reserva: null, leito: null },
+    selecionarLeito: { open: false, reserva: null, leito: null },
+    cancelarReserva: { open: false, reserva: null, leito: null },
+    confirmarInternacao: { open: false, reserva: null, leito: null }
   });
 
   // Estado do formulário de nova reserva
   const [novaReserva, setNovaReserva] = useState({
     nomeCompleto: '',
     dataNascimento: null,
+    dataNascimentoTexto: '',
     sexo: '',
     isolamento: 'NÃO',
     origem: '',
@@ -82,10 +91,18 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
     instituicaoOrigem: '',
     cidadeOrigem: '',
     dataSolicitacao: null,
+    dataSolicitacaoTexto: '',
     // Campos ONCOLOGIA
     especialidadeOncologia: '',
     telefoneContato: '',
-    dataPrevistaInternacao: null
+    dataPrevistaInternacao: null,
+    dataPrevistaInternacaoTexto: ''
+  });
+
+  const [calendariosAbertos, setCalendariosAbertos] = useState({
+    dataNascimento: false,
+    dataSolicitacao: false,
+    dataPrevistaInternacao: false
   });
 
   // Carregar dados
@@ -131,7 +148,7 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
 
   // Processar dados das reservas
   const reservasProcessadas = useMemo(() => {
-    const ativas = dados.reservas.filter(r => r.status === 'Ativa');
+    const ativas = dados.reservas.filter(r => !['Cancelada', 'Cancelado', 'Internado'].includes(r.status));
     return {
       sisreg: ativas.filter(r => r.origem === 'SISREG'),
       oncologia: ativas.filter(r => r.origem === 'ONCOLOGIA')
@@ -142,6 +159,7 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
     setNovaReserva({
       nomeCompleto: '',
       dataNascimento: null,
+      dataNascimentoTexto: '',
       sexo: '',
       isolamento: 'NÃO',
       origem: '',
@@ -149,11 +167,52 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
       instituicaoOrigem: '',
       cidadeOrigem: '',
       dataSolicitacao: null,
+      dataSolicitacaoTexto: '',
       especialidadeOncologia: '',
       telefoneContato: '',
-      dataPrevistaInternacao: null
+      dataPrevistaInternacao: null,
+      dataPrevistaInternacaoTexto: ''
+    });
+    setCalendariosAbertos({
+      dataNascimento: false,
+      dataSolicitacao: false,
+      dataPrevistaInternacao: false
     });
   };
+
+  const atualizarCampoData = useCallback((campo, valor) => {
+    setNovaReserva(prev => ({
+      ...prev,
+      [campo]: valor,
+      [`${campo}Texto`]: valor ? format(valor, 'dd/MM/yyyy') : ''
+    }));
+  }, []);
+
+  const handleInputData = useCallback((campo, valor) => {
+    setNovaReserva(prev => {
+      const proximo = { ...prev, [`${campo}Texto`]: valor };
+
+      if (!valor) {
+        proximo[campo] = null;
+        return proximo;
+      }
+
+      const dataParseada = parse(valor, 'dd/MM/yyyy', new Date());
+      if (isValid(dataParseada)) {
+        proximo[campo] = dataParseada;
+        proximo[`${campo}Texto`] = format(dataParseada, 'dd/MM/yyyy');
+      } else {
+        proximo[campo] = null;
+      }
+
+      return proximo;
+    });
+  }, []);
+
+  const handleSelecionarData = useCallback((campo, data) => {
+    atualizarCampoData(campo, data ?? null);
+    setCalendariosAbertos(prev => ({ ...prev, [campo]: false }));
+  }, [atualizarCampoData]);
 
   const handleSubmitNovaReserva = async () => {
     try {
@@ -197,7 +256,7 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
         sexo: novaReserva.sexo,
         isolamento: novaReserva.isolamento,
         origem: novaReserva.origem,
-        status: 'Ativa',
+        status: 'Aguardando Leito',
         leitoReservadoId: null,
         observacoes: [],
         criadoEm: serverTimestamp()
@@ -240,16 +299,20 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
   };
 
   const openSubModal = (type, reserva = null) => {
+    const leitoRelacionado = reserva?.leitoReservadoId
+      ? dados.leitos.find(item => item.id === reserva.leitoReservadoId) || null
+      : null;
+
     setSubModals(prev => ({
       ...prev,
-      [type]: { open: true, reserva }
+      [type]: { open: true, reserva, leito: leitoRelacionado }
     }));
   };
 
   const closeSubModal = (type) => {
     setSubModals(prev => ({
       ...prev,
-      [type]: { open: false, reserva: null }
+      [type]: { open: false, reserva: null, leito: null }
     }));
   };
 
@@ -354,33 +417,35 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
 
                     <div>
                       <Label>Data de Nascimento *</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              "w-full justify-start text-left font-normal",
-                              !novaReserva.dataNascimento && "text-muted-foreground"
-                            )}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {novaReserva.dataNascimento ? (
-                              format(novaReserva.dataNascimento, "dd/MM/yyyy", { locale: ptBR })
-                            ) : (
-                              <span>Selecione a data</span>
-                            )}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar
-                            mode="single"
-                            selected={novaReserva.dataNascimento}
-                            onSelect={(date) => setNovaReserva(prev => ({ ...prev, dataNascimento: date }))}
-                            initialFocus
-                            className="p-3 pointer-events-auto"
-                          />
-                        </PopoverContent>
-                      </Popover>
+                      <div className="relative">
+                        <CalendarIcon className="absolute left-2 top-3 h-4 w-4 text-muted-foreground" />
+                        <Popover
+                          open={calendariosAbertos.dataNascimento}
+                          onOpenChange={(open) => setCalendariosAbertos(prev => ({ ...prev, dataNascimento: open }))}
+                        >
+                          <PopoverTrigger asChild>
+                            <Input
+                              value={novaReserva.dataNascimentoTexto}
+                              placeholder="dd/mm/aaaa"
+                              onFocus={() => setCalendariosAbertos(prev => ({ ...prev, dataNascimento: true }))}
+                              onInput={(event) => handleInputData('dataNascimento', event.target.value)}
+                              className="pl-8"
+                            />
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={novaReserva.dataNascimento}
+                              onSelect={(date) => handleSelecionarData('dataNascimento', date)}
+                              initialFocus
+                              captionLayout="dropdown-buttons"
+                              fromYear={1920}
+                              toYear={new Date().getFullYear()}
+                              className="p-3 pointer-events-auto"
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
                     </div>
 
                     <div>
@@ -463,33 +528,35 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
 
                       <div>
                         <Label>Data da Solicitação *</Label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                "w-full justify-start text-left font-normal",
-                                !novaReserva.dataSolicitacao && "text-muted-foreground"
-                              )}
-                            >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {novaReserva.dataSolicitacao ? (
-                                format(novaReserva.dataSolicitacao, "dd/MM/yyyy", { locale: ptBR })
-                              ) : (
-                                <span>Selecione a data</span>
-                              )}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
-                            <Calendar
-                              mode="single"
-                              selected={novaReserva.dataSolicitacao}
-                              onSelect={(date) => setNovaReserva(prev => ({ ...prev, dataSolicitacao: date }))}
-                              initialFocus
-                              className="p-3 pointer-events-auto"
-                            />
-                          </PopoverContent>
-                        </Popover>
+                        <div className="relative">
+                          <CalendarIcon className="absolute left-2 top-3 h-4 w-4 text-muted-foreground" />
+                          <Popover
+                            open={calendariosAbertos.dataSolicitacao}
+                            onOpenChange={(open) => setCalendariosAbertos(prev => ({ ...prev, dataSolicitacao: open }))}
+                          >
+                            <PopoverTrigger asChild>
+                              <Input
+                                value={novaReserva.dataSolicitacaoTexto}
+                                placeholder="dd/mm/aaaa"
+                                onFocus={() => setCalendariosAbertos(prev => ({ ...prev, dataSolicitacao: true }))}
+                                onInput={(event) => handleInputData('dataSolicitacao', event.target.value)}
+                                className="pl-8"
+                              />
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={novaReserva.dataSolicitacao}
+                                onSelect={(date) => handleSelecionarData('dataSolicitacao', date)}
+                                initialFocus
+                                captionLayout="dropdown-buttons"
+                                fromYear={1920}
+                                toYear={new Date().getFullYear()}
+                                className="p-3 pointer-events-auto"
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -527,33 +594,35 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
 
                       <div>
                         <Label>Data Prevista para Internação *</Label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                "w-full justify-start text-left font-normal",
-                                !novaReserva.dataPrevistaInternacao && "text-muted-foreground"
-                              )}
-                            >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {novaReserva.dataPrevistaInternacao ? (
-                                format(novaReserva.dataPrevistaInternacao, "dd/MM/yyyy", { locale: ptBR })
-                              ) : (
-                                <span>Selecione a data</span>
-                              )}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
-                            <Calendar
-                              mode="single"
-                              selected={novaReserva.dataPrevistaInternacao}
-                              onSelect={(date) => setNovaReserva(prev => ({ ...prev, dataPrevistaInternacao: date }))}
-                              initialFocus
-                              className="p-3 pointer-events-auto"
-                            />
-                          </PopoverContent>
-                        </Popover>
+                        <div className="relative">
+                          <CalendarIcon className="absolute left-2 top-3 h-4 w-4 text-muted-foreground" />
+                          <Popover
+                            open={calendariosAbertos.dataPrevistaInternacao}
+                            onOpenChange={(open) => setCalendariosAbertos(prev => ({ ...prev, dataPrevistaInternacao: open }))}
+                          >
+                            <PopoverTrigger asChild>
+                              <Input
+                                value={novaReserva.dataPrevistaInternacaoTexto}
+                                placeholder="dd/mm/aaaa"
+                                onFocus={() => setCalendariosAbertos(prev => ({ ...prev, dataPrevistaInternacao: true }))}
+                                onInput={(event) => handleInputData('dataPrevistaInternacao', event.target.value)}
+                                className="pl-8"
+                              />
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={novaReserva.dataPrevistaInternacao}
+                                onSelect={(date) => handleSelecionarData('dataPrevistaInternacao', date)}
+                                initialFocus
+                                captionLayout="dropdown-buttons"
+                                fromYear={1920}
+                                toYear={new Date().getFullYear()}
+                                className="p-3 pointer-events-auto"
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -592,16 +661,18 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
         leitos={dados.leitos}
       />
 
-      <CancelarReservaModal
+      <CancelarReservaExternaModal
         isOpen={subModals.cancelarReserva.open}
-        onClose={() => closeSubModal('cancelarReserva')} 
+        onClose={() => closeSubModal('cancelarReserva')}
         reserva={subModals.cancelarReserva.reserva}
+        leito={subModals.cancelarReserva.leito}
       />
 
-      <ConfirmarInternacaoModal
+      <ConfirmarInternacaoExternaModal
         isOpen={subModals.confirmarInternacao.open}
         onClose={() => closeSubModal('confirmarInternacao')}
         reserva={subModals.confirmarInternacao.reserva}
+        leito={subModals.confirmarInternacao.leito}
       />
     </>
   );
@@ -609,11 +680,74 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
 
 // Componente para cada card de reserva
 const ReservaCard = ({ reserva, onOpenSubModal }) => {
+  const { toast } = useToast();
+  const [confirmacaoCancelarOpen, setConfirmacaoCancelarOpen] = useState(false);
+
+  const obterData = (valor) => {
+    if (!valor) return null;
+    if (typeof valor?.toDate === 'function') {
+      return valor.toDate();
+    }
+    if (valor instanceof Date) {
+      return valor;
+    }
+    const parseado = new Date(valor);
+    return Number.isNaN(parseado.getTime()) ? null : parseado;
+  };
+
+  const dataNascimento = obterData(reserva.dataNascimento);
+  const dataSolicitacao = obterData(reserva.dataSolicitacao);
+  const dataPrevista = obterData(reserva.dataPrevistaInternacao);
+
+  const atrasoOncologia =
+    reserva.origem === 'ONCOLOGIA' && dataPrevista && dataPrevista < new Date();
+
+  const instituicaoUpper = (reserva.instituicaoOrigem || '').toUpperCase();
+  const atrasoInstituicao =
+    ['HRHDS', 'REGIONAL'].includes(instituicaoUpper) &&
+    dataSolicitacao &&
+    differenceInHours(new Date(), dataSolicitacao) > 72;
+
+  const alertas = [];
+  if (atrasoOncologia) {
+    alertas.push({
+      tipo: 'critico',
+      mensagem: 'Data prevista de internação já passou.'
+    });
+  }
+  if (atrasoInstituicao) {
+    alertas.push({
+      tipo: 'alerta',
+      mensagem: `Solicitação da instituição ${instituicaoUpper} está aguardando há mais de 72 horas.`
+    });
+  }
+
+  const cardClasses = ['p-4'];
+  if (atrasoOncologia && atrasoInstituicao) {
+    cardClasses.push('border-2 border-destructive/60 bg-destructive/10 shadow-sm');
+  } else if (atrasoOncologia) {
+    cardClasses.push('border-2 border-destructive/60 bg-destructive/5 shadow-sm');
+  } else if (atrasoInstituicao) {
+    cardClasses.push('border-2 border-amber-400/70 bg-amber-50/60 shadow-sm');
+  }
+
+  const statusStyles = {
+    'Aguardando Leito': 'border-blue-200 bg-blue-50 text-blue-700',
+    'Reservado': 'border-sky-200 bg-sky-50 text-sky-700',
+    'Cancelada': 'border-destructive/30 bg-destructive/10 text-destructive',
+    'Internado': 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  };
+  const statusBadgeClass = statusStyles[reserva.status] || 'border-muted bg-muted/20 text-muted-foreground';
+
   const handleCancelarPedido = async () => {
     try {
-      await updateDoc(doc(db, 'artifacts/regulafacil/public/data/reservasExternas', reserva.id), {
-        status: 'Cancelada'
-      });
+      await updateDoc(
+        doc(db, 'artifacts/regulafacil/public/data/reservasExternas', reserva.id),
+        {
+          status: 'Cancelada',
+          leitoReservadoId: deleteField()
+        }
+      );
 
       await logAction(
         'Reservas de Leitos',
@@ -621,101 +755,142 @@ const ReservaCard = ({ reserva, onOpenSubModal }) => {
       );
 
       toast({
-        title: "Sucesso",
-        description: "Pedido cancelado com sucesso!"
+        title: 'Solicitação cancelada',
+        description: 'Pedido cancelado com sucesso!'
       });
+      setConfirmacaoCancelarOpen(false);
     } catch (error) {
       console.error('Erro ao cancelar pedido:', error);
       toast({
-        title: "Erro", 
-        description: "Erro ao cancelar pedido. Tente novamente.",
-        variant: "destructive"
+        title: 'Erro',
+        description: 'Erro ao cancelar pedido. Tente novamente.',
+        variant: 'destructive'
       });
     }
   };
 
-  const { toast } = useToast();
-
   return (
-    <Card className="p-4">
-      <div className="flex flex-col space-y-3">
-        <div className="flex justify-between items-start">
-          <div>
-            <h4 className="font-semibold text-lg">{reserva.nomeCompleto}</h4>
-            <p className="text-sm text-muted-foreground">
-              {reserva.sexo} • {reserva.dataNascimento && format(reserva.dataNascimento.toDate(), 'dd/MM/yyyy')}
-            </p>
-            {reserva.isolamento !== 'NÃO' && (
-              <Badge variant="destructive" className="mt-1">
-                Isolamento: {reserva.isolamento}
+    <>
+      <Card className={cardClasses.join(' ')}>
+        <div className="flex flex-col space-y-3">
+          <div className="flex justify-between items-start">
+            <div>
+              <h4 className="font-semibold text-lg">{reserva.nomeCompleto}</h4>
+              <p className="text-sm text-muted-foreground">
+                {reserva.sexo} • {dataNascimento ? format(dataNascimento, 'dd/MM/yyyy') : 'Data não informada'}
+              </p>
+              {reserva.isolamento !== 'NÃO' && (
+                <Badge variant="destructive" className="mt-1">
+                  Isolamento: {reserva.isolamento}
+                </Badge>
+              )}
+            </div>
+
+            <div className="flex flex-col items-end gap-2">
+              <Badge variant="outline" className={statusBadgeClass}>
+                {reserva.status || 'Status desconhecido'}
               </Badge>
+              {reserva.leitoReservadoId && (
+                <Badge variant="outline">Leito Reservado</Badge>
+              )}
+            </div>
+          </div>
+
+          <div className="text-sm text-muted-foreground">
+            {reserva.origem === 'SISREG' ? (
+              <p>{reserva.instituicaoOrigem}, {reserva.cidadeOrigem}</p>
+            ) : (
+              <p>{reserva.especialidadeOncologia} • Tel: {reserva.telefoneContato}</p>
             )}
           </div>
-          
-          {reserva.leitoReservadoId && (
-            <Badge variant="outline">
-              Leito Reservado
-            </Badge>
+
+          {alertas.length > 0 && (
+            <div className="space-y-2">
+              {alertas.map((alerta, index) => (
+                <div
+                  key={index}
+                  className={`flex items-start gap-2 rounded-md border p-2 text-sm ${
+                    alerta.tipo === 'critico'
+                      ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                      : 'border-amber-300 bg-amber-50 text-amber-800'
+                  }`}
+                >
+                  <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                  <span>{alerta.mensagem}</span>
+                </div>
+              ))}
+            </div>
           )}
-        </div>
 
-        <div className="text-sm text-muted-foreground">
-          {reserva.origem === 'SISREG' ? (
-            <p>{reserva.instituicaoOrigem}, {reserva.cidadeOrigem}</p>
-          ) : (
-            <p>{reserva.especialidadeOncologia} • Tel: {reserva.telefoneContato}</p>
-          )}
-        </div>
-
-        <div className="flex gap-2 flex-wrap">
-          <Button 
-            size="sm" 
-            variant="outline"
-            onClick={() => onOpenSubModal('informacoes', reserva)}
-          >
-            <Info className="h-4 w-4 mr-1" />
-            Informações
-          </Button>
-          
-          <Button 
-            size="sm" 
-            variant="outline" 
-            onClick={handleCancelarPedido}
-          >
-            <Trash2 className="h-4 w-4 mr-1" />
-            Cancelar Pedido
-          </Button>
-
-          {!reserva.leitoReservadoId ? (
-            <Button 
+          <div className="flex gap-2 flex-wrap">
+            <Button
               size="sm"
-              onClick={() => onOpenSubModal('selecionarLeito', reserva)}
+              variant="outline"
+              onClick={() => onOpenSubModal('informacoes', reserva)}
             >
-              <BedDouble className="h-4 w-4 mr-1" />
-              Reservar Leito
+              <Info className="h-4 w-4 mr-1" />
+              Informações
             </Button>
-          ) : (
-            <>
-              <Button 
-                size="sm" 
-                variant="destructive"
-                onClick={() => onOpenSubModal('cancelarReserva', reserva)}
-              >
-                <X className="h-4 w-4 mr-1" />
-                Cancelar Reserva
-              </Button>
-              <Button 
+
+            {!reserva.leitoReservadoId && (
+              <Button
                 size="sm"
-                onClick={() => onOpenSubModal('confirmarInternacao', reserva)}
+                variant="outline"
+                onClick={() => setConfirmacaoCancelarOpen(true)}
               >
-                <UserCheck className="h-4 w-4 mr-1" />
-                Confirmar Internação
+                <Trash2 className="h-4 w-4 mr-1" />
+                Cancelar Solicitação
               </Button>
-            </>
-          )}
+            )}
+
+            {!reserva.leitoReservadoId ? (
+              <Button
+                size="sm"
+                onClick={() => onOpenSubModal('selecionarLeito', reserva)}
+              >
+                <BedDouble className="h-4 w-4 mr-1" />
+                Reservar Leito
+              </Button>
+            ) : (
+              <>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => onOpenSubModal('cancelarReserva', reserva)}
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Cancelar Reserva
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => onOpenSubModal('confirmarInternacao', reserva)}
+                >
+                  <UserCheck className="h-4 w-4 mr-1" />
+                  Confirmar Internação
+                </Button>
+              </>
+            )}
+          </div>
         </div>
-      </div>
-    </Card>
+      </Card>
+
+      <AlertDialog open={confirmacaoCancelarOpen} onOpenChange={setConfirmacaoCancelarOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar solicitação</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza de que deseja cancelar a solicitação para o paciente <strong>{reserva.nomeCompleto}</strong>?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Voltar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCancelarPedido}>
+              Confirmar cancelamento
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 };
 

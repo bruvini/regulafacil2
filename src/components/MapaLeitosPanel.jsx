@@ -11,11 +11,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuIte
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { 
-  ChevronDown, 
-  MoreVertical, 
-  Loader2, 
-  Flame, 
+import {
+  ChevronDown,
+  MoreVertical,
+  Loader2,
+  Flame,
   Star,
   MessageSquareQuote,
   BedDouble,
@@ -29,7 +29,8 @@ import {
   Calendar,
   LogOut,
   Search,
-  Filter
+  Filter,
+  X
 } from 'lucide-react';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -54,6 +55,8 @@ import MoverPacienteModal from './modals/MoverPacienteModal';
 import RemanejamentoModal from './modals/RemanejamentoModal';
 import TransferenciaExternaModal from './modals/TransferenciaExternaModal';
 import AltaNoLeitoModal from './modals/AltaNoLeitoModal';
+import CancelarReservaExternaModal from './modals/CancelarReservaExternaModal';
+import ConfirmarInternacaoExternaModal from './modals/ConfirmarInternacaoExternaModal';
 
 // Color mapping for sector types
 const getSectorTypeColor = (tipoSetor) => {
@@ -67,12 +70,12 @@ const getSectorTypeColor = (tipoSetor) => {
 };
 
 // Componente LeitoCard Dinâmico
-const LeitoCard = ({ 
-  leito, 
-  onBloquearLeito, 
-  onSolicitarHigienizacao, 
-  onDesbloquearLeito, 
-  onFinalizarHigienizacao, 
+const LeitoCard = ({
+  leito,
+  onBloquearLeito,
+  onSolicitarHigienizacao,
+  onDesbloquearLeito,
+  onFinalizarHigienizacao,
   onPriorizarHigienizacao,
   onLiberarLeito,
   onMoverPaciente,
@@ -81,7 +84,9 @@ const LeitoCard = ({
   onSolicitarRemanejamento,
   onTransferenciaExterna,
   onProvavelAlta,
-  onAltaNoLeito
+  onAltaNoLeito,
+  onCancelarReservaExterna,
+  onConfirmarInternacaoExterna
 }) => {
   const { toast } = useToast();
 
@@ -127,9 +132,13 @@ const LeitoCard = ({
       }
     : null);
 
+  const reservaExterna = leito.reservaExterna || null;
+  const isReservaExterna = Boolean(reservaExterna);
+  const idadeReservaExterna = isReservaExterna ? calcularIdade(reservaExterna.pacienteDataNascimento) : null;
   const tempoRegulacaoOrigem = formatRegulacaoTempo(regulacaoOrigemInfo?.timestamp);
   const tempoRegulacaoDestino = formatRegulacaoTempo(regulacaoDestinoInfo?.timestamp);
-  const shouldShowActions = !['Reservado', 'Regulado'].includes(leito.status);
+  const shouldShowDefaultActions = !['Reservado', 'Regulado'].includes(leito.status);
+  const shouldShowReservaExternaActions = isReservaExterna;
   const statusBadgeVariant = ['Regulado', 'Reservado'].includes(leito.status) ? 'outline' : 'secondary';
   const statusLabel = leito.status || 'Sem status';
   const destinoReguladoSetor = regulacaoOrigemInfo?.destinoSetorNome || 'Setor não informado';
@@ -217,6 +226,10 @@ const LeitoCard = ({
   };
 
   const getCardStyle = () => {
+    if (isReservaExterna) {
+      return "bg-sky-50 border-4 border-sky-500 hover:shadow-lg transition-all shadow-lg";
+    }
+
     if (leito.status === 'Regulado') {
       return "bg-orange-50 border-4 border-orange-500 hover:shadow-lg transition-all shadow-lg";
     }
@@ -251,6 +264,10 @@ const LeitoCard = ({
   };
 
   const getBadgeStyle = () => {
+    if (isReservaExterna) {
+      return "bg-sky-100 text-sky-800 border-sky-200";
+    }
+
     if (leito.status === 'Regulado') {
       return "bg-orange-50 text-orange-800 border-orange-200";
     }
@@ -335,7 +352,7 @@ const LeitoCard = ({
     ) : null;
   };
 
-  const renderActions = () => {
+  const renderDefaultActions = () => {
     switch (leito.status) {
       case 'Ocupado':
         return (
@@ -410,6 +427,19 @@ const LeitoCard = ({
     }
   };
 
+  const renderReservaExternaActions = () => (
+    <>
+      <DropdownMenuItem onClick={() => onCancelarReservaExterna(leito)}>
+        <X className="h-4 w-4 mr-2" />
+        CANCELAR RESERVA
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={() => onConfirmarInternacaoExterna(leito)}>
+        <UserCheck className="h-4 w-4 mr-2" />
+        CONFIRMAR INTERNAÇÃO
+      </DropdownMenuItem>
+    </>
+  );
+
   return (
     <Card className={getCardStyle()}>
       <CardContent className="p-4 relative">
@@ -438,7 +468,7 @@ const LeitoCard = ({
             </div>
           </div>
           {/* Menu de ações */}
-          {shouldShowActions && (
+          {(shouldShowReservaExternaActions || shouldShowDefaultActions) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0">
@@ -446,7 +476,7 @@ const LeitoCard = ({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                {renderActions()}
+                {shouldShowReservaExternaActions ? renderReservaExternaActions() : renderDefaultActions()}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -488,8 +518,71 @@ const LeitoCard = ({
             </div>
           )}
 
+          {/* Leito reservado para paciente externo */}
+          {isReservaExterna && (
+            <div className="space-y-3">
+              <div>
+                <p className="font-medium text-sm text-gray-900">
+                  {reservaExterna.pacienteNome || 'Paciente externo'}
+                </p>
+                <div className="flex items-center gap-2 text-xs text-gray-600">
+                  {idadeReservaExterna && idadeReservaExterna !== 'N/A' && (
+                    <span>{idadeReservaExterna} anos</span>
+                  )}
+                  {reservaExterna.pacienteSexo && (
+                    <>
+                      <span>•</span>
+                      <span>{reservaExterna.pacienteSexo}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2 rounded-md border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-sky-900">
+                    {reservaExterna.origem === 'SISREG' ? 'Reserva SISREG' : 'Reserva Oncológica'}
+                  </span>
+                  {reservaExterna.idSolicitacao && (
+                    <Badge variant="outline" className="border-sky-300 bg-white text-sky-700">
+                      ID {reservaExterna.idSolicitacao}
+                    </Badge>
+                  )}
+                </div>
+
+                {reservaExterna.origem === 'SISREG' ? (
+                  <div className="space-y-1">
+                    {reservaExterna.instituicaoOrigem && (
+                      <p>
+                        <span className="font-medium">Instituição:</span> {reservaExterna.instituicaoOrigem}
+                      </p>
+                    )}
+                    {reservaExterna.cidadeOrigem && (
+                      <p>
+                        <span className="font-medium">Cidade:</span> {reservaExterna.cidadeOrigem}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {reservaExterna.especialidadeOncologia && (
+                      <p>
+                        <span className="font-medium">Especialidade:</span> {reservaExterna.especialidadeOncologia}
+                      </p>
+                    )}
+                    {reservaExterna.telefoneContato && (
+                      <p>
+                        <span className="font-medium">Contato:</span> {reservaExterna.telefoneContato}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Leito de DESTINO em regulação (Reservado) */}
-          {leito.status === 'Reservado' && regulacaoDestinoInfo && (
+          {leito.status === 'Reservado' && regulacaoDestinoInfo && !isReservaExterna && (
             <div className="space-y-2">
               <div>
                 <p className="font-medium text-sm text-gray-900">
@@ -600,6 +693,46 @@ const MapaLeitosPanel = () => {
   const [modalRemanejamento, setModalRemanejamento] = useState({ open: false, paciente: null });
   const [modalTransferenciaExterna, setModalTransferenciaExterna] = useState({ open: false, paciente: null });
   const [modalAltaNoLeito, setModalAltaNoLeito] = useState({ open: false, paciente: null });
+  const [modalCancelarReservaExterna, setModalCancelarReservaExterna] = useState({ open: false, reserva: null, leito: null });
+  const [modalConfirmarInternacaoExterna, setModalConfirmarInternacaoExterna] = useState({ open: false, reserva: null, leito: null });
+
+  const construirContextoReservaExterna = (leitoAtual) => {
+    const dadosReserva = leitoAtual?.reservaExterna || {};
+
+    return {
+      id: dadosReserva.reservaId,
+      nomeCompleto: dadosReserva.pacienteNome,
+      sexo: dadosReserva.pacienteSexo,
+      dataNascimento: dadosReserva.pacienteDataNascimento,
+      origem: dadosReserva.origem,
+      instituicaoOrigem: dadosReserva.instituicaoOrigem,
+      cidadeOrigem: dadosReserva.cidadeOrigem,
+      especialidadeOncologia: dadosReserva.especialidadeOncologia,
+      telefoneContato: dadosReserva.telefoneContato,
+      isolamento: dadosReserva.isolamento || 'NÃO',
+      idSolicitacao: dadosReserva.idSolicitacao,
+      leitoReservadoId: leitoAtual?.id,
+      status: 'Reservado'
+    };
+  };
+
+  const handleAbrirCancelarReservaExterna = (leitoAtual) => {
+    if (!leitoAtual?.reservaExterna) return;
+    setModalCancelarReservaExterna({
+      open: true,
+      reserva: construirContextoReservaExterna(leitoAtual),
+      leito: leitoAtual
+    });
+  };
+
+  const handleAbrirConfirmarInternacaoExterna = (leitoAtual) => {
+    if (!leitoAtual?.reservaExterna) return;
+    setModalConfirmarInternacaoExterna({
+      open: true,
+      reserva: construirContextoReservaExterna(leitoAtual),
+      leito: leitoAtual
+    });
+  };
   const [motivoBloqueio, setMotivoBloqueio] = useState('');
   
   const { toast } = useToast();
@@ -1636,7 +1769,7 @@ const MapaLeitosPanel = () => {
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                               {quarto.leitos.map(leito => (
                                 <MemoizedLeitoCard
-                                  key={leito.id} 
+                                  key={leito.id}
                                   leito={leito}
                                   onBloquearLeito={(leito) => setModalBloquear({ open: true, leito })}
                                   onSolicitarHigienizacao={(leito) => setModalHigienizacao({ open: true, leito })}
@@ -1651,6 +1784,8 @@ const MapaLeitosPanel = () => {
                                   onTransferenciaExterna={(paciente) => setModalTransferenciaExterna({ open: true, paciente })}
                                   onProvavelAlta={handleToggleProvavelAlta}
                                   onAltaNoLeito={handleToggleAltaNoLeito}
+                                  onCancelarReservaExterna={handleAbrirCancelarReservaExterna}
+                                  onConfirmarInternacaoExterna={handleAbrirConfirmarInternacaoExterna}
                                 />
                               ))}
                             </div>
@@ -1670,8 +1805,8 @@ const MapaLeitosPanel = () => {
                             ) : null}
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                               {setor.leitosSemQuarto.map(leito => (
-                                <MemoizedLeitoCard 
-                                  key={leito.id} 
+                                <MemoizedLeitoCard
+                                  key={leito.id}
                                   leito={leito}
                                   onBloquearLeito={(leito) => setModalBloquear({ open: true, leito })}
                                   onSolicitarHigienizacao={(leito) => setModalHigienizacao({ open: true, leito })}
@@ -1686,6 +1821,8 @@ const MapaLeitosPanel = () => {
                                   onTransferenciaExterna={(paciente) => setModalTransferenciaExterna({ open: true, paciente })}
                                   onProvavelAlta={handleToggleProvavelAlta}
                                   onAltaNoLeito={handleToggleAltaNoLeito}
+                                  onCancelarReservaExterna={handleAbrirCancelarReservaExterna}
+                                  onConfirmarInternacaoExterna={handleAbrirConfirmarInternacaoExterna}
                                 />
                               ))}
                             </div>
@@ -1832,6 +1969,20 @@ const MapaLeitosPanel = () => {
         onClose={() => setModalAltaNoLeito({ open: false, paciente: null })}
         onSave={handleSalvarAltaNoLeito}
         paciente={modalAltaNoLeito.paciente}
+      />
+
+      <CancelarReservaExternaModal
+        isOpen={modalCancelarReservaExterna.open}
+        onClose={() => setModalCancelarReservaExterna({ open: false, reserva: null, leito: null })}
+        reserva={modalCancelarReservaExterna.reserva}
+        leito={modalCancelarReservaExterna.leito}
+      />
+
+      <ConfirmarInternacaoExternaModal
+        isOpen={modalConfirmarInternacaoExterna.open}
+        onClose={() => setModalConfirmarInternacaoExterna({ open: false, reserva: null, leito: null })}
+        reserva={modalConfirmarInternacaoExterna.reserva}
+        leito={modalConfirmarInternacaoExterna.leito}
       />
     </div>
   );
