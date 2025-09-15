@@ -43,6 +43,8 @@ import {
   getReservasExternasCollection,
   getLeitosCollection,
   getPacientesCollection,
+  getSetoresCollection,
+  getQuartosCollection,
   addDoc,
   updateDoc,
   doc,
@@ -67,6 +69,8 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
     reservas: [],
     leitos: [],
     pacientes: [],
+    setores: [],
+    quartos: [],
     loading: true
   });
 
@@ -130,6 +134,24 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
       setDados(prev => ({ ...prev, leitos: leitosData }));
     });
     unsubscribes.push(unsubLeitos);
+
+    const unsubSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
+      const setoresData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setDados(prev => ({ ...prev, setores: setoresData }));
+    });
+    unsubscribes.push(unsubSetores);
+
+    const unsubQuartos = onSnapshot(getQuartosCollection(), (snapshot) => {
+      const quartosData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setDados(prev => ({ ...prev, quartos: quartosData }));
+    });
+    unsubscribes.push(unsubQuartos);
 
     // Pacientes
     const unsubPacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
@@ -655,10 +677,16 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
       />
 
       <SelecionarLeitoModal
-        isOpen={subModals.selecionarLeito.open} 
+        isOpen={subModals.selecionarLeito.open}
         onClose={() => closeSubModal('selecionarLeito')}
         reserva={subModals.selecionarLeito.reserva}
-        leitos={dados.leitos}
+        dadosHospital={{
+          leitos: dados.leitos,
+          setores: dados.setores,
+          quartos: dados.quartos,
+          pacientes: dados.pacientes,
+          loading: dados.loading
+        }}
       />
 
       <CancelarReservaExternaModal

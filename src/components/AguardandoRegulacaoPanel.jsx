@@ -179,7 +179,8 @@ const AguardandoRegulacaoPanel = () => {
 
   const PacienteCard = ({ paciente, setor }) => {
     const idade = calcularIdade(paciente.dataNascimento);
-    const sexoSigla = paciente.sexo === 'MASCULINO' ? 'M' : 'F';
+    const sexoNormalizado = (paciente.sexo || '').trim().toUpperCase();
+    const sexoSigla = sexoNormalizado === 'M' || sexoNormalizado === 'MASCULINO' ? 'M' : 'F';
     const tempoInternacao = calcularTempoInternacao(paciente.dataInternacao);
     const mostrarTempo = setor === "PS DECISÃO CLINICA" || setor === "PS DECISÃO CIRURGICA";
 

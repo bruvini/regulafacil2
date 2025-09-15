@@ -21,7 +21,8 @@ import LeitoSelectionStep from './steps/LeitoSelectionStep';
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
 
-const AlterarRegulacaoModal = ({ open, onOpenChange, paciente }) => {
+const AlterarRegulacaoModal = ({ isOpen, onClose, regulacao }) => {
+  const paciente = regulacao;
   const [dados, setDados] = useState({ leitos: [], quartos: [], setores: [], pacientes: [], loading: true });
   const [step, setStep] = useState('selecao');
   const [novoLeito, setNovoLeito] = useState(null);
@@ -29,7 +30,7 @@ const AlterarRegulacaoModal = ({ open, onOpenChange, paciente }) => {
   const { currentUser } = useAuth();
 
   useEffect(() => {
-    if (!open || !paciente) return;
+    if (!isOpen || !paciente) return;
     let unsubs = [];
 
     const load = async () => {
@@ -55,7 +56,7 @@ const AlterarRegulacaoModal = ({ open, onOpenChange, paciente }) => {
     };
     load();
     return () => unsubs.forEach(u => u && u());
-  }, [open, paciente]);
+  }, [isOpen, paciente]);
 
   const modo = useMemo(() => (paciente?.pedidoUTI ? 'uti' : 'enfermaria'), [paciente]);
 
@@ -94,10 +95,10 @@ const AlterarRegulacaoModal = ({ open, onOpenChange, paciente }) => {
   };
 
   const fechar = () => {
-    onOpenChange(false);
     setStep('selecao');
     setNovoLeito(null);
     setJustificativa('');
+    onClose?.();
   };
 
   const confirmarAlteracao = async () => {
@@ -173,7 +174,7 @@ const AlterarRegulacaoModal = ({ open, onOpenChange, paciente }) => {
   if (!paciente) return null;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o ? fechar() : null}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) fechar(); }}>
       <DialogContent className="max-w-3xl" onInteractOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>{step === 'selecao' ? 'Selecionar novo leito' : 'Confirmar Alteração de Regulação'}</DialogTitle>
