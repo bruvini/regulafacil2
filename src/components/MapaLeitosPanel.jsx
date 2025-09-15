@@ -171,7 +171,7 @@ const LeitoCard = ({
     }
   };
 
-  const calcularIdade = (dataNascimento) => {
+  function calcularIdade(dataNascimento) {
     if (!dataNascimento) return 'N/A';
     
     try {
@@ -223,7 +223,7 @@ const LeitoCard = ({
     } catch (error) {
       return 'N/A';
     }
-  };
+  }
 
   const getCardStyle = () => {
     if (isReservaExterna) {
