@@ -44,100 +44,176 @@ const LeitoSelectionStep = ({
   const getLeitosCompatíveis = (paciente, todosOsDados, modo = 'enfermaria') => {
     if (!paciente || !todosOsDados) return [];
 
-    const { leitos, quartos, setores, pacientes } = todosOsDados;
+    const {
+      leitos = [],
+      setores = [],
+      pacientes: pacientesExistentes = []
+    } = todosOsDados;
 
-    // Modo UTI - lógica simplificada
+    const normalizarIsolamentos = (lista) => {
+      if (!Array.isArray(lista) || lista.length === 0) return '';
+
+      return lista
+        .map((item) => {
+          if (!item) return '';
+          if (typeof item === 'string' || typeof item === 'number') {
+            return String(item).trim().toLowerCase();
+          }
+
+          const identificador =
+            item.infecaoId ||
+            item.infeccaoId ||
+            item.id ||
+            item.codigo ||
+            item.nome ||
+            '';
+
+          return String(identificador).trim().toLowerCase();
+        })
+        .filter(Boolean)
+        .sort()
+        .join('|');
+    };
+
+    const possuiInformacaoAtiva = (campo) => {
+      if (!campo) return false;
+      if (typeof campo === 'object') {
+        return Object.keys(campo).length > 0;
+      }
+      return Boolean(campo);
+    };
+
+    const obterTipoSetorNormalizado = (setor) =>
+      String(setor?.tipoSetor || '').trim().toLowerCase();
+
+    const normalizarStatus = (status) =>
+      String(status || '').trim().toLowerCase();
+
+    const obterStatusLeito = (leito) => {
+      const statusValor = leito?.status ?? leito?.statusLeito ?? '';
+      return normalizarStatus(statusValor);
+    };
+
+    const possuiReservaOuRegulacao = (leito) =>
+      possuiInformacaoAtiva(leito?.regulacaoEmAndamento) ||
+      possuiInformacaoAtiva(leito?.reservaExterna) ||
+      possuiInformacaoAtiva(leito?.regulacaoReserva);
+
+    const statusElegiveis = new Set(['vago', 'higienização', 'higienizacao']);
+    const statusOcupado = 'ocupado';
+
+    const setoresPorId = new Map(setores.map((setor) => [setor.id, setor]));
+
     if (modo === 'uti') {
       return leitos.filter((leito) => {
-        const setor = setores.find((s) => s.id === leito.setorId);
-        const status = leito.statusLeito || leito.status;
-        
-        // CORREÇÃO CRÍTICA: Excluir leitos já em regulação (reservados)
-        if (leito.regulacaoEmAndamento && Object.keys(leito.regulacaoEmAndamento).length > 0) {
-          return false;
-        }
-        
-        // Apenas leitos UTI com status correto
-        return setor && 
-               setor.tipoSetor === 'UTI' && 
-               ['Vago', 'Higienização'].includes(status);
+        const setor = setoresPorId.get(leito.setorId);
+
+        if (obterTipoSetorNormalizado(setor) !== 'uti') return false;
+        if (!statusElegiveis.has(obterStatusLeito(leito))) return false;
+        if (possuiReservaOuRegulacao(leito)) return false;
+
+        return true;
       });
     }
 
-    // Modo enfermaria - lógica completa
     const idadePaciente = calcularIdade(paciente.dataNascimento);
-    const normalizarIsolamentos = (lista) => (lista || []).map(i => i.infecaoId).sort().join('|');
-    const isolamentosPacienteKey = normalizarIsolamentos(paciente.isolamentos);
+    const chaveIsolamentoPaciente = normalizarIsolamentos(paciente.isolamentos);
+    const normalizarSexo = (valor) =>
+      (typeof valor === 'string' ? valor.trim().toUpperCase() : '');
+    const sexoPaciente = normalizarSexo(paciente?.sexo);
 
-    const isLeitoAvulso = (leito) => {
-      if (leito.quartoId) return false;
-      if (Array.isArray(quartos) && quartos.length > 0) {
-        return !quartos.some(q => Array.isArray(q.leitosIds) && q.leitosIds.includes(leito.id));
+    const pacientesPorLeito = new Map();
+    pacientesExistentes.forEach((pacienteAtual) => {
+      if (pacienteAtual?.leitoId) {
+        pacientesPorLeito.set(pacienteAtual.leitoId, pacienteAtual);
       }
-      return true;
-    };
+    });
 
-    // Passo A: Pré-filtragem básica para todos os setores de enfermaria
+    const leitosPorQuarto = new Map();
+    leitos.forEach((leitoAtual) => {
+      if (!leitoAtual?.quartoId) return;
+      if (!leitosPorQuarto.has(leitoAtual.quartoId)) {
+        leitosPorQuarto.set(leitoAtual.quartoId, []);
+      }
+      leitosPorQuarto.get(leitoAtual.quartoId).push(leitoAtual);
+    });
+
     const candidatos = leitos.filter((leito) => {
-      const setor = setores.find((s) => s.id === leito.setorId);
-      const status = leito.statusLeito || leito.status;
-      if (!setor || setor.tipoSetor !== 'Enfermaria') return false;
-      if (!['Vago', 'Higienização'].includes(status)) return false;
-      
-      // CORREÇÃO CRÍTICA: Excluir leitos já em regulação (reservados)
-      if (leito.regulacaoEmAndamento && Object.keys(leito.regulacaoEmAndamento).length > 0) {
-        return false;
-      }
-      
+      const setor = setoresPorId.get(leito.setorId);
+
+      if (obterTipoSetorNormalizado(setor) !== 'enfermaria') return false;
+      if (!statusElegiveis.has(obterStatusLeito(leito))) return false;
+      if (possuiReservaOuRegulacao(leito)) return false;
+
       return true;
     });
 
-    // Passo B: Aplicar regras detalhadas para cada candidato
-    const compativeis = [];
-    
+    const leitosCompativeis = [];
+
     candidatos.forEach((leito) => {
-      const setor = setores.find((s) => s.id === leito.setorId);
-      if (!setor) return;
-
-      // REGRA 1: Leito PCP (Idade) - Verificação explícita obrigatória
-      if (leito.isPCP === true) {
+      if (leito.isPCP) {
         if (idadePaciente < 18 || idadePaciente > 60) {
-          return; // Descarta leito se idade não está na faixa 18-60
+          return;
+        }
+        if (chaveIsolamentoPaciente !== '') {
+          return;
         }
       }
 
-      const avulso = isLeitoAvulso(leito);
+      const quartoId = leito.quartoId;
+      if (!quartoId) {
+        leitosCompativeis.push(leito);
+        return;
+      }
 
-      // REGRA 2: Lógica de quartos vs. leito avulso
-      let ocupantesDoQuarto = [];
-      if (!avulso && leito.quartoId) {
-        const leitosMesmoQuarto = leitos.filter((l) => l.quartoId === leito.quartoId && l.id !== leito.id);
-        ocupantesDoQuarto = pacientes.filter((p) => leitosMesmoQuarto.some((l) => l.id === p.leitoId));
+      const leitosMesmoQuarto = (leitosPorQuarto.get(quartoId) || [])
+        .filter((outroLeito) => outroLeito.id !== leito.id);
 
-        // 2.2.a: Compatibilidade por sexo quando há ocupantes
-        if (ocupantesDoQuarto.length > 0) {
-          const sexosDiferentes = ocupantesDoQuarto.some((p) => p.sexo && paciente.sexo && p.sexo !== paciente.sexo);
-          if (sexosDiferentes) return;
+      const ocupantesDoQuarto = leitosMesmoQuarto
+        .filter((outroLeito) => obterStatusLeito(outroLeito) === statusOcupado)
+        .map((leitoOcupado) => pacientesPorLeito.get(leitoOcupado.id))
+        .filter(Boolean);
+
+      if (ocupantesDoQuarto.length > 0) {
+        const sexoReferencia = normalizarSexo(ocupantesDoQuarto[0]?.sexo);
+        if (sexoPaciente && sexoReferencia && sexoPaciente !== sexoReferencia) {
+          return;
+        }
+
+        if (sexoPaciente) {
+          const algumSexoDiferente = ocupantesDoQuarto.some((ocupante) => {
+            const sexoOcupante = normalizarSexo(ocupante?.sexo);
+            return sexoOcupante && sexoOcupante !== sexoPaciente;
+          });
+
+          if (algumSexoDiferente) {
+            return;
+          }
+        }
+
+        const chaveIsolamentoOcupantes = normalizarIsolamentos(
+          ocupantesDoQuarto[0]?.isolamentos
+        );
+
+        const isolamentosDivergentesEntreOcupantes = ocupantesDoQuarto.some(
+          (ocupante) =>
+            normalizarIsolamentos(ocupante?.isolamentos) !==
+            chaveIsolamentoOcupantes
+        );
+
+        if (isolamentosDivergentesEntreOcupantes) {
+          return;
+        }
+
+        if (chaveIsolamentoPaciente !== chaveIsolamentoOcupantes) {
+          return;
         }
       }
 
-      // REGRA 3: Compatibilidade de isolamento
-      if (!avulso) {
-        if (ocupantesDoQuarto.length === 0) {
-          // quarto vazio: ok
-        } else {
-          // Todos ocupantes devem ter exatamente o mesmo conjunto de isolamentos do paciente
-          const matchTodos = ocupantesDoQuarto.every((p) => normalizarIsolamentos(p.isolamentos) === isolamentosPacienteKey);
-          if (!matchTodos) return;
-        }
-      }
-      // Leito avulso: não há restrição de sexo; isolamento sempre compatível
-
-      // Se chegou até aqui, o leito é compatível
-      compativeis.push(leito);
+      leitosCompativeis.push(leito);
     });
 
-    return compativeis;
+    return leitosCompativeis;
   };
 
   const leitosCompativeis = useMemo(() => {
