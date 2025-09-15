@@ -85,6 +85,59 @@ const LeitoCard = ({
 }) => {
   const { toast } = useToast();
 
+  const formatRegulacaoTempo = (valor) => {
+    if (!valor) return null;
+
+    try {
+      let data = valor;
+
+      if (typeof data?.toDate === 'function') {
+        data = data.toDate();
+      } else if (!(data instanceof Date)) {
+        data = new Date(data);
+      }
+
+      if (isNaN(data.getTime())) {
+        return null;
+      }
+
+      return formatDistanceToNow(data, {
+        addSuffix: true,
+        locale: ptBR
+      });
+    } catch (error) {
+      return null;
+    }
+  };
+
+  const regulacaoOrigemInfo = leito.regulacaoOrigem || (leito.regulacaoEmAndamento?.tipo === 'ORIGEM'
+    ? {
+        destinoCodigo: leito.regulacaoEmAndamento.leitoParceiroCodigo || 'N/A',
+        destinoSetorNome: leito.regulacaoEmAndamento.leitoParceiroSetorNome || 'Setor não informado',
+        timestamp: leito.regulacaoEmAndamento.iniciadoEm
+      }
+    : null);
+
+  const regulacaoDestinoInfo = leito.regulacaoReserva || (leito.regulacaoEmAndamento?.tipo === 'DESTINO'
+    ? {
+        pacienteNome: leito.regulacaoEmAndamento.pacienteNome,
+        origemCodigo: leito.regulacaoEmAndamento.leitoParceiroCodigo,
+        origemSetorNome: leito.regulacaoEmAndamento.leitoParceiroSetorNome,
+        timestamp: leito.regulacaoEmAndamento.iniciadoEm
+      }
+    : null);
+
+  const tempoRegulacaoOrigem = formatRegulacaoTempo(regulacaoOrigemInfo?.timestamp);
+  const tempoRegulacaoDestino = formatRegulacaoTempo(regulacaoDestinoInfo?.timestamp);
+  const shouldShowActions = !['Reservado', 'Regulado'].includes(leito.status);
+  const statusBadgeVariant = ['Regulado', 'Reservado'].includes(leito.status) ? 'outline' : 'secondary';
+  const statusLabel = leito.status || 'Sem status';
+  const destinoReguladoSetor = regulacaoOrigemInfo?.destinoSetorNome || 'Setor não informado';
+  const destinoReguladoCodigo = regulacaoOrigemInfo?.destinoCodigo || 'N/A';
+  const reservaOrigemSetor = regulacaoDestinoInfo?.origemSetorNome || null;
+  const reservaOrigemCodigo = regulacaoDestinoInfo?.origemCodigo || 'N/A';
+  const reservaPacienteNome = regulacaoDestinoInfo?.pacienteNome || null;
+
   const getTempoNoStatus = () => {
     if (!leito.historico || leito.historico.length === 0) {
       return 'sem histórico';
@@ -164,7 +217,15 @@ const LeitoCard = ({
   };
 
   const getCardStyle = () => {
-    // Verificar se o leito está em regulação
+    if (leito.status === 'Regulado') {
+      return "bg-orange-50 border-4 border-orange-500 hover:shadow-lg transition-all shadow-lg";
+    }
+
+    if (leito.status === 'Reservado') {
+      return "bg-purple-50 border-4 border-purple-500 hover:shadow-lg transition-all shadow-lg";
+    }
+
+    // Verificar se o leito está em regulação (fallback)
     if (leito.regulacaoEmAndamento) {
       if (leito.regulacaoEmAndamento.tipo === 'ORIGEM') {
         return "bg-orange-50 border-4 border-orange-500 hover:shadow-lg transition-all shadow-lg";
@@ -190,9 +251,13 @@ const LeitoCard = ({
   };
 
   const getBadgeStyle = () => {
+    if (leito.status === 'Regulado') {
+      return "bg-orange-50 text-orange-800 border-orange-200";
+    }
+
     // Verificar se o leito está em regulação - DESTINO (Reservado)
-    if (leito.regulacaoEmAndamento?.tipo === 'DESTINO') {
-      return "bg-purple-100 text-purple-800 border-purple-200";
+    if (leito.status === 'Reservado' || leito.regulacaoEmAndamento?.tipo === 'DESTINO') {
+      return "bg-purple-50 text-purple-800 border-purple-200";
     }
 
     switch (leito.status) {
@@ -210,7 +275,7 @@ const LeitoCard = ({
   };
 
   const renderStatusBadges = () => {
-    if (leito.status !== 'Ocupado' || !leito.paciente) return null;
+    if (!['Ocupado', 'Regulado'].includes(leito.status) || !leito.paciente) return null;
 
     const badges = [];
     const paciente = leito.paciente;
@@ -361,8 +426,8 @@ const LeitoCard = ({
                   PCP
                 </Badge>
               )}
-              <Badge className={getBadgeStyle()}>
-                {leito.regulacaoEmAndamento?.tipo === 'DESTINO' ? 'RESERVADO' : leito.status}
+              <Badge variant={statusBadgeVariant} className={getBadgeStyle()}>
+                {statusLabel}
               </Badge>
               {leito.status === 'Higienização' && leito.higienizacaoPrioritaria && (
                 <Badge variant="destructive" className="text-xs flex items-center gap-1">
@@ -373,24 +438,26 @@ const LeitoCard = ({
             </div>
           </div>
           {/* Menu de ações */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0">
-                <MoreVertical className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              {renderActions()}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {shouldShowActions && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0">
+                  <MoreVertical className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {renderActions()}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         {/* Conteúdo do card */}
         <div className="space-y-3">
 
-          {/* Leito de ORIGEM em regulação */}
-          {leito.regulacaoEmAndamento?.tipo === 'ORIGEM' && leito.status === 'Ocupado' && leito.paciente && (
-            <div className="space-y-2">
+          {/* Leito em regulação (origem) */}
+          {leito.status === 'Regulado' && leito.paciente && regulacaoOrigemInfo && (
+            <div className="space-y-3">
               <div>
                 <p className="font-medium text-sm text-gray-900">
                   {leito.paciente.nomePaciente}
@@ -405,37 +472,43 @@ const LeitoCard = ({
                   )}
                 </div>
               </div>
-              
-              {/* Badge especial para regulação */}
-              <div className="bg-orange-100 p-2 rounded border border-orange-300">
-                <div className="text-xs font-semibold text-orange-800">
-                  REGULADO PARA: {leito.regulacaoEmAndamento.leitoParceiroCodigo}
-                </div>
+
+              <div className="border border-orange-200 bg-orange-50 p-3 rounded-md text-xs text-orange-800 space-y-1">
+                <p className="font-semibold text-orange-900">
+                  Destino: {destinoReguladoSetor} - Leito {destinoReguladoCodigo}
+                </p>
+                {tempoRegulacaoOrigem && (
+                  <p className="text-orange-700">
+                    Regulação iniciada {tempoRegulacaoOrigem}
+                  </p>
+                )}
               </div>
-              
+
               {renderStatusBadges()}
             </div>
           )}
 
           {/* Leito de DESTINO em regulação (Reservado) */}
-          {leito.regulacaoEmAndamento?.tipo === 'DESTINO' && (
+          {leito.status === 'Reservado' && regulacaoDestinoInfo && (
             <div className="space-y-2">
               <div>
                 <p className="font-medium text-sm text-gray-900">
-                  {leito.regulacaoEmAndamento.pacienteNome}
+                  {reservaPacienteNome || 'Paciente em regulação'}
                 </p>
                 <div className="text-xs text-gray-600">
                   <span className="font-medium">Vindo de: </span>
-                  <span>{leito.regulacaoEmAndamento.leitoParceiroCodigo}</span>
+                  <span>
+                    {reservaOrigemSetor ? `${reservaOrigemSetor} - ` : ''}
+                    {reservaOrigemCodigo}
+                  </span>
                 </div>
               </div>
-              
-              <div className="text-xs text-purple-700">
-                Regulação iniciada {formatDistanceToNow(
-                  leito.regulacaoEmAndamento.iniciadoEm?.toDate?.() || new Date(leito.regulacaoEmAndamento.iniciadoEm), 
-                  { addSuffix: true, locale: ptBR }
-                )}
-              </div>
+
+              {tempoRegulacaoDestino && (
+                <div className="text-xs text-purple-700">
+                  Regulação iniciada {tempoRegulacaoDestino}
+                </div>
+              )}
             </div>
           )}
 
@@ -1059,11 +1132,52 @@ const MapaLeitosPanel = () => {
 
     const estrutura = {};
 
-    // Criar mapa de pacientes por leitoId para performance
+    const leitosPorId = leitos.reduce((acc, leito) => {
+      acc[leito.id] = leito;
+      return acc;
+    }, {});
+
+    const setoresPorId = setores.reduce((acc, setor) => {
+      acc[setor.id] = setor;
+      return acc;
+    }, {});
+
     const pacientesPorLeito = {};
+    const regulacoesOrigemPorLeito = {};
+    const regulacoesDestinoPorLeito = {};
+
     pacientes.forEach(paciente => {
       if (paciente.leitoId) {
         pacientesPorLeito[paciente.leitoId] = paciente;
+      }
+
+      const regulacao = paciente.regulacaoAtiva;
+      if (regulacao?.leitoOrigemId && regulacao?.leitoDestinoId) {
+        const leitoOrigem = leitosPorId[regulacao.leitoOrigemId];
+        const leitoDestino = leitosPorId[regulacao.leitoDestinoId];
+        const setorOrigem = leitoOrigem ? setoresPorId[leitoOrigem.setorId] : null;
+        const setorDestino = setoresPorId[regulacao.setorDestinoId || leitoDestino?.setorId];
+        const timestamp = regulacao.timestamp || regulacao.iniciadoEm || null;
+
+        regulacoesOrigemPorLeito[regulacao.leitoOrigemId] = {
+          destinoCodigo: regulacao.leitoDestinoCodigo || leitoDestino?.codigoLeito || 'N/A',
+          destinoSetorNome: regulacao.leitoDestinoSetorNome
+            || setorDestino?.nomeSetor
+            || setorDestino?.siglaSetor
+            || 'Setor não informado',
+          timestamp,
+          pacienteNome: paciente.nomePaciente
+        };
+
+        regulacoesDestinoPorLeito[regulacao.leitoDestinoId] = {
+          pacienteNome: paciente.nomePaciente,
+          origemCodigo: regulacao.leitoOrigemCodigo || leitoOrigem?.codigoLeito || 'N/A',
+          origemSetorNome: regulacao.leitoOrigemSetorNome
+            || setorOrigem?.nomeSetor
+            || setorOrigem?.siglaSetor
+            || 'Setor não informado',
+          timestamp
+        };
       }
     });
 
@@ -1088,15 +1202,48 @@ const MapaLeitosPanel = () => {
       const leitosDoSetor = leitos
         .filter(leito => leito.setorId === setor.id)
         .map(leito => {
+          const pacienteDoLeito = pacientesPorLeito[leito.id] || null;
+          const regulacaoOrigem = regulacoesOrigemPorLeito[leito.id]
+            || (leito.regulacaoEmAndamento?.tipo === 'ORIGEM'
+              ? {
+                  destinoCodigo: leito.regulacaoEmAndamento.leitoParceiroCodigo || 'N/A',
+                  destinoSetorNome: leito.regulacaoEmAndamento.leitoParceiroSetorNome || 'Setor não informado',
+                  timestamp: leito.regulacaoEmAndamento.iniciadoEm,
+                  pacienteNome: leito.regulacaoEmAndamento.pacienteNome
+                }
+              : null);
+
+          const regulacaoDestino = regulacoesDestinoPorLeito[leito.id]
+            || (leito.regulacaoEmAndamento?.tipo === 'DESTINO'
+              ? {
+                  pacienteNome: leito.regulacaoEmAndamento.pacienteNome,
+                  origemCodigo: leito.regulacaoEmAndamento.leitoParceiroCodigo || 'N/A',
+                  origemSetorNome: leito.regulacaoEmAndamento.leitoParceiroSetorNome || null,
+                  timestamp: leito.regulacaoEmAndamento.iniciadoEm
+                }
+              : null);
+
+          let statusAjustado = leito.status;
+
+          if (regulacaoOrigem) {
+            statusAjustado = 'Regulado';
+          } else if (regulacaoDestino) {
+            statusAjustado = 'Reservado';
+          } else if (pacienteDoLeito) {
+            statusAjustado = 'Ocupado';
+          }
+
           const leitoComPaciente = {
             ...leito,
-            paciente: pacientesPorLeito[leito.id] || null,
-            status: pacientesPorLeito[leito.id] ? 'Ocupado' : leito.status,
-            contextoQuarto: null // Default
+            paciente: pacienteDoLeito,
+            status: statusAjustado,
+            contextoQuarto: null, // Default
+            regulacaoOrigem,
+            regulacaoReserva: regulacaoDestino
           };
 
           // LÓGICA DE COORTE - Enriquecimento do contextoQuarto
-          if (leito.quartoId && !pacientesPorLeito[leito.id]) { // Só para leitos vazios com quarto
+          if (leito.quartoId && !pacienteDoLeito) { // Só para leitos sem paciente no momento
             // Encontrar quarto
             const quartoDoLeito = quartos.find(q => q.id === leito.quartoId);
             if (quartoDoLeito && quartoDoLeito.leitosIds) {
@@ -1231,7 +1378,7 @@ const MapaLeitosPanel = () => {
     }
     
     // Filtros específicos de leitos ocupados
-    if (leito.status === 'Ocupado' && leito.paciente) {
+    if (['Ocupado', 'Regulado'].includes(leito.status) && leito.paciente) {
       const paciente = leito.paciente;
       
       // Filtro por sexo
@@ -1331,7 +1478,7 @@ const MapaLeitosPanel = () => {
               <div>
                 <h4 className="font-medium mb-3">Status do Leito</h4>
                 <div className="space-y-2">
-                  {['Vago', 'Ocupado', 'Higienização', 'Bloqueado'].map(status => (
+                  {['Vago', 'Ocupado', 'Regulado', 'Reservado', 'Higienização', 'Bloqueado'].map(status => (
                     <div key={status} className="flex items-center space-x-2">
                       <Checkbox
                         id={`status-${status}`}

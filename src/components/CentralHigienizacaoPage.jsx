@@ -16,7 +16,6 @@ import {
   updateDoc,
   doc,
   arrayUnion,
-  serverTimestamp,
   deleteField
 } from '@/lib/firebase';
 import { db } from '@/lib/firebase';
@@ -161,7 +160,7 @@ const CentralHigienizacaoPage = () => {
         higienizacaoPrioritaria: deleteField(),
         historico: arrayUnion({
           status: 'Vago',
-          timestamp: serverTimestamp()
+          timestamp: new Date()
         })
       });
 
