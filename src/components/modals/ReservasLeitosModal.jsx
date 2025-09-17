@@ -382,10 +382,11 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
                     ) : (
                       <div className="space-y-3">
                         {reservasProcessadas.sisreg.map(reserva => (
-                          <ReservaCard 
-                            key={reserva.id} 
-                            reserva={reserva} 
+                          <ReservaCard
+                            key={reserva.id}
+                            reserva={reserva}
                             onOpenSubModal={openSubModal}
+                            leitos={dados.leitos}
                           />
                         ))}
                       </div>
@@ -406,10 +407,11 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
                     ) : (
                       <div className="space-y-3">
                         {reservasProcessadas.oncologia.map(reserva => (
-                          <ReservaCard 
-                            key={reserva.id} 
-                            reserva={reserva} 
+                          <ReservaCard
+                            key={reserva.id}
+                            reserva={reserva}
                             onOpenSubModal={openSubModal}
+                            leitos={dados.leitos}
                           />
                         ))}
                       </div>
@@ -707,7 +709,7 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
 };
 
 // Componente para cada card de reserva
-const ReservaCard = ({ reserva, onOpenSubModal }) => {
+const ReservaCard = ({ reserva, onOpenSubModal, leitos }) => {
   const { toast } = useToast();
   const [confirmacaoCancelarOpen, setConfirmacaoCancelarOpen] = useState(false);
 
@@ -735,6 +737,12 @@ const ReservaCard = ({ reserva, onOpenSubModal }) => {
     ['HRHDS', 'REGIONAL'].includes(instituicaoUpper) &&
     dataSolicitacao &&
     differenceInHours(new Date(), dataSolicitacao) > 72;
+
+  const leitoReservado = useMemo(() => {
+    if (!reserva.leitoReservadoId) return null;
+    const listaLeitos = Array.isArray(leitos) ? leitos : [];
+    return listaLeitos.find(leitoAtual => leitoAtual.id === reserva.leitoReservadoId) || null;
+  }, [leitos, reserva.leitoReservadoId]);
 
   const alertas = [];
   if (atrasoOncologia) {
@@ -819,7 +827,9 @@ const ReservaCard = ({ reserva, onOpenSubModal }) => {
                 {reserva.status || 'Status desconhecido'}
               </Badge>
               {reserva.leitoReservadoId && (
-                <Badge variant="outline">Leito Reservado</Badge>
+                <Badge variant="outline">
+                  Leito: {leitoReservado?.codigoLeito || '...'}
+                </Badge>
               )}
             </div>
           </div>

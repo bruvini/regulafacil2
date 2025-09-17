@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -44,6 +44,7 @@ const ConfirmarInternacaoExternaModal = ({ isOpen, onClose, reserva, leito }) =>
   const [alertaConfirmacaoAberto, setAlertaConfirmacaoAberto] = useState(false);
   const [formAberto, setFormAberto] = useState(false);
   const [processando, setProcessando] = useState(false);
+  const formAbertoRef = useRef(false);
 
   const [dadosInternacao, setDadosInternacao] = useState({
     especialidade: '',
@@ -123,6 +124,10 @@ const ConfirmarInternacaoExternaModal = ({ isOpen, onClose, reserva, leito }) =>
       return proximo;
     });
   };
+
+  useEffect(() => {
+    formAbertoRef.current = formAberto;
+  }, [formAberto]);
 
   const handleConfirmarAlerta = () => {
     setAlertaConfirmacaoAberto(false);
@@ -239,7 +244,7 @@ const ConfirmarInternacaoExternaModal = ({ isOpen, onClose, reserva, leito }) =>
         open={alertaConfirmacaoAberto}
         onOpenChange={(open) => {
           setAlertaConfirmacaoAberto(open);
-          if (!open && !formAberto) {
+          if (!open && !formAbertoRef.current) {
             handleFecharTudo();
           }
         }}
