@@ -1,25 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { 
-  AlertTriangle, 
-  CheckCircle2, 
-  Settings, 
-  UserCog, 
+  AlertTriangle,
+  CheckCircle2,
+  Settings,
+  UserCog,
   Search,
-  Calendar,
   XCircle,
   Edit
 } from 'lucide-react';
-import { 
+import {
   getInfeccoesCollection,
+  getLeitosCollection,
   getPacientesCollection,
-  onSnapshot
+  getSetoresCollection,
+  onSnapshot,
+  doc,
+  updateDoc,
+  deleteField,
+  serverTimestamp
 } from '@/lib/firebase';
-import { cn } from "@/lib/utils";
+import { logAction } from '@/lib/auditoria';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import GerenciarInfeccoesModal from './modals/GerenciarInfeccoesModal';
@@ -33,6 +38,9 @@ const GestaoIsolamentosPage = () => {
   // Estados principais
   const [pacientes, setPacientes] = useState([]);
   const [infeccoes, setInfeccoes] = useState([]);
+  const [leitos, setLeitos] = useState([]);
+  const [setores, setSetores] = useState([]);
+  const [pacientesEmRisco, setPacientesEmRisco] = useState([]);
   const [buscarPaciente, setBuscarPaciente] = useState('');
   
   // Estados dos modais
@@ -65,11 +73,40 @@ const GestaoIsolamentosPage = () => {
       setInfeccoes(infeccoesData);
     });
 
+    const unsubscribeLeitos = onSnapshot(getLeitosCollection(), (snapshot) => {
+      const leitosData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setLeitos(leitosData);
+    });
+
+    const unsubscribeSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
+      const setoresData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setSetores(setoresData);
+    });
+
     return () => {
       unsubscribePacientes();
       unsubscribeInfeccoes();
+      unsubscribeLeitos();
+      unsubscribeSetores();
     };
   }, []);
+
+  const formatarLocalizacao = (setor, leito) => {
+    if (!setor || !leito) {
+      return 'Localização não informada';
+    }
+
+    const setorLabel = setor.siglaSetor || setor.nomeSetor || 'Setor não informado';
+    const leitoLabel = leito.codigoLeito || 'Leito não informado';
+
+    return `${setorLabel} - ${leitoLabel}`;
+  };
 
   // Função para obter nome da infecção pelo ID
   const getInfeccaoNome = (infeccaoId) => {
@@ -96,20 +133,289 @@ const GestaoIsolamentosPage = () => {
   };
 
   // Filtrar pacientes por busca
-  const pacientesFiltrados = pacientes.filter(paciente => 
-    !buscarPaciente || 
-    paciente.nomePaciente?.toLowerCase().includes(buscarPaciente.toLowerCase())
-  );
+  const { pacientesSuspeitos, pacientesConfirmados } = useMemo(() => {
+    const termoBusca = buscarPaciente.trim().toLowerCase();
+    const leitosPorId = new Map(leitos.map((leito) => [leito.id, leito]));
+    const setoresPorId = new Map(setores.map((setor) => [setor.id, setor]));
 
-  // Filtrar pacientes suspeitos
-  const pacientesSuspeitos = pacientesFiltrados.filter(paciente => 
-    paciente.isolamentos?.some(iso => iso.status === 'Suspeito')
-  );
+    const pacientesProcessados = pacientes
+      .filter((paciente) => {
+        if (!termoBusca) return true;
+        return paciente.nomePaciente?.toLowerCase().includes(termoBusca);
+      })
+      .map((paciente) => {
+        const leito = paciente.leitoId ? leitosPorId.get(paciente.leitoId) : undefined;
+        const setor = leito ? setoresPorId.get(leito.setorId) : undefined;
 
-  // Filtrar pacientes confirmados
-  const pacientesConfirmados = pacientesFiltrados.filter(paciente => 
-    paciente.isolamentos?.some(iso => iso.status === 'Confirmado')
-  );
+        return {
+          ...paciente,
+          leitoAtual: leito,
+          setorAtual: setor,
+          localizacaoAtual: formatarLocalizacao(setor, leito),
+        };
+      });
+
+    const suspeitos = [];
+    const confirmados = [];
+
+    pacientesProcessados.forEach((paciente) => {
+      const isolamentos = paciente.isolamentos || [];
+      if (isolamentos.some((iso) => iso.status === 'Suspeito')) {
+        suspeitos.push(paciente);
+      }
+      if (isolamentos.some((iso) => iso.status === 'Confirmado')) {
+        confirmados.push(paciente);
+      }
+    });
+
+    return { pacientesSuspeitos: suspeitos, pacientesConfirmados: confirmados };
+  }, [pacientes, buscarPaciente, leitos, setores]);
+
+  useEffect(() => {
+    const normalizarTexto = (texto) =>
+      String(texto || '')
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .toLowerCase();
+
+    const normalizarIsolamentos = (pacienteAtual) => {
+      const isolamentosAtivos = (pacienteAtual?.isolamentos || []).filter((iso) =>
+        iso && (iso.status === 'Confirmado' || iso.status === 'Suspeito')
+      );
+
+      if (isolamentosAtivos.length === 0) {
+        return '';
+      }
+
+      return Array.from(
+        new Set(
+          isolamentosAtivos.map((iso) => {
+            const identificador =
+              iso?.infeccaoId ||
+              iso?.infecaoId ||
+              iso?.id ||
+              iso?.codigo ||
+              iso?.nome ||
+              '';
+            const status = iso?.status || '';
+            return `${String(identificador).trim().toLowerCase()}::${String(status).trim().toLowerCase()}`;
+          })
+        )
+      )
+        .filter(Boolean)
+        .sort()
+        .join('|');
+    };
+
+    const pacientesPorId = new Map(pacientes.map((paciente) => [paciente.id, paciente]));
+    const leitosPorId = new Map(leitos.map((leito) => [leito.id, leito]));
+    const setoresPorId = new Map(setores.map((setor) => [setor.id, setor]));
+    const pacientesPorQuartoId = new Map();
+    const pacientesPorSetorId = new Map();
+
+    pacientes.forEach((paciente) => {
+      const leito = paciente.leitoId ? leitosPorId.get(paciente.leitoId) : undefined;
+      if (!leito) return;
+
+      if (leito.quartoId) {
+        if (!pacientesPorQuartoId.has(leito.quartoId)) {
+          pacientesPorQuartoId.set(leito.quartoId, []);
+        }
+        pacientesPorQuartoId.get(leito.quartoId).push(paciente);
+      }
+
+      if (leito.setorId) {
+        if (!pacientesPorSetorId.has(leito.setorId)) {
+          pacientesPorSetorId.set(leito.setorId, []);
+        }
+        pacientesPorSetorId.get(leito.setorId).push(paciente);
+      }
+    });
+
+    const pacientesEmRiscoDetectados = [];
+
+    pacientes.forEach((paciente) => {
+      const isolamentosAtivos = (paciente?.isolamentos || []).filter((iso) =>
+        iso && (iso.status === 'Confirmado' || iso.status === 'Suspeito')
+      );
+
+      if (isolamentosAtivos.length === 0) {
+        return;
+      }
+
+      const leito = paciente.leitoId ? leitosPorId.get(paciente.leitoId) : undefined;
+      if (!leito) {
+        return;
+      }
+
+      const setor = leito.setorId ? setoresPorId.get(leito.setorId) : undefined;
+      if (!setor) {
+        return;
+      }
+
+      const tipoSetorNormalizado = normalizarTexto(setor.tipoSetor);
+      const setorElegivel = ['emergencia', 'emergência', 'enfermaria'];
+      if (!setorElegivel.includes(tipoSetorNormalizado)) {
+        return;
+      }
+
+      const chaveIsolamentoPaciente = normalizarIsolamentos(paciente);
+      if (!chaveIsolamentoPaciente) {
+        return;
+      }
+
+      let companheiros = [];
+
+      if (leito.quartoId && pacientesPorQuartoId.has(leito.quartoId)) {
+        companheiros = pacientesPorQuartoId
+          .get(leito.quartoId)
+          .filter((outroPaciente) => outroPaciente.id !== paciente.id);
+      } else if (setor.id && pacientesPorSetorId.has(setor.id)) {
+        companheiros = pacientesPorSetorId
+          .get(setor.id)
+          .filter((outroPaciente) => outroPaciente.id !== paciente.id);
+      }
+
+      if (companheiros.length === 0) {
+        return;
+      }
+
+      const possuiDivergencia = companheiros.some((outroPaciente) => {
+        const chaveCompanheiro = normalizarIsolamentos(outroPaciente);
+        return chaveCompanheiro !== chaveIsolamentoPaciente;
+      });
+
+      if (!possuiDivergencia) {
+        return;
+      }
+
+      pacientesEmRiscoDetectados.push({
+        paciente,
+        leito,
+        setor,
+        isolamentosAtivos,
+        chaveIsolamento: chaveIsolamentoPaciente,
+      });
+    });
+
+    setPacientesEmRisco(pacientesEmRiscoDetectados);
+
+    const processarRiscos = async (pacientesEmRiscoAtual) => {
+      const idsEmRisco = new Set(pacientesEmRiscoAtual.map(({ paciente }) => paciente.id));
+
+      for (const { paciente } of pacientesEmRiscoAtual) {
+        try {
+          const pedidoAtual = paciente?.pedidoRemanejamento;
+          if (pedidoAtual?.tipo === 'Risco de Contaminação Cruzada') {
+            continue;
+          }
+
+          const pacienteRef = doc(getPacientesCollection(), paciente.id);
+          await updateDoc(pacienteRef, {
+            pedidoRemanejamento: {
+              tipo: 'Risco de Contaminação Cruzada',
+              descricao:
+                'Paciente em setor de emergência com coorte de isolamento incompatível.',
+              timestamp: serverTimestamp(),
+            },
+          });
+
+          await logAction(
+            'Gestão de Isolamentos',
+            `Pedido de remanejamento automático criado para o paciente '${paciente.nomePaciente}' devido a risco de contaminação.`
+          );
+        } catch (error) {
+          console.error('Erro ao criar pedido automático de remanejamento:', error);
+        }
+      }
+
+      for (const paciente of pacientesPorId.values()) {
+        try {
+          const pedido = paciente?.pedidoRemanejamento;
+          if (pedido?.tipo !== 'Risco de Contaminação Cruzada') {
+            continue;
+          }
+
+          if (idsEmRisco.has(paciente.id)) {
+            continue;
+          }
+
+          const pacienteRef = doc(getPacientesCollection(), paciente.id);
+          await updateDoc(pacienteRef, {
+            pedidoRemanejamento: deleteField(),
+          });
+
+          await logAction(
+            'Gestão de Isolamentos',
+            `Pedido de remanejamento automático do paciente '${paciente.nomePaciente}' foi resolvido.`
+          );
+        } catch (error) {
+          console.error('Erro ao resolver pedido automático de remanejamento:', error);
+        }
+      }
+    };
+
+    processarRiscos(pacientesEmRiscoDetectados).catch((error) => {
+      console.error('Erro durante o processamento dos riscos de contaminação:', error);
+    });
+  }, [pacientes, leitos, setores]);
+
+  const AlertasRiscoContaminacaoPanel = ({ pacientesEmRisco }) => {
+    if (!pacientesEmRisco.length) {
+      return null;
+    }
+
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <Accordion type="single" collapsible className="w-full">
+            <AccordionItem value="alertas-risco">
+              <AccordionTrigger className="flex items-center justify-between gap-2 text-left">
+                <span className="font-semibold">Alertas de Risco de Contaminação Cruzada</span>
+                <Badge variant="destructive">{pacientesEmRisco.length}</Badge>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3">
+                  {pacientesEmRisco.map(({ paciente, setor, leito, isolamentosAtivos }) => {
+                    const localizacao = formatarLocalizacao(setor, leito);
+                    const isolamentosDescricao = isolamentosAtivos.length
+                      ? isolamentosAtivos
+                          .map((iso) => getInfeccaoNome(iso.infeccaoId))
+                          .join(', ')
+                      : 'Não informado';
+
+                    return (
+                      <Card
+                        key={paciente.id}
+                        className="border border-destructive/30 bg-destructive/5"
+                      >
+                        <CardContent className="py-4">
+                          <div className="space-y-2 text-sm">
+                            <div className="font-semibold">{paciente.nomePaciente}</div>
+                            <div className="text-xs text-muted-foreground">
+                              <span className="font-medium">Localização: </span>
+                              <span className="font-semibold">{localizacao}</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              <span className="font-medium">Isolamentos ativos: </span>
+                              <span>{isolamentosDescricao}</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Um pedido de remanejamento automático foi criado para este paciente.
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </CardContent>
+      </Card>
+    );
+  };
 
   // Handlers dos modais
   const handleConfirmarIsolamento = (paciente, isolamento) => {
@@ -180,6 +486,8 @@ const GestaoIsolamentosPage = () => {
         </CardContent>
       </Card>
 
+      <AlertasRiscoContaminacaoPanel pacientesEmRisco={pacientesEmRisco} />
+
       {/* Filtro de Busca */}
       <Card>
         <CardContent className="pt-6">
@@ -220,6 +528,10 @@ const GestaoIsolamentosPage = () => {
                     </AccordionTrigger>
                     <AccordionContent>
                       <div className="space-y-3">
+                        <div className="text-xs text-muted-foreground">
+                          <span className="font-medium">Localização: </span>
+                          <span className="font-semibold">{paciente.localizacaoAtual}</span>
+                        </div>
                         {paciente.isolamentos
                           ?.filter(iso => iso.status === 'Suspeito')
                           .map((isolamento) => (
@@ -288,6 +600,10 @@ const GestaoIsolamentosPage = () => {
                     </AccordionTrigger>
                     <AccordionContent>
                       <div className="space-y-3">
+                        <div className="text-xs text-muted-foreground">
+                          <span className="font-medium">Localização: </span>
+                          <span className="font-semibold">{paciente.localizacaoAtual}</span>
+                        </div>
                         {paciente.isolamentos
                           ?.filter(iso => iso.status === 'Confirmado')
                           .map((isolamento) => (

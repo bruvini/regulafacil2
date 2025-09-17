@@ -172,6 +172,7 @@ const RemanejamentosPendentesPanel = () => {
   const PacienteRemanejamentoCard = ({ paciente }) => {
     const localizacao = obterLocalizacaoAtual(paciente);
     const tempoSolicitacao = calcularTempoSolicitacao(paciente.pedidoRemanejamento.timestamp);
+    const isCancelavel = paciente.pedidoRemanejamento?.tipo !== 'Risco de Contaminação Cruzada';
 
     return (
       <Card className="p-4 hover:shadow-md transition-shadow border border-muted">
@@ -213,15 +214,17 @@ const RemanejamentosPendentesPanel = () => {
 
           {/* Ações */}
           <div className="flex justify-end gap-2 pt-2 border-t">
-            <Button 
-              variant="destructive" 
-              size="sm"
-              onClick={() => setModalCancelar({ isOpen: true, paciente })}
-            >
-              Cancelar
-            </Button>
-            <Button 
-              variant="default" 
+            {isCancelavel && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setModalCancelar({ isOpen: true, paciente })}
+              >
+                Cancelar
+              </Button>
+            )}
+            <Button
+              variant="default"
               size="sm"
               onClick={() => handleRemanejarPaciente(paciente)}
             >
