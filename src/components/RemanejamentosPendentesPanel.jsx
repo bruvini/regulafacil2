@@ -205,7 +205,7 @@ const RemanejamentosPendentesPanel = () => {
           </div>
 
           {/* Justificativa */}
-          {paciente.pedidoRemanejamento.descricao && (
+          {paciente.pedidoRemanejamento?.descricao && (
             <div className="text-xs text-muted-foreground">
               <span className="font-medium">Justificativa: </span>
               <span className="italic">{paciente.pedidoRemanejamento.descricao}</span>

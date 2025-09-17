@@ -53,15 +53,17 @@ const ConfirmarRegulacaoModal = ({
     // Personalizar mensagem baseado no modo
     let titulo = '*LEITO REGULADO*';
     let justificativaTexto = '';
-    
+
     if (modo === 'remanejamento') {
       titulo = '*REMANEJAMENTO SOLICITADO*';
       if (paciente.pedidoRemanejamento) {
-        justificativaTexto = `\n*Justificativa:* _${paciente.pedidoRemanejamento.tipo}`;
-        if (paciente.pedidoRemanejamento.descricao) {
-          justificativaTexto += ` - ${paciente.pedidoRemanejamento.descricao}`;
+        const tipoJustificativa = paciente.pedidoRemanejamento.tipo || '';
+        const descricaoJustificativa = paciente.pedidoRemanejamento.descricao;
+        const justificativa = `${tipoJustificativa}${descricaoJustificativa ? `: ${descricaoJustificativa}` : ''}`.trim();
+
+        if (justificativa) {
+          justificativaTexto = `\n*Justificativa:* _${justificativa}_`;
         }
-        justificativaTexto += '_';
       }
     }
 
