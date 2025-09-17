@@ -1,16 +1,10 @@
 import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { 
-  TrendingUp, 
-  Wrench, 
-  Filter, 
-  Users, 
-  Loader, 
-  BedDouble, 
-  Truck, 
-  Stethoscope, 
-  ArrowRightLeft,
+import {
+  TrendingUp,
+  Wrench,
+  Stethoscope,
   DatabaseIcon,
   BookUser,
   Sparkles,
@@ -22,8 +16,25 @@ import FilaEsperaUTIPanel from './FilaEsperaUTIPanel';
 import TransferenciaExternaPanel from './TransferenciaExternaPanel';
 import RegulacoesEmAndamentoPanel from './RegulacoesEmAndamentoPanel';
 import RemanejamentosPendentesPanel from './RemanejamentosPendentesPanel';
+import FiltrosRegulacao from './FiltrosRegulacao';
+
+const filtrosIniciais = {
+  searchTerm: '',
+  especialidade: 'todos',
+  sexo: 'todos',
+  idadeMin: '',
+  idadeMax: '',
+  tempoInternacaoMin: '',
+  tempoInternacaoMax: '',
+  unidadeTempo: 'dias'
+};
+
+const sortConfigInicial = { key: 'nome', direction: 'asc' };
+
 const RegulacaoLeitosPage = () => {
   const [showImportModal, setShowImportModal] = useState(false);
+  const [filtros, setFiltros] = useState(filtrosIniciais);
+  const [sortConfig, setSortConfig] = useState(sortConfigInicial);
 
   return (
     <div className="p-6 space-y-6">
@@ -54,33 +65,33 @@ const RegulacaoLeitosPage = () => {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Button 
-                variant="outline" 
-                className="flex items-center gap-2" 
+              <Button
+                variant="outline"
+                className="flex items-center gap-2"
                 onClick={() => setShowImportModal(true)}
               >
                 <DatabaseIcon className="h-4 w-4" />
                 Importar Pacientes MV
               </Button>
-              <Button 
-                variant="outline" 
-                className="flex items-center gap-2 opacity-60 cursor-not-allowed" 
+              <Button
+                variant="outline"
+                className="flex items-center gap-2 opacity-60 cursor-not-allowed"
                 disabled
               >
                 <BookUser className="h-4 w-4" />
                 Passagem de Plantão
               </Button>
-              <Button 
-                variant="outline" 
-                className="flex items-center gap-2 opacity-60 cursor-not-allowed" 
+              <Button
+                variant="outline"
+                className="flex items-center gap-2 opacity-60 cursor-not-allowed"
                 disabled
               >
                 <Sparkles className="h-4 w-4" />
                 Sugestões de Regulação
               </Button>
-              <Button 
-                variant="outline" 
-                className="flex items-center gap-2 opacity-60 cursor-not-allowed" 
+              <Button
+                variant="outline"
+                className="flex items-center gap-2 opacity-60 cursor-not-allowed"
                 disabled
               >
                 <PieChart className="h-4 w-4" />
@@ -93,41 +104,33 @@ const RegulacaoLeitosPage = () => {
 
       {/* Seção 2: Filtros */}
       <section>
-        <Card className="shadow-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Filter className="h-5 w-5 text-primary" />
-              Filtros e Pesquisa
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">
-              Opções de filtro para os painéis abaixo serão implementadas aqui.
-            </p>
-            <div className="mt-3 text-xs text-muted-foreground/70">
-              ▼ Esta área será expansível
-            </div>
-          </CardContent>
-        </Card>
+        <FiltrosRegulacao
+          filtros={filtros}
+          setFiltros={setFiltros}
+          sortConfig={sortConfig}
+          setSortConfig={setSortConfig}
+          initialFilters={filtrosIniciais}
+          defaultSortConfig={sortConfigInicial}
+        />
       </section>
 
       {/* Seção 3: Painel Principal de Regulação */}
       <section>
         <div className="space-y-6">
           {/* Painel de Pacientes Aguardando Regulação */}
-          <AguardandoRegulacaoPanel />
+          <AguardandoRegulacaoPanel filtros={filtros} sortConfig={sortConfig} />
 
           {/* Linha: Fila UTI + Transferência Externa */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <FilaEsperaUTIPanel />
-            <TransferenciaExternaPanel />
+            <FilaEsperaUTIPanel filtros={filtros} sortConfig={sortConfig} />
+            <TransferenciaExternaPanel filtros={filtros} sortConfig={sortConfig} />
           </div>
 
           {/* Painel de Remanejamentos Pendentes */}
-          <RemanejamentosPendentesPanel />
+          <RemanejamentosPendentesPanel filtros={filtros} sortConfig={sortConfig} />
 
           {/* Painel de Regulações em Andamento */}
-          <RegulacoesEmAndamentoPanel />
+          <RegulacoesEmAndamentoPanel filtros={filtros} sortConfig={sortConfig} />
 
           {/* Outros Cards em Grid - ÚLTIMO ITEM */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -150,9 +153,9 @@ const RegulacaoLeitosPage = () => {
       </section>
 
       {/* Modal de Importação */}
-      <ImportarPacientesMVModal 
-        isOpen={showImportModal} 
-        onClose={() => setShowImportModal(false)} 
+      <ImportarPacientesMVModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
       />
     </div>
   );

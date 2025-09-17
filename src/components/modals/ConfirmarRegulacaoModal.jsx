@@ -43,9 +43,15 @@ const ConfirmarRegulacaoModal = ({
     // Obter nomes das infecções
     const nomesInfeccoes = (paciente.isolamentos || [])
       .map(iso => {
-        const infeccao = infeccoes.find(inf => inf.id === iso.infecaoId);
-        return infeccao ? infeccao.nomeInfeccao : 'Infecção não identificada';
+        const infeccaoId = iso.infeccaoId || iso.infecaoId;
+        if (!infeccaoId) return null;
+        const infeccao = infeccoes.find(inf => inf.id === infeccaoId);
+        if (infeccao) {
+          return infeccao.siglaInfeccao || infeccao.nomeInfeccao;
+        }
+        return `ID:${infeccaoId}`;
       })
+      .filter(Boolean)
       .join(', ');
 
     const dataHora = format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
@@ -58,7 +64,8 @@ const ConfirmarRegulacaoModal = ({
       titulo = '*REMANEJAMENTO SOLICITADO*';
       if (paciente.pedidoRemanejamento) {
         const tipoJustificativa = paciente.pedidoRemanejamento.tipo || '';
-        const descricaoJustificativa = paciente.pedidoRemanejamento.descricao;
+        const descricaoJustificativa =
+          paciente.pedidoRemanejamento.detalhe || paciente.pedidoRemanejamento.descricao;
         const justificativa = `${tipoJustificativa}${descricaoJustificativa ? `: ${descricaoJustificativa}` : ''}`.trim();
 
         if (justificativa) {

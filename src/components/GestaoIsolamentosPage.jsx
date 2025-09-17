@@ -303,7 +303,7 @@ const GestaoIsolamentosPage = () => {
     const processarRiscos = async (pacientesEmRiscoAtual) => {
       const idsEmRisco = new Set(pacientesEmRiscoAtual.map(({ paciente }) => paciente.id));
 
-      for (const { paciente } of pacientesEmRiscoAtual) {
+      for (const { paciente, isolamentosAtivos } of pacientesEmRiscoAtual) {
         try {
           const pedidoAtual = paciente?.pedidoRemanejamento;
           if (pedidoAtual?.tipo === 'Risco de Contaminação Cruzada') {
@@ -311,11 +311,29 @@ const GestaoIsolamentosPage = () => {
           }
 
           const pacienteRef = doc(getPacientesCollection(), paciente.id);
+          const siglasIsolamentos = (isolamentosAtivos || [])
+            .map((iso) => {
+              const infeccaoId = iso?.infeccaoId || iso?.infecaoId;
+              if (!infeccaoId) return null;
+              const infeccaoEncontrada = infeccoes.find((inf) => inf.id === infeccaoId);
+              if (infeccaoEncontrada) {
+                return infeccaoEncontrada.siglaInfeccao || infeccaoEncontrada.nomeInfeccao;
+              }
+              return `ID:${infeccaoId}`;
+            })
+            .filter(Boolean);
+
+          const descricaoBase = siglasIsolamentos.length
+            ? `Paciente com coorte de isolamento incompatível (Isolamentos: ${siglasIsolamentos.join(', ')})`
+            : 'Paciente com coorte de isolamento incompatível';
+
+          const descricao = `${descricaoBase}.`;
+
           await updateDoc(pacienteRef, {
             pedidoRemanejamento: {
               tipo: 'Risco de Contaminação Cruzada',
-              descricao:
-                'Paciente em setor de emergência com coorte de isolamento incompatível.',
+              descricao,
+              detalhe: descricao,
               timestamp: serverTimestamp(),
             },
           });
@@ -358,7 +376,7 @@ const GestaoIsolamentosPage = () => {
     processarRiscos(pacientesEmRiscoDetectados).catch((error) => {
       console.error('Erro durante o processamento dos riscos de contaminação:', error);
     });
-  }, [pacientes, leitos, setores]);
+  }, [pacientes, leitos, setores, infeccoes]);
 
   const AlertasRiscoContaminacaoPanel = ({ pacientesEmRisco }) => {
     if (!pacientesEmRisco.length) {

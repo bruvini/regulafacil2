@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArrowRightCircle, LogOut, Users } from "lucide-react";
-import { intervalToDuration, formatISO9075 } from 'date-fns';
+import { intervalToDuration } from 'date-fns';
 import { 
   getSetoresCollection, 
   getLeitosCollection,
@@ -13,7 +13,20 @@ import {
 } from '@/lib/firebase';
 import RegularPacienteModal from '@/components/modals/RegularPacienteModal';
 
-const AguardandoRegulacaoPanel = () => {
+const normalizarTexto = (texto) =>
+  String(texto || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase();
+
+const normalizarSexo = (valor) => {
+  const sexoNormalizado = normalizarTexto(valor);
+  if (sexoNormalizado.startsWith('m')) return 'M';
+  if (sexoNormalizado.startsWith('f')) return 'F';
+  return '';
+};
+
+const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
   const [setores, setSetores] = useState([]);
   const [pacientes, setPacientes] = useState([]);
   const [leitos, setLeitos] = useState([]);
@@ -64,10 +77,9 @@ const AguardandoRegulacaoPanel = () => {
     };
   }, []);
 
-  // Função para calcular idade a partir da data de nascimento
   const calcularIdade = (dataNascimento) => {
     if (!dataNascimento) return 0;
-    
+
     let dataObj;
     
     // Se for uma string no formato dd/mm/aaaa
@@ -100,71 +112,188 @@ const AguardandoRegulacaoPanel = () => {
     return idade;
   };
 
-  // Função para calcular tempo de internação
-  const calcularTempoInternacao = (dataInternacao) => {
-    if (!dataInternacao) return '';
-    
+  const parseData = (valor) => {
+    if (!valor) return null;
+
     let dataObj;
-    
-    // Se for uma string no formato dd/mm/aaaa ou dd/mm/aaaa hh:mm
-    if (typeof dataInternacao === 'string' && dataInternacao.includes('/')) {
-      const partes = dataInternacao.split(' ');
+
+    if (typeof valor === 'string' && valor.includes('/')) {
+      const partes = valor.split(' ');
       const [dia, mes, ano] = partes[0].split('/');
-      
+
       if (partes.length > 1 && partes[1].includes(':')) {
-        // Incluir hora e minuto se disponível
         const [hora, minuto] = partes[1].split(':');
-        dataObj = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia), parseInt(hora), parseInt(minuto));
+        dataObj = new Date(
+          parseInt(ano, 10),
+          parseInt(mes, 10) - 1,
+          parseInt(dia, 10),
+          parseInt(hora, 10),
+          parseInt(minuto, 10)
+        );
       } else {
-        dataObj = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+        dataObj = new Date(parseInt(ano, 10), parseInt(mes, 10) - 1, parseInt(dia, 10));
       }
+    } else if (valor && typeof valor.toDate === 'function') {
+      dataObj = valor.toDate();
+    } else {
+      dataObj = new Date(valor);
     }
-    // Se for um timestamp do Firebase
-    else if (dataInternacao && typeof dataInternacao.toDate === 'function') {
-      dataObj = dataInternacao.toDate();
+
+    if (isNaN(dataObj?.getTime?.())) {
+      return null;
     }
-    // Se for já um objeto Date ou string de data
-    else {
-      dataObj = new Date(dataInternacao);
-    }
-    
-    // Verificar se a data é válida
-    if (isNaN(dataObj.getTime())) {
-      return '';
-    }
-    
+
+    return dataObj;
+  };
+
+  const calcularTempoInternacaoHoras = (dataInternacao) => {
+    const dataObj = parseData(dataInternacao);
+    if (!dataObj) return null;
+    const diffMs = Date.now() - dataObj.getTime();
+    return diffMs / (1000 * 60 * 60);
+  };
+
+  const calcularTempoInternacao = (dataInternacao) => {
+    const dataObj = parseData(dataInternacao);
+    if (!dataObj) return '';
+
     const agora = new Date();
     const duracao = intervalToDuration({ start: dataObj, end: agora });
-    
+
     if (duracao.days > 0) {
       return `${duracao.days}d ${duracao.hours || 0}h`;
-    } else if (duracao.hours > 0) {
-      return `${duracao.hours}h ${duracao.minutes || 0}m`;
-    } else {
-      return `${duracao.minutes || 0}m`;
     }
+    if (duracao.hours > 0) {
+      return `${duracao.hours}h ${duracao.minutes || 0}m`;
+    }
+    return `${duracao.minutes || 0}m`;
   };
+
+  const pacientesFiltradosOrdenados = useMemo(() => {
+    const {
+      searchTerm = '',
+      especialidade = 'todos',
+      sexo = 'todos',
+      idadeMin = '',
+      idadeMax = '',
+      tempoInternacaoMin = '',
+      tempoInternacaoMax = '',
+      unidadeTempo = 'dias'
+    } = filtros || {};
+
+    const termoBuscaNormalizado = normalizarTexto(searchTerm);
+    const especialidadeFiltro = normalizarTexto(especialidade);
+    const sexoFiltro = sexo || 'todos';
+    const idadeMinNumero = idadeMin !== '' ? Number(idadeMin) : null;
+    const idadeMaxNumero = idadeMax !== '' ? Number(idadeMax) : null;
+    const tempoMinNumero = tempoInternacaoMin !== '' ? Number(tempoInternacaoMin) : null;
+    const tempoMaxNumero = tempoInternacaoMax !== '' ? Number(tempoInternacaoMax) : null;
+
+    const filtered = pacientes.filter((paciente) => {
+      if (!paciente) return false;
+
+      if (termoBuscaNormalizado) {
+        const nomeNormalizado = normalizarTexto(paciente.nomePaciente);
+        if (!nomeNormalizado.includes(termoBuscaNormalizado)) {
+          return false;
+        }
+      }
+
+      if (especialidadeFiltro && especialidadeFiltro !== 'todos') {
+        const especialidadePaciente = normalizarTexto(paciente.especialidade);
+        if (!especialidadePaciente.includes(especialidadeFiltro)) {
+          return false;
+        }
+      }
+
+      if (sexoFiltro && sexoFiltro !== 'todos') {
+        if (normalizarSexo(paciente.sexo) !== sexoFiltro) {
+          return false;
+        }
+      }
+
+      const idade = calcularIdade(paciente.dataNascimento);
+      if (idadeMinNumero !== null && idade < idadeMinNumero) {
+        return false;
+      }
+      if (idadeMaxNumero !== null && idade > idadeMaxNumero) {
+        return false;
+      }
+
+      const tempoHoras = calcularTempoInternacaoHoras(paciente.dataInternacao);
+      const tempoMinHoras =
+        tempoMinNumero !== null
+          ? unidadeTempo === 'dias'
+            ? tempoMinNumero * 24
+            : tempoMinNumero
+          : null;
+      const tempoMaxHoras =
+        tempoMaxNumero !== null
+          ? unidadeTempo === 'dias'
+            ? tempoMaxNumero * 24
+            : tempoMaxNumero
+          : null;
+
+      if (tempoMinHoras !== null) {
+        if (tempoHoras === null || tempoHoras < tempoMinHoras) {
+          return false;
+        }
+      }
+
+      if (tempoMaxHoras !== null) {
+        if (tempoHoras === null || tempoHoras > tempoMaxHoras) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    const direction = sortConfig?.direction === 'desc' ? -1 : 1;
+    const key = sortConfig?.key || 'nome';
+
+    return filtered.sort((a, b) => {
+      if (key === 'idade') {
+        const idadeA = calcularIdade(a.dataNascimento);
+        const idadeB = calcularIdade(b.dataNascimento);
+        return direction * (idadeA - idadeB);
+      }
+
+      if (key === 'tempoInternacao') {
+        const tempoA = calcularTempoInternacaoHoras(a.dataInternacao);
+        const tempoB = calcularTempoInternacaoHoras(b.dataInternacao);
+        const valorA =
+          tempoA ?? (direction === 1 ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
+        const valorB =
+          tempoB ?? (direction === 1 ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
+        return direction * (valorA - valorB);
+      }
+
+      const nomeA = normalizarTexto(a.nomePaciente);
+      const nomeB = normalizarTexto(b.nomePaciente);
+      return direction * nomeA.localeCompare(nomeB);
+    });
+  }, [pacientes, filtros, sortConfig]);
 
   // Filtrar pacientes pelos setores específicos
   const setoresRegulacao = ["PS DECISÃO CLINICA", "PS DECISÃO CIRURGICA", "CC - RECUPERAÇÃO"];
-  
-  const getSetorByName = (nome) => setores.find((s) => s?.nomeSetor === nome);
 
-  const pacientesPorSetor = setoresRegulacao.reduce((acc, nomeSetorAlvo) => {
-    // Primeiro, encontre o ID do setor que estamos procurando
-    const setorAlvo = setores.find(s => s.nomeSetor === nomeSetorAlvo);
+  const pacientesPorSetor = useMemo(() => {
+    return setoresRegulacao.reduce((acc, nomeSetorAlvo) => {
+      const setorAlvo = setores.find(s => s.nomeSetor === nomeSetorAlvo);
 
-    // Se o setor não for encontrado nos dados carregados, retorne uma lista vazia para ele
-    if (!setorAlvo) {
-      acc[nomeSetorAlvo] = [];
+      if (!setorAlvo) {
+        acc[nomeSetorAlvo] = [];
+        return acc;
+      }
+
+      acc[nomeSetorAlvo] = pacientesFiltradosOrdenados.filter(
+        (paciente) => paciente.setorId === setorAlvo.id
+      );
+
       return acc;
-    }
-
-    // Agora, filtre a lista de pacientes, comparando o setorId de cada paciente com o ID do setor alvo
-    acc[nomeSetorAlvo] = pacientes.filter(p => p.setorId === setorAlvo.id);
-
-    return acc;
-  }, {});
+    }, {});
+  }, [pacientesFiltradosOrdenados, setores]);
 
   // Handlers para os modais
   const handleIniciarRegulacao = (paciente) => {
