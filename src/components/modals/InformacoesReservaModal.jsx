@@ -15,7 +15,6 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { MessageSquare, Calendar, User, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/contexts/AuthContext';
 import {
   updateDoc,
   doc,
@@ -26,7 +25,6 @@ import { logAction } from '@/lib/auditoria';
 
 const InformacoesReservaModal = ({ isOpen, onClose, reserva }) => {
   const { toast } = useToast();
-  const { currentUser } = useAuth();
   const [novaObservacao, setNovaObservacao] = useState('');
   const [salvandoObservacao, setSalvandoObservacao] = useState(false);
 
@@ -55,7 +53,7 @@ const InformacoesReservaModal = ({ isOpen, onClose, reserva }) => {
       const observacao = {
         texto: novaObservacao.trim(),
         data: new Date(),
-        usuarioNome: currentUser?.nomeCompleto || 'Usuário Desconhecido'
+        usuarioNome: 'Usuário do Sistema' // TODO: Pegar do contexto de auth
       };
 
       await updateDoc(

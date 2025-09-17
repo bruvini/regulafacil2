@@ -382,11 +382,10 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
                     ) : (
                       <div className="space-y-3">
                         {reservasProcessadas.sisreg.map(reserva => (
-                          <ReservaCard
-                            key={reserva.id}
-                            reserva={reserva}
+                          <ReservaCard 
+                            key={reserva.id} 
+                            reserva={reserva} 
                             onOpenSubModal={openSubModal}
-                            leitos={dados.leitos}
                           />
                         ))}
                       </div>
@@ -407,11 +406,10 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
                     ) : (
                       <div className="space-y-3">
                         {reservasProcessadas.oncologia.map(reserva => (
-                          <ReservaCard
-                            key={reserva.id}
-                            reserva={reserva}
+                          <ReservaCard 
+                            key={reserva.id} 
+                            reserva={reserva} 
                             onOpenSubModal={openSubModal}
-                            leitos={dados.leitos}
                           />
                         ))}
                       </div>
@@ -709,17 +707,9 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
 };
 
 // Componente para cada card de reserva
-const ReservaCard = ({ reserva, onOpenSubModal, leitos = [] }) => {
+const ReservaCard = ({ reserva, onOpenSubModal }) => {
   const { toast } = useToast();
   const [confirmacaoCancelarOpen, setConfirmacaoCancelarOpen] = useState(false);
-
-  const leitoReservado = useMemo(() => {
-    if (!reserva?.leitoReservadoId || !Array.isArray(leitos)) {
-      return null;
-    }
-
-    return leitos.find(leito => leito.id === reserva.leitoReservadoId) || null;
-  }, [leitos, reserva?.leitoReservadoId]);
 
   const obterData = (valor) => {
     if (!valor) return null;
@@ -829,9 +819,7 @@ const ReservaCard = ({ reserva, onOpenSubModal, leitos = [] }) => {
                 {reserva.status || 'Status desconhecido'}
               </Badge>
               {reserva.leitoReservadoId && (
-                <Badge variant="outline">
-                  Leito: {leitoReservado?.codigoLeito || '...'}
-                </Badge>
+                <Badge variant="outline">Leito Reservado</Badge>
               )}
             </div>
           </div>
