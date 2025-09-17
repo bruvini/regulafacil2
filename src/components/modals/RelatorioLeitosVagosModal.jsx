@@ -78,9 +78,8 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
   const dadosProcessados = useMemo(() => {
     if (dados.loading) return {};
 
-    const { setores, leitos, quartos, pacientes } = dados;
+    const { setores, leitos, pacientes } = dados;
 
-    // Criar mapa de pacientes por leito
     const pacientesPorLeito = {};
     pacientes.forEach(paciente => {
       if (paciente.leitoId) {
@@ -88,62 +87,103 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
       }
     });
 
-    // Filtrar setores elegíveis (Enfermaria e UTI)
-    const setoresElegiveis = setores.filter(setor => 
+    const leitosPorQuarto = {};
+    leitos.forEach(leitoAtual => {
+      if (!leitoAtual.quartoId) return;
+      if (!leitosPorQuarto[leitoAtual.quartoId]) {
+        leitosPorQuarto[leitoAtual.quartoId] = [];
+      }
+      leitosPorQuarto[leitoAtual.quartoId].push(leitoAtual);
+    });
+
+    const setoresElegiveis = setores.filter(setor =>
       setor.tipoSetor === 'Enfermaria' || setor.tipoSetor === 'UTI'
     );
 
     const estruturarPorSetor = {};
 
+    const normalizarSexo = (valor) => {
+      if (!valor) return null;
+      const texto = String(valor).trim().toUpperCase();
+      if (texto.startsWith('M')) return 'Masculino';
+      if (texto.startsWith('F')) return 'Feminino';
+      return null;
+    };
+
+    const normalizarIdentificadorIsolamento = (valor) => {
+      if (!valor) return null;
+      const texto = String(valor).trim();
+      return texto.length > 0 ? texto : null;
+    };
+
     setoresElegiveis.forEach(setor => {
-      // Buscar leitos vagos ou em higienização deste setor
       const leitosVagos = leitos
-        .filter(leito => 
-          leito.setorId === setor.id && 
+        .filter(leito =>
+          leito.setorId === setor.id &&
           (leito.status === 'Vago' || leito.status === 'Higienização') &&
-          !pacientesPorLeito[leito.id] // Garantir que não tem paciente
+          !pacientesPorLeito[leito.id]
         )
         .map(leito => {
-          const leitoEnriquecido = {
-            ...leito,
-            contextoQuarto: null
-          };
+          let sexoCompativel = 'Ambos';
+          let isolamentoExigido = null;
+          let isolamentosSiglas = [];
 
-          // Aplicar lógica de coorte
           if (leito.quartoId) {
-            const quartoDoLeito = quartos.find(q => q.id === leito.quartoId);
-            if (quartoDoLeito && quartoDoLeito.leitosIds) {
-              // Encontrar companheiros de quarto ocupados
-              const companheirosDeQuarto = quartoDoLeito.leitosIds
-                .map(leitoId => pacientesPorLeito[leitoId])
+            const leitosDoQuarto = leitosPorQuarto[leito.quartoId] || [];
+            const leitosOcupados = leitosDoQuarto.filter(outro =>
+              outro.id !== leito.id && outro.status === 'Ocupado'
+            );
+
+            if (leitosOcupados.length > 0) {
+              const ocupantes = leitosOcupados
+                .map(outro => pacientesPorLeito[outro.id])
                 .filter(paciente => paciente != null);
 
-              if (companheirosDeQuarto.length > 0) {
-                const primeiroCompanheiro = companheirosDeQuarto[0];
-                const sexoQuarto = primeiroCompanheiro.sexo === 'M' ? 'Masculino' : 'Feminino';
-                
-                // Coletar isolamentos únicos
-                const isolamentosQuarto = [];
-                if (primeiroCompanheiro.isolamentos && Array.isArray(primeiroCompanheiro.isolamentos)) {
-                  primeiroCompanheiro.isolamentos.forEach(isolamento => {
-                    if (isolamento.siglaInfeccao && !isolamentosQuarto.find(i => i.sigla === isolamento.siglaInfeccao)) {
-                      isolamentosQuarto.push({
-                        sigla: isolamento.siglaInfeccao,
-                        nome: isolamento.nomeInfeccao || isolamento.siglaInfeccao
-                      });
-                    }
-                  });
+              if (ocupantes.length > 0) {
+                const primeiroOcupante = ocupantes[0];
+                const sexoOcupante = normalizarSexo(primeiroOcupante.sexo);
+                if (sexoOcupante) {
+                  sexoCompativel = sexoOcupante;
                 }
 
-                leitoEnriquecido.contextoQuarto = {
-                  sexo: sexoQuarto,
-                  isolamentos: isolamentosQuarto.sort((a, b) => a.sigla.localeCompare(b.sigla))
-                };
+                const idsIsolamentos = new Set();
+                const siglasIsolamentos = new Set();
+
+                ocupantes.forEach(pacienteOcupante => {
+                  (pacienteOcupante.isolamentos || []).forEach(isolamento => {
+                    const identificador = normalizarIdentificadorIsolamento(
+                      isolamento.infeccaoId || isolamento.id || isolamento.siglaInfeccao
+                    );
+                    if (identificador) {
+                      idsIsolamentos.add(identificador);
+                    }
+
+                    if (isolamento.siglaInfeccao) {
+                      siglasIsolamentos.add(String(isolamento.siglaInfeccao).trim().toUpperCase());
+                    }
+                  });
+                });
+
+                if (idsIsolamentos.size > 0) {
+                  isolamentoExigido = Array.from(idsIsolamentos)
+                    .sort((a, b) => a.localeCompare(b))
+                    .join('-');
+                }
+
+                if (siglasIsolamentos.size > 0) {
+                  isolamentosSiglas = Array.from(siglasIsolamentos)
+                    .sort((a, b) => a.localeCompare(b));
+                }
               }
             }
           }
 
-          return leitoEnriquecido;
+          return {
+            ...leito,
+            sexoCompativel,
+            isolamentoExigido,
+            isolamentosSiglas
+          };
         })
         .sort((a, b) => a.codigoLeito.localeCompare(b.codigoLeito));
 
@@ -163,17 +203,18 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
     mensagem += `Poderia nos dar a informação dos leitos abaixo?\n`;
     
     leitosVagos.forEach(leito => {
-      let statusDetalhado = leito.status;
-      let infoAdicional = '';
-      
-      if (leito.contextoQuarto) {
-        infoAdicional = ` - Leito ${leito.contextoQuarto.sexo}`;
-        if (leito.contextoQuarto.isolamentos.length > 0) {
-          statusDetalhado = `Isolamento por Coorte: ${leito.contextoQuarto.isolamentos.map(i => i.sigla).join(', ')}`;
-        }
-      }
-      
-      mensagem += `_${leito.codigoLeito}${infoAdicional} - Status: ${statusDetalhado}_\n`;
+      const sexoInfo =
+        leito.sexoCompativel && leito.sexoCompativel !== 'Ambos'
+          ? ` (${leito.sexoCompativel})`
+          : '';
+
+      const statusDetalhado = leito.status;
+      const isolamentoInfo =
+        leito.isolamentosSiglas && leito.isolamentosSiglas.length > 0
+          ? ` | Isolamento: ${leito.isolamentosSiglas.join(', ')}`
+          : '';
+
+      mensagem += `_${leito.codigoLeito}${sexoInfo} - Status: ${statusDetalhado}${isolamentoInfo}_\n`;
     });
     
     mensagem += `\n_Se houver outros leitos vagos, com alta provável ou alta no leito, nos informar também._`;
@@ -200,16 +241,6 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
     }
   };
 
-  const renderStatusDetalhado = (leito) => {
-    if (leito.contextoQuarto) {
-      const isolamentos = leito.contextoQuarto.isolamentos;
-      if (isolamentos.length > 0) {
-        return `Isolamento por Coorte: ${isolamentos.map(i => i.sigla).join(', ')}`;
-      }
-    }
-    return leito.status;
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -232,12 +263,11 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-4">
+            <div className="space-y-6 p-4">
               {Object.values(dadosProcessados).map(setor => (
-                <div key={setor.nomeSetor} className="border border-gray-200 rounded-lg p-4">
-                  {/* Cabeçalho do setor com botão de copiar */}
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-bold text-gray-900">
+                <div key={setor.nomeSetor} className="overflow-hidden rounded-lg border">
+                  <div className="flex items-center justify-between bg-muted px-4 py-3">
+                    <h3 className="text-base font-semibold text-foreground">
                       {setor.nomeSetor}
                     </h3>
                     <Button
@@ -251,30 +281,51 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
                     </Button>
                   </div>
 
-                  {/* Lista de leitos */}
-                  {setor.leitosVagos.length === 0 ? (
-                    <p className="text-sm text-muted-foreground italic">
-                      Nenhum leito disponível neste setor.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {setor.leitosVagos.map(leito => (
-                        <div key={leito.id} className="bg-gray-50 p-3 rounded border">
-                          <div className="font-medium text-sm">
-                            {leito.codigoLeito}
-                            {leito.contextoQuarto && (
-                              <span className="ml-2 text-blue-700">
-                                - Leito {leito.contextoQuarto.sexo}
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-xs text-gray-600 mt-1">
-                            <strong>Status:</strong> {renderStatusDetalhado(leito)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-border text-sm">
+                      <thead className="bg-muted/60">
+                        <tr>
+                          <th className="px-4 py-2 text-left font-medium text-muted-foreground">
+                            Leito
+                          </th>
+                          <th className="px-4 py-2 text-left font-medium text-muted-foreground">
+                            Status
+                          </th>
+                          <th className="px-4 py-2 text-left font-medium text-muted-foreground">
+                            Compatibilidade
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border bg-background">
+                        {setor.leitosVagos.map(leito => (
+                          <tr key={leito.id} className="align-top">
+                            <td className="px-4 py-3">
+                              <div className="font-medium text-foreground">{leito.codigoLeito}</div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge variant={leito.status === 'Higienização' ? 'secondary' : 'outline'}>
+                                {leito.status}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-col gap-1">
+                                {leito.sexoCompativel && leito.sexoCompativel !== 'Ambos' && (
+                                  <Badge variant="secondary" className="w-fit">
+                                    {leito.sexoCompativel}
+                                  </Badge>
+                                )}
+                                {leito.isolamentosSiglas && leito.isolamentosSiglas.length > 0 && (
+                                  <span className="text-xs font-semibold text-destructive">
+                                    Isolamento: {leito.isolamentosSiglas.join(', ')}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               ))}
             </div>
