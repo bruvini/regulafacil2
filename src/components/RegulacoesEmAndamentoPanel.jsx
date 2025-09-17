@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Loader, ClipboardCopy, CheckCircle, Pencil, XCircle } from "lucide-react";
-import { intervalToDuration, formatISO9075, differenceInMinutes } from 'date-fns';
+import { intervalToDuration, differenceInMinutes } from 'date-fns';
 import { 
   getSetoresCollection, 
   getLeitosCollection,
@@ -24,7 +24,21 @@ import { useAuth } from '@/contexts/AuthContext';
 import ConcluirRegulacaoModal from './modals/ConcluirRegulacaoModal';
 import CancelarRegulacaoModal from './modals/CancelarRegulacaoModal';
 import AlterarRegulacaoModal from './modals/AlterarRegulacaoModal';
-const RegulacoesEmAndamentoPanel = () => {
+
+const normalizarTexto = (texto) =>
+  String(texto || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase();
+
+const normalizarSexo = (valor) => {
+  const sexoNormalizado = normalizarTexto(valor);
+  if (sexoNormalizado.startsWith('m')) return 'M';
+  if (sexoNormalizado.startsWith('f')) return 'F';
+  return '';
+};
+
+const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
   const [setores, setSetores] = useState([]);
   const [leitos, setLeitos] = useState([]);
   const [infeccoes, setInfeccoes] = useState([]);
@@ -35,9 +49,79 @@ const RegulacoesEmAndamentoPanel = () => {
   const [modalConcluir, setModalConcluir] = useState({ open: false, paciente: null });
   const [modalCancelar, setModalCancelar] = useState({ open: false, paciente: null });
   const [modalAlterar, setModalAlterar] = useState({ isOpen: false, regulacao: null });
-  
+
   const { toast } = useToast();
   const { currentUser } = useAuth();
+
+  const calcularIdade = (dataNascimento) => {
+    if (!dataNascimento) return 0;
+
+    let dataObj;
+
+    if (typeof dataNascimento === 'string' && dataNascimento.includes('/')) {
+      const [dia, mes, ano] = dataNascimento.split('/');
+      dataObj = new Date(parseInt(ano, 10), parseInt(mes, 10) - 1, parseInt(dia, 10));
+    } else if (dataNascimento && typeof dataNascimento.toDate === 'function') {
+      dataObj = dataNascimento.toDate();
+    } else {
+      dataObj = new Date(dataNascimento);
+    }
+
+    if (isNaN(dataObj?.getTime?.())) {
+      return 0;
+    }
+
+    const hoje = new Date();
+    let idade = hoje.getFullYear() - dataObj.getFullYear();
+    const m = hoje.getMonth() - dataObj.getMonth();
+
+    if (m < 0 || (m === 0 && hoje.getDate() < dataObj.getDate())) {
+      idade--;
+    }
+
+    return idade;
+  };
+
+  const parseData = (valor) => {
+    if (!valor) return null;
+
+    let dataObj;
+
+    if (typeof valor === 'string' && valor.includes('/')) {
+      const partes = valor.split(' ');
+      const [dia, mes, ano] = partes[0].split('/');
+
+      if (partes.length > 1 && partes[1].includes(':')) {
+        const [hora, minuto] = partes[1].split(':');
+        dataObj = new Date(
+          parseInt(ano, 10),
+          parseInt(mes, 10) - 1,
+          parseInt(dia, 10),
+          parseInt(hora, 10),
+          parseInt(minuto, 10)
+        );
+      } else {
+        dataObj = new Date(parseInt(ano, 10), parseInt(mes, 10) - 1, parseInt(dia, 10));
+      }
+    } else if (valor && typeof valor.toDate === 'function') {
+      dataObj = valor.toDate();
+    } else {
+      dataObj = new Date(valor);
+    }
+
+    if (isNaN(dataObj?.getTime?.())) {
+      return null;
+    }
+
+    return dataObj;
+  };
+
+  const calcularTempoInternacaoHoras = (dataInternacao) => {
+    const dataObj = parseData(dataInternacao);
+    if (!dataObj) return null;
+    const diffMs = Date.now() - dataObj.getTime();
+    return diffMs / (1000 * 60 * 60);
+  };
 
   useEffect(() => {
     const unsubscribeSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
@@ -173,6 +257,110 @@ const RegulacoesEmAndamentoPanel = () => {
       });
     }
   };
+
+  const regulacoesFiltradas = useMemo(() => {
+    const {
+      searchTerm = '',
+      especialidade = 'todos',
+      sexo = 'todos',
+      idadeMin = '',
+      idadeMax = '',
+      tempoInternacaoMin = '',
+      tempoInternacaoMax = '',
+      unidadeTempo = 'dias'
+    } = filtros || {};
+
+    const termoBuscaNormalizado = normalizarTexto(searchTerm);
+    const especialidadeFiltro = normalizarTexto(especialidade);
+    const sexoFiltro = sexo || 'todos';
+    const idadeMinNumero = idadeMin !== '' ? Number(idadeMin) : null;
+    const idadeMaxNumero = idadeMax !== '' ? Number(idadeMax) : null;
+    const tempoMinNumero = tempoInternacaoMin !== '' ? Number(tempoInternacaoMin) : null;
+    const tempoMaxNumero = tempoInternacaoMax !== '' ? Number(tempoInternacaoMax) : null;
+
+    const filtradas = regulacoes.filter((paciente) => {
+      if (termoBuscaNormalizado) {
+        const nomeNormalizado = normalizarTexto(paciente.nomePaciente);
+        if (!nomeNormalizado.includes(termoBuscaNormalizado)) {
+          return false;
+        }
+      }
+
+      if (especialidadeFiltro && especialidadeFiltro !== 'todos') {
+        const especialidadePaciente = normalizarTexto(paciente.especialidade);
+        if (!especialidadePaciente.includes(especialidadeFiltro)) {
+          return false;
+        }
+      }
+
+      if (sexoFiltro && sexoFiltro !== 'todos') {
+        if (normalizarSexo(paciente.sexo) !== sexoFiltro) {
+          return false;
+        }
+      }
+
+      const idade = calcularIdade(paciente.dataNascimento);
+      if (idadeMinNumero !== null && idade < idadeMinNumero) {
+        return false;
+      }
+      if (idadeMaxNumero !== null && idade > idadeMaxNumero) {
+        return false;
+      }
+
+      const tempoHoras = calcularTempoInternacaoHoras(paciente.dataInternacao);
+      const tempoMinHoras =
+        tempoMinNumero !== null
+          ? unidadeTempo === 'dias'
+            ? tempoMinNumero * 24
+            : tempoMinNumero
+          : null;
+      const tempoMaxHoras =
+        tempoMaxNumero !== null
+          ? unidadeTempo === 'dias'
+            ? tempoMaxNumero * 24
+            : tempoMaxNumero
+          : null;
+
+      if (tempoMinHoras !== null) {
+        if (tempoHoras === null || tempoHoras < tempoMinHoras) {
+          return false;
+        }
+      }
+
+      if (tempoMaxHoras !== null) {
+        if (tempoHoras === null || tempoHoras > tempoMaxHoras) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    const direction = sortConfig?.direction === 'desc' ? -1 : 1;
+    const key = sortConfig?.key || 'nome';
+
+    return filtradas.sort((a, b) => {
+      if (key === 'idade') {
+        const idadeA = calcularIdade(a.dataNascimento);
+        const idadeB = calcularIdade(b.dataNascimento);
+        return direction * (idadeA - idadeB);
+      }
+
+      if (key === 'tempoInternacao') {
+        const tempoA = calcularTempoInternacaoHoras(a.dataInternacao);
+        const tempoB = calcularTempoInternacaoHoras(b.dataInternacao);
+        const valorA =
+          tempoA ?? (direction === 1 ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
+        const valorB =
+          tempoB ?? (direction === 1 ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
+        return direction * (valorA - valorB);
+      }
+
+      const nomeA = normalizarTexto(a.nomePaciente);
+      const nomeB = normalizarTexto(b.nomePaciente);
+      return direction * nomeA.localeCompare(nomeB);
+    });
+  }, [regulacoes, filtros, sortConfig]);
 
   // Função para concluir regulação
   const handleConcluirRegulacao = async (paciente) => {
@@ -459,9 +647,14 @@ const RegulacoesEmAndamentoPanel = () => {
               <Loader className="h-8 w-8 mx-auto mb-2 opacity-50" />
               <p className="text-sm">Nenhuma regulação em andamento</p>
             </div>
+          ) : regulacoesFiltradas.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Loader className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">Nenhuma regulação corresponde aos filtros aplicados</p>
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {regulacoes.map((paciente) => (
+              {regulacoesFiltradas.map((paciente) => (
                 <RegulacaoCard key={paciente.id} paciente={paciente} />
               ))}
             </div>
