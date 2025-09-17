@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -44,6 +44,7 @@ const ConfirmarInternacaoExternaModal = ({ isOpen, onClose, reserva, leito }) =>
   const [alertaConfirmacaoAberto, setAlertaConfirmacaoAberto] = useState(false);
   const [formAberto, setFormAberto] = useState(false);
   const [processando, setProcessando] = useState(false);
+  const transicionandoParaFormularioRef = useRef(false);
 
   const [dadosInternacao, setDadosInternacao] = useState({
     especialidade: '',
@@ -57,10 +58,12 @@ const ConfirmarInternacaoExternaModal = ({ isOpen, onClose, reserva, leito }) =>
       setAlertaConfirmacaoAberto(true);
       setFormAberto(false);
       setProcessando(false);
+      transicionandoParaFormularioRef.current = false;
     } else {
       setAlertaConfirmacaoAberto(false);
       setFormAberto(false);
       setProcessando(false);
+      transicionandoParaFormularioRef.current = false;
       setDadosInternacao({
         especialidade: '',
         dataInternacao: null,
@@ -95,6 +98,7 @@ const ConfirmarInternacaoExternaModal = ({ isOpen, onClose, reserva, leito }) =>
       dataInternacaoTexto: '',
       horaInternacao: ''
     });
+    transicionandoParaFormularioRef.current = false;
     onClose();
   };
 
@@ -125,6 +129,7 @@ const ConfirmarInternacaoExternaModal = ({ isOpen, onClose, reserva, leito }) =>
   };
 
   const handleConfirmarAlerta = () => {
+    transicionandoParaFormularioRef.current = true;
     setAlertaConfirmacaoAberto(false);
     setFormAberto(true);
   };
@@ -238,10 +243,19 @@ const ConfirmarInternacaoExternaModal = ({ isOpen, onClose, reserva, leito }) =>
       <AlertDialog
         open={alertaConfirmacaoAberto}
         onOpenChange={(open) => {
-          setAlertaConfirmacaoAberto(open);
-          if (!open && !formAberto) {
-            handleFecharTudo();
+          if (open) {
+            setAlertaConfirmacaoAberto(true);
+            return;
           }
+
+          setAlertaConfirmacaoAberto(false);
+
+          if (transicionandoParaFormularioRef.current) {
+            transicionandoParaFormularioRef.current = false;
+            return;
+          }
+
+          handleFecharTudo();
         }}
       >
         <AlertDialogContent>
