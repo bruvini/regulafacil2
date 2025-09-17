@@ -2,6 +2,12 @@ import React, { useState, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "@/hooks/use-toast";
@@ -20,7 +26,8 @@ const ConfirmarRegulacaoModal = ({
   leitoOrigem, 
   leitoDestino, 
   infeccoes = [],
-  showAsContent = false 
+  showAsContent = false,
+  modo = 'enfermaria'
 }) => {
   const [observacoes, setObservacoes] = useState('');
   const [processando, setProcessando] = useState(false);
@@ -43,11 +50,31 @@ const ConfirmarRegulacaoModal = ({
 
     const dataHora = format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
 
-    let mensagem = `*LEITO REGULADO*
+    // Personalizar mensagem baseado no modo
+    let titulo = '*LEITO REGULADO*';
+    let justificativaTexto = '';
+    
+    if (modo === 'remanejamento') {
+      titulo = '*REMANEJAMENTO SOLICITADO*';
+      if (paciente.pedidoRemanejamento) {
+        justificativaTexto = `\n*Justificativa:* _${paciente.pedidoRemanejamento.tipo}`;
+        if (paciente.pedidoRemanejamento.descricao) {
+          justificativaTexto += ` - ${paciente.pedidoRemanejamento.descricao}`;
+        }
+        justificativaTexto += '_';
+      }
+    }
+
+    let mensagem = `${titulo}
 
 *Paciente:* _${nomesPaciente}_
 *DE:* _${setorOrigem}_
 *PARA:* _${setorDestino}_`;
+
+    // Adicionar justificativa para remanejamento
+    if (justificativaTexto) {
+      mensagem += justificativaTexto;
+    }
 
     // Adicionar isolamento se houver
     if (nomesInfeccoes) {
@@ -62,7 +89,7 @@ const ConfirmarRegulacaoModal = ({
     mensagem += `\n\n_${dataHora}_`;
 
     return mensagem;
-  }, [paciente, leitoOrigem, leitoDestino, infeccoes, observacoes]);
+  }, [paciente, leitoOrigem, leitoDestino, infeccoes, observacoes, modo]);
 
   const copiarMensagem = async () => {
     try {

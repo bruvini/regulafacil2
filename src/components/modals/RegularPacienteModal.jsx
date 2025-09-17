@@ -186,6 +186,7 @@ const RegularPacienteModal = ({ isOpen, onClose, paciente, modo = 'enfermaria', 
               leitoDestino={leitoSelecionado}
               infeccoes={infeccoes}
               showAsContent={true}
+              modo={modo}
             />
           </DialogContent>
         </Dialog>

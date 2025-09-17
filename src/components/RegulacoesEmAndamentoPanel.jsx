@@ -198,6 +198,11 @@ const RegulacoesEmAndamentoPanel = () => {
         updatesPaciente.pedidoUTI = deleteField();
       }
       
+      // Remover pedidoRemanejamento se existir (parte do requisito)
+      if (paciente.pedidoRemanejamento) {
+        updatesPaciente.pedidoRemanejamento = deleteField();
+      }
+      
       batch.update(pacienteRef, updatesPaciente);
       
       // 2. Atualizar leito de origem
