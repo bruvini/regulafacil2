@@ -3,7 +3,19 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ClipboardList, CheckCircle, XCircle } from "lucide-react";
 import { intervalToDuration } from 'date-fns';
-import { getPacientesCollection, getSetoresCollection, getLeitosCollection, onSnapshot } from '@/lib/firebase';
+import {
+  getPacientesCollection,
+  getSetoresCollection,
+  getLeitosCollection,
+  onSnapshot,
+  doc,
+  updateDoc,
+  serverTimestamp
+} from '@/lib/firebase';
+import TransferenciaExternaModal from '@/components/modals/TransferenciaExternaModal';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { logAction } from '@/lib/auditoria';
 
 const toDateSafe = (d) => {
   if (!d) return null;
@@ -25,6 +37,10 @@ const TransferenciaExternaPanel = () => {
   const [pacientes, setPacientes] = useState([]);
   const [setores, setSetores] = useState([]);
   const [leitos, setLeitos] = useState([]);
+  const [modalTransferencia, setModalTransferencia] = useState({ isOpen: false, paciente: null });
+
+  const { toast } = useToast();
+  const { currentUser } = useAuth();
 
   useEffect(() => {
     const unsubPac = onSnapshot(getPacientesCollection(), (snap) => {
@@ -63,6 +79,57 @@ const TransferenciaExternaPanel = () => {
 
   const pedidos = pacientes.filter((p) => !!p?.pedidoTransferenciaExterna);
 
+  const handleAbrirTransferencia = (paciente) => {
+    setModalTransferencia({ isOpen: true, paciente });
+  };
+
+  const handleFecharTransferenciaModal = () => {
+    setModalTransferencia({ isOpen: false, paciente: null });
+  };
+
+  const handleSalvarTransferencia = async (dados) => {
+    if (!modalTransferencia.paciente) return;
+
+    try {
+      const paciente = modalTransferencia.paciente;
+      const pacienteRef = doc(getPacientesCollection(), paciente.id);
+
+      const pedidoAtual = paciente.pedidoTransferenciaExterna;
+      const solicitadoEm = pedidoAtual?.solicitadoEm || serverTimestamp();
+
+      await updateDoc(pacienteRef, {
+        pedidoTransferenciaExterna: {
+          motivo: dados.motivo,
+          outroMotivo: dados.outroMotivo,
+          destino: dados.destino,
+          solicitadoEm
+        }
+      });
+
+      const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
+      const acao = pedidoAtual ? 'atualizada' : 'solicitada';
+
+      await logAction(
+        'Regulação de Leitos',
+        `Transferência externa ${acao} para o paciente '${paciente.nomePaciente}' por ${nomeUsuario}. Motivo: ${dados.motivo}, Destino: ${dados.destino}`
+      );
+
+      toast({
+        title: `Transferência ${acao}`,
+        description: `Pedido de transferência externa para ${paciente.nomePaciente} foi ${acao}.`,
+      });
+
+      setModalTransferencia({ isOpen: false, paciente: null });
+    } catch (error) {
+      console.error('Erro ao salvar transferência externa:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível salvar a transferência externa. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <Card className="shadow-card card-interactive">
       <CardHeader>
@@ -97,9 +164,15 @@ const TransferenciaExternaPanel = () => {
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <button className="p-1.5 hover:bg-muted rounded-md"><ClipboardList className="h-4 w-4 text-primary" /></button>
+                          <button
+                            type="button"
+                            className="p-1.5 hover:bg-muted rounded-md"
+                            onClick={() => handleAbrirTransferencia(p)}
+                          >
+                            <ClipboardList className="h-4 w-4 text-primary" />
+                          </button>
                         </TooltipTrigger>
-                        <TooltipContent><p>Visualizar Etapas</p></TooltipContent>
+                        <TooltipContent><p>Editar Transferência</p></TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                     <TooltipProvider>
@@ -125,6 +198,13 @@ const TransferenciaExternaPanel = () => {
           </div>
         )}
       </CardContent>
+
+      <TransferenciaExternaModal
+        isOpen={modalTransferencia.isOpen}
+        onClose={handleFecharTransferenciaModal}
+        onSave={handleSalvarTransferencia}
+        paciente={modalTransferencia.paciente}
+      />
     </Card>
   );
 };

@@ -1,16 +1,34 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ArrowRightCircle, Truck, XCircle } from "lucide-react";
 import { intervalToDuration } from 'date-fns';
-import { 
-  getPacientesCollection, 
-  getSetoresCollection, 
+import {
+  getPacientesCollection,
+  getSetoresCollection,
   getLeitosCollection,
   getInfeccoesCollection,
-  onSnapshot 
+  onSnapshot,
+  doc,
+  updateDoc,
+  deleteField,
+  serverTimestamp
 } from '@/lib/firebase';
 import RegularPacienteModal from '@/components/modals/RegularPacienteModal';
+import TransferenciaExternaModal from '@/components/modals/TransferenciaExternaModal';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { logAction } from '@/lib/auditoria';
 
 const toDateSafe = (d) => {
   if (!d) return null;
@@ -35,6 +53,11 @@ const FilaEsperaUTIPanel = () => {
   const [infeccoes, setInfeccoes] = useState([]);
   const [modalRegularAberto, setModalRegularAberto] = useState(false);
   const [pacienteSelecionado, setPacienteSelecionado] = useState(null);
+  const [alertaCancelarUTI, setAlertaCancelarUTI] = useState({ isOpen: false, paciente: null });
+  const [modalTransferencia, setModalTransferencia] = useState({ isOpen: false, paciente: null });
+
+  const { toast } = useToast();
+  const { currentUser } = useAuth();
 
   useEffect(() => {
     const unsubPac = onSnapshot(getPacientesCollection(), (snap) => {
@@ -79,6 +102,7 @@ const FilaEsperaUTIPanel = () => {
   const pedidos = pacientes.filter((p) => {
     if (!p?.pedidoUTI) return false;
     if (p?.regulacaoAtiva) return false;
+    if (p?.pedidoTransferenciaExterna) return false;
     
     // Verificar se o paciente já está em UTI
     const leitoAtual = leitos.find(l => l.id === p.leitoId);
@@ -98,6 +122,95 @@ const FilaEsperaUTIPanel = () => {
   const fecharModal = () => {
     setModalRegularAberto(false);
     setPacienteSelecionado(null);
+  };
+
+  const handleAbrirTransferencia = (paciente) => {
+    setModalTransferencia({ isOpen: true, paciente });
+  };
+
+  const handleSalvarTransferencia = async (dados) => {
+    if (!modalTransferencia.paciente) return;
+
+    try {
+      const paciente = modalTransferencia.paciente;
+      const pacienteRef = doc(getPacientesCollection(), paciente.id);
+
+      const pedidoAtual = paciente.pedidoTransferenciaExterna;
+      const solicitadoEm = pedidoAtual?.solicitadoEm || serverTimestamp();
+
+      await updateDoc(pacienteRef, {
+        pedidoTransferenciaExterna: {
+          motivo: dados.motivo,
+          outroMotivo: dados.outroMotivo,
+          destino: dados.destino,
+          solicitadoEm
+        }
+      });
+
+      const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
+      const acao = pedidoAtual ? 'atualizada' : 'solicitada';
+
+      await logAction(
+        'Regulação de Leitos',
+        `Transferência externa ${acao} para o paciente '${paciente.nomePaciente}' por ${nomeUsuario}. Motivo: ${dados.motivo}, Destino: ${dados.destino}`
+      );
+
+      toast({
+        title: `Transferência ${acao}`,
+        description: `Pedido de transferência externa para ${paciente.nomePaciente} foi ${acao}.`,
+      });
+
+      setModalTransferencia({ isOpen: false, paciente: null });
+    } catch (error) {
+      console.error('Erro ao solicitar transferência externa:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível solicitar a transferência externa. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleFecharTransferenciaModal = () => {
+    setModalTransferencia({ isOpen: false, paciente: null });
+  };
+
+  const handleAbrirCancelarUTI = (paciente) => {
+    setAlertaCancelarUTI({ isOpen: true, paciente });
+  };
+
+  const handleConfirmarCancelamentoUTI = async () => {
+    if (!alertaCancelarUTI.paciente) return;
+
+    try {
+      const paciente = alertaCancelarUTI.paciente;
+      const pacienteRef = doc(getPacientesCollection(), paciente.id);
+
+      await updateDoc(pacienteRef, {
+        pedidoUTI: deleteField(),
+        pedidoUTITimestamp: deleteField()
+      });
+
+      const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
+      await logAction(
+        'Regulação de Leitos',
+        `Pedido de UTI do paciente '${paciente.nomePaciente}' foi cancelado por ${nomeUsuario}.`
+      );
+
+      toast({
+        title: "Pedido de UTI cancelado",
+        description: `Pedido de UTI do paciente ${paciente.nomePaciente} foi cancelado.`,
+      });
+
+      setAlertaCancelarUTI({ isOpen: false, paciente: null });
+    } catch (error) {
+      console.error('Erro ao cancelar pedido de UTI:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível cancelar o pedido de UTI. Tente novamente.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -128,7 +241,8 @@ const FilaEsperaUTIPanel = () => {
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <button 
+                          <button
+                            type="button"
                             className="p-1.5 hover:bg-muted rounded-md"
                             onClick={() => handleIniciarRegulacao(p)}
                           >
@@ -141,7 +255,13 @@ const FilaEsperaUTIPanel = () => {
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <button className="p-1.5 hover:bg-muted rounded-md"><Truck className="h-4 w-4 text-blue-600" /></button>
+                          <button
+                            type="button"
+                            className="p-1.5 hover:bg-muted rounded-md"
+                            onClick={() => handleAbrirTransferencia(p)}
+                          >
+                            <Truck className="h-4 w-4 text-blue-600" />
+                          </button>
                         </TooltipTrigger>
                         <TooltipContent><p>Transferência Externa</p></TooltipContent>
                       </Tooltip>
@@ -149,7 +269,13 @@ const FilaEsperaUTIPanel = () => {
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <button className="p-1.5 hover:bg-muted rounded-md"><XCircle className="h-4 w-4 text-destructive" /></button>
+                          <button
+                            type="button"
+                            className="p-1.5 hover:bg-muted rounded-md"
+                            onClick={() => handleAbrirCancelarUTI(p)}
+                          >
+                            <XCircle className="h-4 w-4 text-destructive" />
+                          </button>
                         </TooltipTrigger>
                         <TooltipContent><p>Cancelar Pedido de UTI</p></TooltipContent>
                       </Tooltip>
@@ -170,6 +296,39 @@ const FilaEsperaUTIPanel = () => {
         modo="uti"
         infeccoes={infeccoes}
       />
+
+      <TransferenciaExternaModal
+        isOpen={modalTransferencia.isOpen}
+        onClose={handleFecharTransferenciaModal}
+        onSave={handleSalvarTransferencia}
+        paciente={modalTransferencia.paciente}
+      />
+
+      <AlertDialog
+        open={alertaCancelarUTI.isOpen}
+        onOpenChange={(open) =>
+          setAlertaCancelarUTI({
+            isOpen: open,
+            paciente: open ? alertaCancelarUTI.paciente : null
+          })
+        }
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar pedido de UTI</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja cancelar o pedido de UTI para o paciente{' '}
+              <strong>{alertaCancelarUTI.paciente?.nomePaciente}</strong>?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Não, manter</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmarCancelamentoUTI}>
+              Sim, cancelar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 };

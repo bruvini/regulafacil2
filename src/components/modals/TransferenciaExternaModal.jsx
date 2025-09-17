@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -9,6 +9,22 @@ const TransferenciaExternaModal = ({ isOpen, onClose, onSave, paciente }) => {
   const [motivo, setMotivo] = useState('');
   const [outroMotivo, setOutroMotivo] = useState('');
   const [destino, setDestino] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const pedido = paciente?.pedidoTransferenciaExterna;
+
+    if (pedido) {
+      setMotivo(pedido.motivo || '');
+      setOutroMotivo(pedido.outroMotivo || '');
+      setDestino(pedido.destino && pedido.destino !== 'Não informado' ? pedido.destino : '');
+    } else {
+      setMotivo('');
+      setOutroMotivo('');
+      setDestino('');
+    }
+  }, [isOpen, paciente]);
 
   const motivosTransferencia = [
     'UTI',
