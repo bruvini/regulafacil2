@@ -4,23 +4,28 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription
+  DialogDescription,
 } from "@/components/ui/dialog";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { intervalToDuration } from 'date-fns';
 import {
-  Building2,
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
   Bed,
   Users,
-  ShieldAlert,
-  Clock3,
-  UserRound
-} from 'lucide-react';
+  Building2,
+  Clock,
+  Shield,
+  Calendar
+} from "lucide-react";
 
+// Helper functions
 const parseData = (valor) => {
   if (!valor) return null;
   if (valor instanceof Date && !Number.isNaN(valor.getTime())) {
@@ -62,305 +67,297 @@ const calcularIdade = (dataNascimento) => {
 
 const formatarTempoInternacao = (dataInternacao) => {
   const data = parseData(dataInternacao);
-  if (!data) return 'Não informado';
+  if (!data) return 'Tempo indeterminado';
+  
   const agora = new Date();
-  const duracao = intervalToDuration({ start: data, end: agora });
-  if ((duracao.days ?? 0) > 0) {
-    const horas = duracao.hours ?? 0;
-    return `${duracao.days}d ${horas}h`;
+  const diff = agora.getTime() - data.getTime();
+  const dias = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const horas = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  
+  if (dias > 0) {
+    return `${dias}d ${horas}h`;
   }
-  if ((duracao.hours ?? 0) > 0) {
-    const minutos = duracao.minutes ?? 0;
-    return `${duracao.hours}h ${minutos}m`;
-  }
-  return `${duracao.minutes ?? 0}m`;
+  return `${horas}h`;
 };
 
 const extrairIsolamentos = (lista) => {
-  if (!Array.isArray(lista)) return [];
-  const mapa = new Map();
-  lista.forEach((item) => {
-    if (!item) return;
+  if (!Array.isArray(lista) || lista.length === 0) return [];
+  
+  return lista.map((item) => {
     if (typeof item === 'string') {
-      const chave = item.trim();
-      if (chave) {
-        mapa.set(chave.toLowerCase(), { sigla: chave, nome: chave });
-      }
-      return;
+      return { sigla: item, nome: item };
     }
-    const sigla = item.siglaInfeccao || item.sigla || item.codigo || item.nome || '';
-    const nome = item.nomeInfeccao || item.nome || sigla;
-    const chave = (sigla || nome || '').toLowerCase();
-    if (chave) {
-      mapa.set(chave, {
-        sigla: sigla || nome,
-        nome: nome || sigla
-      });
-    }
+    return {
+      sigla: item.siglaInfeccao || item.sigla || item.codigo || item.nome || 'N/A',
+      nome: item.nomeInfeccao || item.nome || item.sigla || 'Isolamento não identificado'
+    };
   });
-  return Array.from(mapa.values()).sort((a, b) =>
-    (a.sigla || a.nome || '').localeCompare(b.sigla || b.nome || '', 'pt-BR')
-  );
 };
 
 const formatarSexo = (valor) => {
-  const texto = String(valor ?? '').trim().toUpperCase();
-  if (texto.startsWith('M')) return 'Masculino';
-  if (texto.startsWith('F')) return 'Feminino';
-  return 'Não informado';
+  const sexo = String(valor ?? '').trim().toUpperCase();
+  if (sexo.startsWith('M')) return 'M';
+  if (sexo.startsWith('F')) return 'F';
+  return 'N/I';
 };
 
-const SugestoesRegulacaoModal = ({
-  isOpen,
-  onClose,
-  sugestoes = [],
-  onSelecionarSugestao
-}) => {
+const getSexoIcon = (sexo) => {
+  switch (sexo) {
+    case 'M': return '♂';
+    case 'F': return '♀';
+    default: return '⚥';
+  }
+};
+
+const getPrioridadeIcon = (temIsolamento, tempoHoras) => {
+  if (temIsolamento) return '🔴'; // Isolamento = prioridade máxima
+  if (tempoHoras > 72) return '🟠'; // Mais de 3 dias
+  if (tempoHoras > 24) return '🟡'; // Mais de 1 dia
+  return '🟢'; // Menos de 1 dia
+};
+
+const calcularTempoInternacaoHoras = (dataInternacao) => {
+  const data = parseData(dataInternacao);
+  if (!data) return 0;
+  const diff = Date.now() - data.getTime();
+  return diff / (1000 * 60 * 60);
+};
+
+const SugestoesRegulacaoModal = ({ isOpen, onClose, sugestoes = [] }) => {
   const totais = useMemo(() => {
-    const totalSetores = sugestoes.length;
+    let totalSetores = sugestoes.length;
     let totalLeitos = 0;
     let totalPacientes = 0;
 
-    sugestoes.forEach((setor) => {
-      const leitosDoSetor = setor?.sugestoes || [];
-      totalLeitos += leitosDoSetor.length;
-      leitosDoSetor.forEach((sugestao) => {
-        totalPacientes += sugestao?.pacientesElegiveis?.length || 0;
+    sugestoes.forEach(setor => {
+      totalLeitos += setor.sugestoes?.length || 0;
+      setor.sugestoes?.forEach(sugestao => {
+        totalPacientes += sugestao.pacientesElegiveis?.length || 0;
       });
     });
 
     return { totalSetores, totalLeitos, totalPacientes };
   }, [sugestoes]);
 
-  const handleSelecionar = (leito, paciente) => {
-    if (onSelecionarSugestao) {
-      onSelecionarSugestao(leito, paciente);
-    }
-  };
+  if (!isOpen) return null;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl w-full max-h-[85vh] overflow-hidden">
-        <DialogHeader className="space-y-1">
-          <DialogTitle className="text-xl font-semibold">
-            Sugestões de Regulação
+      <DialogContent className="max-w-7xl max-h-[90vh]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-xl">
+            <Bed className="h-6 w-6 text-primary" />
+            Sugestões de Regulação de Leitos
           </DialogTitle>
           <DialogDescription>
-            Sugestões priorizadas considerando isolamento, tempo de internação e idade dos pacientes.
+            Sistema inteligente de compatibilidade paciente-leito baseado em isolamentos, sexo e disponibilidade
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="flex items-center justify-between rounded-lg border bg-muted/50 p-3">
-              <div>
-                <p className="text-xs text-muted-foreground">Setores</p>
-                <p className="text-lg font-semibold">{totais.totalSetores}</p>
-              </div>
-              <Building2 className="h-5 w-5 text-primary" />
-            </div>
-            <div className="flex items-center justify-between rounded-lg border bg-muted/50 p-3">
-              <div>
-                <p className="text-xs text-muted-foreground">Leitos sugeridos</p>
-                <p className="text-lg font-semibold">{totais.totalLeitos}</p>
-              </div>
-              <Bed className="h-5 w-5 text-primary" />
-            </div>
-            <div className="flex items-center justify-between rounded-lg border bg-muted/50 p-3">
-              <div>
-                <p className="text-xs text-muted-foreground">Pacientes elegíveis</p>
-                <p className="text-lg font-semibold">{totais.totalPacientes}</p>
-              </div>
-              <Users className="h-5 w-5 text-primary" />
-            </div>
-          </div>
+        <ScrollArea className="max-h-[75vh]">
+          <div className="space-y-6">
+            {/* Resumo de Totais */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Setores</CardTitle>
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{totais.totalSetores}</div>
+                  <p className="text-xs text-muted-foreground">
+                    com leitos disponíveis
+                  </p>
+                </CardContent>
+              </Card>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <Badge variant="secondary" className="flex items-center gap-1">
-              <ShieldAlert className="h-3.5 w-3.5 text-amber-500" />
-              1º Isolamento
-            </Badge>
-            <Badge variant="secondary" className="flex items-center gap-1">
-              <Clock3 className="h-3.5 w-3.5" />
-              2º Tempo de internação
-            </Badge>
-            <Badge variant="secondary" className="flex items-center gap-1">
-              <UserRound className="h-3.5 w-3.5" />
-              3º Idade
-            </Badge>
-          </div>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Leitos</CardTitle>
+                  <Bed className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{totais.totalLeitos}</div>
+                  <p className="text-xs text-muted-foreground">
+                    disponíveis para regulação
+                  </p>
+                </CardContent>
+              </Card>
 
-          <Separator />
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Pacientes</CardTitle>
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{totais.totalPacientes}</div>
+                  <p className="text-xs text-muted-foreground">
+                    elegíveis para internação
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
 
-          <ScrollArea className="h-[55vh] pr-4">
+            {/* Legenda de Prioridades */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Critérios de Priorização</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <div className="flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-red-500" />
+                    <span>1º: Isolamento</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-blue-500" />
+                    <span>2º: Tempo de Internação</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-green-500" />
+                    <span>3º: Idade</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Separator />
+
+            {/* Sugestões por Setor */}
             {sugestoes.length === 0 ? (
-              <div className="py-10 text-center text-sm text-muted-foreground">
-                Nenhuma sugestão disponível no momento.
-              </div>
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="text-center text-muted-foreground">
+                    <Bed className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p className="text-lg font-medium">Nenhuma sugestão disponível</p>
+                    <p className="text-sm">
+                      Não há pacientes elegíveis ou leitos compatíveis no momento.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
             ) : (
-              <Accordion type="multiple" className="space-y-3">
+              <Accordion type="multiple" className="w-full">
                 {sugestoes.map((setor) => (
-                  <AccordionItem
-                    key={setor.setorId || setor.setorNome}
-                    value={setor.setorId || setor.setorNome}
-                    className="overflow-hidden rounded-xl border bg-background shadow-sm"
-                  >
-                    <AccordionTrigger className="px-4">
-                      <div className="flex w-full items-center justify-between">
-                        <div className="text-left">
-                          <p className="text-sm font-semibold leading-tight">{setor.setorNome}</p>
+                  <AccordionItem key={setor.setorId} value={setor.setorId}>
+                    <AccordionTrigger className="text-left">
+                      <div className="flex items-center justify-between w-full pr-4">
+                        <div>
+                          <span className="font-semibold">{setor.setorNome}</span>
                           {setor.setorSigla && (
-                            <p className="text-xs uppercase text-muted-foreground">{setor.setorSigla}</p>
+                            <span className="text-sm text-muted-foreground ml-2">
+                              ({setor.setorSigla})
+                            </span>
                           )}
                         </div>
-                        <Badge variant="outline" className="text-xs">
-                          {setor.sugestoes.length} leito(s)
+                        <Badge variant="secondary">
+                          {setor.sugestoes?.length || 0} leito(s)
                         </Badge>
                       </div>
                     </AccordionTrigger>
-                    <AccordionContent className="px-3 pt-0">
-                      <Accordion type="multiple" className="space-y-2">
-                        {setor.sugestoes.map((sugestao) => (
-                          <AccordionItem
-                            key={sugestao.leito.id}
-                            value={sugestao.leito.id}
-                            className="overflow-hidden rounded-lg border bg-muted/40"
-                          >
-                            <AccordionTrigger className="px-3 py-2">
-                              <div className="flex w-full items-center justify-between gap-3 text-sm">
-                                <div className="flex items-center gap-3">
-                                  <Badge variant="outline" className="text-xs font-semibold">
-                                    {sugestao.leito.codigoLeito || 'Sem código'}
-                                  </Badge>
-                                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                                    <span className="text-base leading-none">{sugestao.sexoContexto.simbolo}</span>
-                                    {sugestao.sexoContexto.label}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  {sugestao.leito.isPCP && (
-                                    <Badge variant="secondary" className="text-xs">
+                    <AccordionContent>
+                      <div className="space-y-4">
+                        {setor.sugestoes?.map((sugestao) => {
+                          const leito = sugestao.leito;
+                          const pacientes = sugestao.pacientesElegiveis || [];
+
+                          return (
+                            <Card key={leito.id} className="ml-4">
+                              <CardHeader>
+                                <CardTitle className="text-base flex items-center gap-2">
+                                  <Bed className="h-4 w-4" />
+                                  Leito {leito.codigoLeito || leito.numeroLeito || 'S/N'}
+                                  {leito.isPCP && (
+                                    <Badge variant="outline" className="text-xs">
                                       PCP
                                     </Badge>
                                   )}
-                                  {sugestao.isolamentoContexto.chave !== '' && (
-                                    <Badge variant="destructive" className="flex items-center gap-1 text-xs">
-                                      <ShieldAlert className="h-3 w-3" />
-                                      Isolamento
-                                    </Badge>
-                                  )}
-                                  <Badge variant="outline" className="text-xs">
-                                    {sugestao.pacientesElegiveis.length} paciente(s)
+                                  <Badge variant="secondary" className="text-xs">
+                                    {pacientes.length} candidato(s)
                                   </Badge>
-                                </div>
-                              </div>
-                            </AccordionTrigger>
-                            <AccordionContent className="space-y-3 bg-background px-3 pb-4 pt-0">
-                              {sugestao.isolamentoContexto.chave !== '' && sugestao.isolamentoContexto.detalhes.length > 0 && (
-                                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                                  {sugestao.isolamentoContexto.detalhes.map((iso) => (
-                                    <Badge
-                                      key={`${sugestao.leito.id}-${iso.sigla || iso.nome}`}
-                                      variant="outline"
-                                      className="border-amber-400 text-amber-600"
-                                    >
-                                      {iso.sigla || iso.nome}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              )}
-                              <div className="space-y-3">
-                                {sugestao.pacientesElegiveis.map((paciente) => {
-                                  const idade = calcularIdade(paciente.dataNascimento);
-                                  const tempoInternacao = formatarTempoInternacao(paciente.dataInternacao);
-                                  const isolamentosPaciente = extrairIsolamentos(paciente.isolamentos);
-                                  const sexoPaciente = formatarSexo(paciente.sexo);
-                                  return (
-                                    <div
-                                      key={paciente.id}
-                                      className="rounded-lg border bg-background p-3 shadow-sm transition-colors hover:border-primary/40"
-                                    >
-                                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                        <div className="space-y-1">
-                                          <div className="flex items-center gap-2">
-                                            <h4 className="text-sm font-semibold leading-snug">
-                                              {paciente.nomePaciente}
-                                            </h4>
-                                            <Badge variant="outline" className="text-xs font-medium">
-                                              {idade} anos
-                                            </Badge>
-                                          </div>
-                                          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                                            {isolamentosPaciente.length > 0 && (
-                                              <span className="flex items-center gap-1 text-amber-600">
-                                                <ShieldAlert className="h-3.5 w-3.5" />
-                                                Isolamento ativo
-                                              </span>
-                                            )}
-                                            <span className="flex items-center gap-1">
-                                              <Clock3 className="h-3.5 w-3.5" />
-                                              {tempoInternacao}
-                                            </span>
-                                          </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          {isolamentosPaciente.length > 0 && (
-                                            <Badge variant="secondary" className="flex items-center gap-1 text-xs">
-                                              <ShieldAlert className="h-3 w-3 text-amber-500" />
-                                              Prioridade
-                                            </Badge>
-                                          )}
-                                          <Button size="sm" onClick={() => handleSelecionar(sugestao.leito, paciente)}>
-                                            Regular
-                                          </Button>
-                                        </div>
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <Accordion type="single" collapsible>
+                                  <AccordionItem value={`leito-${leito.id}`}>
+                                    <AccordionTrigger className="text-sm">
+                                      Ver pacientes elegíveis
+                                    </AccordionTrigger>
+                                    <AccordionContent>
+                                      <div className="space-y-3">
+                                        {pacientes.map((paciente, index) => {
+                                          const idade = calcularIdade(paciente.dataNascimento);
+                                          const sexo = formatarSexo(paciente.sexo);
+                                          const tempoInternacao = formatarTempoInternacao(paciente.dataInternacao);
+                                          const isolamentos = extrairIsolamentos(paciente.isolamentos);
+                                          const temIsolamento = isolamentos.length > 0;
+                                          const tempoHoras = calcularTempoInternacaoHoras(paciente.dataInternacao);
+                                          const prioridadeIcon = getPrioridadeIcon(temIsolamento, tempoHoras);
+
+                                          return (
+                                            <Card key={paciente.id || index} className="p-3 bg-muted/50">
+                                              <div className="space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                  <div className="flex items-center gap-2">
+                                                    <span className="text-sm">{prioridadeIcon}</span>
+                                                    <span className="font-medium">
+                                                      {paciente.nomeCompleto || paciente.nome || 'Nome não informado'}
+                                                    </span>
+                                                  </div>
+                                                  <div className="flex items-center gap-2">
+                                                    <Badge variant="outline" className="text-xs">
+                                                      {idade}a {getSexoIcon(sexo)}
+                                                    </Badge>
+                                                  </div>
+                                                </div>
+                                                
+                                                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                                  <span className="flex items-center gap-1">
+                                                    <Clock className="h-3 w-3" />
+                                                    Internado há {tempoInternacao}
+                                                  </span>
+                                                  {paciente.setorOrigem && (
+                                                    <span>• Origem: {paciente.setorOrigem}</span>
+                                                  )}
+                                                  {paciente.especialidade && (
+                                                    <span>• {paciente.especialidade}</span>
+                                                  )}
+                                                </div>
+
+                                                {isolamentos.length > 0 && (
+                                                  <div className="flex flex-wrap gap-1">
+                                                    {isolamentos.map((iso, isoIndex) => (
+                                                      <Badge
+                                                        key={isoIndex}
+                                                        variant="destructive"
+                                                        className="text-xs"
+                                                      >
+                                                        <Shield className="h-3 w-3 mr-1" />
+                                                        {iso.sigla}
+                                                      </Badge>
+                                                    ))}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </Card>
+                                          );
+                                        })}
                                       </div>
-                                      {isolamentosPaciente.length > 0 && (
-                                        <div className="mt-2 flex flex-wrap gap-2">
-                                          {isolamentosPaciente.map((iso) => (
-                                            <Badge
-                                              key={`${paciente.id}-${iso.sigla || iso.nome}`}
-                                              variant="outline"
-                                              className="border-amber-400 text-amber-600"
-                                            >
-                                              {iso.sigla || iso.nome}
-                                            </Badge>
-                                          ))}
-                                        </div>
-                                      )}
-                                      <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-                                        <div>
-                                          <span className="font-semibold text-foreground">Origem: </span>
-                                          {paciente.origem || paciente.unidadeInternacao || 'Não informado'}
-                                        </div>
-                                        <div>
-                                          <span className="font-semibold text-foreground">Especialidade: </span>
-                                          {paciente.especialidade || 'Não informado'}
-                                        </div>
-                                        <div>
-                                          <span className="font-semibold text-foreground">Sexo: </span>
-                                          {sexoPaciente}
-                                        </div>
-                                        <div>
-                                          <span className="font-semibold text-foreground">Tempo de internação: </span>
-                                          {tempoInternacao}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </AccordionContent>
-                          </AccordionItem>
-                        ))}
-                      </Accordion>
+                                    </AccordionContent>
+                                  </AccordionItem>
+                                </Accordion>
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                      </div>
                     </AccordionContent>
                   </AccordionItem>
                 ))}
               </Accordion>
             )}
-          </ScrollArea>
-        </div>
+          </div>
+        </ScrollArea>
       </DialogContent>
     </Dialog>
   );
