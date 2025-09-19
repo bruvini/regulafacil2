@@ -17,6 +17,8 @@ import TransferenciaExternaPanel from './TransferenciaExternaPanel';
 import RegulacoesEmAndamentoPanel from './RegulacoesEmAndamentoPanel';
 import RemanejamentosPendentesPanel from './RemanejamentosPendentesPanel';
 import FiltrosRegulacao from './FiltrosRegulacao';
+import PanoramaDatePickerModal from './modals/PanoramaDatePickerModal';
+import PanoramaRegulacoesModal from './modals/PanoramaRegulacoesModal';
 
 const filtrosIniciais = {
   searchTerm: '',
@@ -35,6 +37,8 @@ const RegulacaoLeitosPage = () => {
   const [showImportModal, setShowImportModal] = useState(false);
   const [filtros, setFiltros] = useState(filtrosIniciais);
   const [sortConfig, setSortConfig] = useState(sortConfigInicial);
+  const [isDatePickerOpen, setDatePickerOpen] = useState(false);
+  const [periodoRelatorio, setPeriodoRelatorio] = useState(null);
 
   return (
     <div className="p-6 space-y-6">
@@ -91,8 +95,8 @@ const RegulacaoLeitosPage = () => {
               </Button>
               <Button
                 variant="outline"
-                className="flex items-center gap-2 opacity-60 cursor-not-allowed"
-                disabled
+                className="flex items-center gap-2"
+                onClick={() => setDatePickerOpen(true)}
               >
                 <PieChart className="h-4 w-4" />
                 Panorama de Regulações
@@ -157,6 +161,21 @@ const RegulacaoLeitosPage = () => {
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}
       />
+      <PanoramaDatePickerModal
+        isOpen={isDatePickerOpen}
+        onClose={() => setDatePickerOpen(false)}
+        onConfirmarPeriodo={(periodo) => {
+          setPeriodoRelatorio(periodo);
+          setDatePickerOpen(false);
+        }}
+      />
+      {periodoRelatorio && (
+        <PanoramaRegulacoesModal
+          isOpen={!!periodoRelatorio}
+          onClose={() => setPeriodoRelatorio(null)}
+          periodo={periodoRelatorio}
+        />
+      )}
     </div>
   );
 };
