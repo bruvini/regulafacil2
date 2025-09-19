@@ -83,6 +83,7 @@ import GestaoIsolamentosPage from './GestaoIsolamentosPage';
 import CentralHigienizacaoPage from './CentralHigienizacaoPage';
 import GestaoUsuariosPage from './GestaoUsuariosPage';
 import GestaoEstrategicaPage from '../pages/GestaoEstrategicaPage';
+import GestaoPacientesPage from './GestaoPacientesPage';
 
 // Dados de navegação
 const navigationItems = [
@@ -889,17 +890,7 @@ const RegulaFacilApp = () => {
                 </div>
               );
             case "gestao-pacientes":
-              return (
-                <div className="p-8 text-center">
-                  <Construction className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                  <h2 className="text-xl font-semibold text-foreground mb-2">
-                    Gestão de Pacientes
-                  </h2>
-                  <p className="text-muted-foreground">
-                    Este módulo está em desenvolvimento.
-                  </p>
-                </div>
-              );
+              return <GestaoPacientesPage />;
             default:
               return <HomePage onNavigate={handleNavigate} currentUser={currentUser} />;
           }
