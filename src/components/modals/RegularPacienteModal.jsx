@@ -17,7 +17,14 @@ import {
 import LeitoSelectionStep from './steps/LeitoSelectionStep';
 import ConfirmarRegulacaoModal from './ConfirmarRegulacaoModal';
 
-const RegularPacienteModal = ({ isOpen, onClose, paciente, modo = 'enfermaria', infeccoes = [] }) => {
+const RegularPacienteModal = ({
+  isOpen,
+  onClose,
+  paciente,
+  modo = 'enfermaria',
+  infeccoes = [],
+  leitoSugerido = null
+}) => {
   const [dados, setDados] = useState({
     leitos: [],
     quartos: [],
@@ -87,6 +94,19 @@ const RegularPacienteModal = ({ isOpen, onClose, paciente, modo = 'enfermaria', 
       unsubscribes.forEach(unsub => unsub && unsub());
     };
   }, [isOpen, paciente]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setModalStep('selecao');
+      setLeitoSelecionado(null);
+      return;
+    }
+
+    if (leitoSugerido) {
+      setLeitoSelecionado(leitoSugerido);
+      setModalStep('confirmacao');
+    }
+  }, [isOpen, leitoSugerido]);
 
   const handleLeitoSelect = (leito) => {
     setLeitoSelecionado(leito);

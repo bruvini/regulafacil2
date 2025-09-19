@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +10,14 @@ import {
   Sparkles,
   PieChart
 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  getPacientesCollection,
+  getLeitosCollection,
+  getSetoresCollection,
+  getQuartosCollection,
+  onSnapshot
+} from '@/lib/firebase';
 import ImportarPacientesMVModal from './ImportarPacientesMVModal';
 import AguardandoRegulacaoPanel from './AguardandoRegulacaoPanel';
 import FilaEsperaUTIPanel from './FilaEsperaUTIPanel';
@@ -19,6 +27,8 @@ import RemanejamentosPendentesPanel from './RemanejamentosPendentesPanel';
 import FiltrosRegulacao from './FiltrosRegulacao';
 import PanoramaDatePickerModal from './modals/PanoramaDatePickerModal';
 import PanoramaRegulacoesModal from './modals/PanoramaRegulacoesModal';
+import SugestoesRegulacaoModal from './modals/SugestoesRegulacaoModal';
+import RegularPacienteModal from './modals/RegularPacienteModal';
 
 const filtrosIniciais = {
   searchTerm: '',
@@ -39,6 +49,416 @@ const RegulacaoLeitosPage = () => {
   const [sortConfig, setSortConfig] = useState(sortConfigInicial);
   const [isDatePickerOpen, setDatePickerOpen] = useState(false);
   const [periodoRelatorio, setPeriodoRelatorio] = useState(null);
+  const [pacientes, setPacientes] = useState([]);
+  const [leitos, setLeitos] = useState([]);
+  const [setores, setSetores] = useState([]);
+  const [quartos, setQuartos] = useState([]);
+  const [isSugestoesModalOpen, setSugestoesModalOpen] = useState(false);
+  const [regularModalAberto, setRegularModalAberto] = useState(false);
+  const [pacienteSugestao, setPacienteSugestao] = useState(null);
+  const [leitoSugestao, setLeitoSugestao] = useState(null);
+
+  useEffect(() => {
+    const unsubscribes = [];
+
+    const unsubSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
+      const setoresData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setSetores(setoresData);
+    });
+    unsubscribes.push(unsubSetores);
+
+    const unsubLeitos = onSnapshot(getLeitosCollection(), (snapshot) => {
+      const leitosData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setLeitos(leitosData);
+    });
+    unsubscribes.push(unsubLeitos);
+
+    const unsubPacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
+      const pacientesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setPacientes(pacientesData);
+    });
+    unsubscribes.push(unsubPacientes);
+
+    const unsubQuartos = onSnapshot(getQuartosCollection(), (snapshot) => {
+      const quartosData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setQuartos(quartosData);
+    });
+    unsubscribes.push(unsubQuartos);
+
+    return () => {
+      unsubscribes.forEach(unsub => unsub && unsub());
+    };
+  }, []);
+
+  const sugestoes = useMemo(() => {
+    if (!leitos?.length || !setores?.length || !pacientes?.length) {
+      return [];
+    }
+
+    const normalizarTexto = (valor) =>
+      String(valor ?? '')
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .trim()
+        .toLowerCase();
+
+    const normalizarSexo = (valor) => {
+      const sexo = String(valor ?? '')
+        .trim()
+        .toUpperCase();
+      if (sexo.startsWith('M')) return 'M';
+      if (sexo.startsWith('F')) return 'F';
+      return '';
+    };
+
+    const normalizarIsolamentos = (lista) => {
+      if (!lista) return '';
+      const valores = (Array.isArray(lista) ? lista : [lista])
+        .map((item) => {
+          if (!item) return '';
+          if (typeof item === 'string' || typeof item === 'number') {
+            return String(item).trim().toLowerCase();
+          }
+          const identificador =
+            item.infecaoId ||
+            item.infeccaoId ||
+            item.id ||
+            item.siglaInfeccao ||
+            item.sigla ||
+            item.codigo ||
+            item.nome ||
+            '';
+          return String(identificador).trim().toLowerCase();
+        })
+        .filter(Boolean)
+        .sort();
+      return valores.join('|');
+    };
+
+    const extrairDetalhesIsolamentos = (lista) => {
+      if (!Array.isArray(lista)) return [];
+      const detalhesMap = new Map();
+      lista.forEach((item) => {
+        if (!item) return;
+        if (typeof item === 'string') {
+          const chave = item.trim();
+          if (chave) {
+            detalhesMap.set(chave.toLowerCase(), {
+              sigla: chave,
+              nome: chave
+            });
+          }
+          return;
+        }
+        const sigla =
+          item.siglaInfeccao ||
+          item.sigla ||
+          item.codigo ||
+          item.nome ||
+          '';
+        const nome = item.nomeInfeccao || item.nome || sigla;
+        const chave = (sigla || nome || '').toLowerCase();
+        if (chave) {
+          detalhesMap.set(chave, {
+            sigla: sigla || nome,
+            nome: nome || sigla
+          });
+        }
+      });
+      return Array.from(detalhesMap.values()).sort((a, b) =>
+        (a.sigla || a.nome || '').localeCompare(b.sigla || b.nome || '', 'pt-BR')
+      );
+    };
+
+    const parseData = (valor) => {
+      if (!valor) return null;
+      if (valor instanceof Date && !Number.isNaN(valor.getTime())) {
+        return valor;
+      }
+      if (typeof valor === 'string' && valor.includes('/')) {
+        const [dataParte, horaParte] = valor.split(' ');
+        const [dia, mes, ano] = dataParte.split('/').map((parte) => parseInt(parte, 10));
+        if (!Number.isFinite(dia) || !Number.isFinite(mes) || !Number.isFinite(ano)) {
+          return null;
+        }
+        if (horaParte && horaParte.includes(':')) {
+          const [hora, minuto] = horaParte.split(':').map((parte) => parseInt(parte, 10));
+          return new Date(ano, mes - 1, dia, hora || 0, minuto || 0);
+        }
+        return new Date(ano, mes - 1, dia);
+      }
+      if (valor && typeof valor.toDate === 'function') {
+        const data = valor.toDate();
+        if (!Number.isNaN(data?.getTime?.())) {
+          return data;
+        }
+      }
+      const data = new Date(valor);
+      return Number.isNaN(data?.getTime?.()) ? null : data;
+    };
+
+    const calcularIdade = (dataNascimento) => {
+      const data = parseData(dataNascimento);
+      if (!data) return 0;
+      const hoje = new Date();
+      let idade = hoje.getFullYear() - data.getFullYear();
+      const mes = hoje.getMonth() - data.getMonth();
+      if (mes < 0 || (mes === 0 && hoje.getDate() < data.getDate())) {
+        idade -= 1;
+      }
+      return idade;
+    };
+
+    const calcularTempoInternacaoHoras = (dataInternacao) => {
+      const data = parseData(dataInternacao);
+      if (!data) return null;
+      const diff = Date.now() - data.getTime();
+      if (!Number.isFinite(diff)) return null;
+      return diff / (1000 * 60 * 60);
+    };
+
+    const possuiInformacaoAtiva = (campo) => {
+      if (!campo) return false;
+      if (Array.isArray(campo)) return campo.length > 0;
+      if (typeof campo === 'object') return Object.keys(campo).length > 0;
+      return Boolean(campo);
+    };
+
+    const pacientesPendentes = pacientes.filter((paciente) => !paciente?.regulacaoAtiva);
+    if (!pacientesPendentes.length) {
+      return [];
+    }
+
+    const setoresPorId = new Map(setores.map((setor) => [setor.id, setor]));
+    const leitosPorId = new Map(leitos.map((leito) => [leito.id, leito]));
+    const quartosPorId = new Map((quartos || []).map((quarto) => [quarto.id, quarto]));
+    const pacientesPorLeito = new Map();
+
+    pacientes.forEach((paciente) => {
+      if (paciente?.leitoId) {
+        pacientesPorLeito.set(paciente.leitoId, paciente);
+      }
+    });
+
+    const statusElegiveis = new Set(['vago', 'higienizacao']);
+
+    const leitosDisponiveis = leitos.filter((leito) => {
+      const setor = setoresPorId.get(leito.setorId);
+      if (!setor) return false;
+      const tipoSetor = normalizarTexto(setor.tipoSetor);
+      if (tipoSetor !== 'enfermaria') return false;
+      const statusLeito = normalizarTexto(leito.status ?? leito.statusLeito);
+      if (!statusElegiveis.has(statusLeito)) return false;
+      if (
+        possuiInformacaoAtiva(leito.regulacaoEmAndamento) ||
+        possuiInformacaoAtiva(leito.reservaExterna) ||
+        possuiInformacaoAtiva(leito.regulacaoReserva)
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    if (!leitosDisponiveis.length) {
+      return [];
+    }
+
+    const obterLeitosDoQuarto = (leito) => {
+      if (!leito?.quartoId) return [];
+      const quarto = quartosPorId.get(leito.quartoId);
+      if (quarto && Array.isArray(quarto.leitosIds) && quarto.leitosIds.length > 0) {
+        return quarto.leitosIds
+          .map((leitoId) => leitosPorId.get(leitoId))
+          .filter(Boolean);
+      }
+      return leitos.filter((item) => item.quartoId === leito.quartoId);
+    };
+
+    const obterOcupantesDoQuarto = (leito) =>
+      obterLeitosDoQuarto(leito)
+        .filter((outroLeito) => outroLeito.id !== leito.id)
+        .map((outroLeito) => pacientesPorLeito.get(outroLeito.id))
+        .filter(Boolean);
+
+    const determinarSexoContexto = (leito) => {
+      const ocupantes = obterOcupantesDoQuarto(leito);
+      if (!ocupantes.length) {
+        return { chave: 'AMBOS', label: 'Ambos', simbolo: '⚥' };
+      }
+      const sexos = new Set(
+        ocupantes
+          .map((ocupante) => normalizarSexo(ocupante?.sexo))
+          .filter(Boolean)
+      );
+      if (sexos.size === 1) {
+        const [valor] = Array.from(sexos);
+        if (valor === 'M') return { chave: 'M', label: 'Masculino', simbolo: '♂' };
+        if (valor === 'F') return { chave: 'F', label: 'Feminino', simbolo: '♀' };
+      }
+      return { chave: 'AMBOS', label: 'Ambos', simbolo: '⚥' };
+    };
+
+    const determinarIsolamentoContexto = (leito) => {
+      const ocupantes = obterOcupantesDoQuarto(leito);
+      if (!ocupantes.length) {
+        return { chave: '', detalhes: [] };
+      }
+
+      const chaves = new Set();
+      const detalhes = new Map();
+
+      ocupantes.forEach((ocupante) => {
+        const chave = normalizarIsolamentos(ocupante?.isolamentos) || '';
+        chaves.add(chave);
+        extrairDetalhesIsolamentos(ocupante?.isolamentos).forEach((item) => {
+          const key = (item.sigla || item.nome || '').toLowerCase();
+          if (key && !detalhes.has(key)) {
+            detalhes.set(key, item);
+          }
+        });
+      });
+
+      if (chaves.size === 1) {
+        const [valor] = Array.from(chaves);
+        return { chave: valor || '', detalhes: Array.from(detalhes.values()) };
+      }
+
+      return { chave: '__misto__', detalhes: Array.from(detalhes.values()) };
+    };
+
+    const priorizarPacientes = (lista) => {
+      return [...lista].sort((a, b) => {
+        const aIsolamento = normalizarIsolamentos(a?.isolamentos) !== '';
+        const bIsolamento = normalizarIsolamentos(b?.isolamentos) !== '';
+        if (aIsolamento !== bIsolamento) {
+          return aIsolamento ? -1 : 1;
+        }
+
+        const tempoA = calcularTempoInternacaoHoras(a?.dataInternacao);
+        const tempoB = calcularTempoInternacaoHoras(b?.dataInternacao);
+        const tempoANum = Number.isFinite(tempoA) ? tempoA : -Infinity;
+        const tempoBNum = Number.isFinite(tempoB) ? tempoB : -Infinity;
+
+        if (tempoANum !== tempoBNum) {
+          return tempoBNum - tempoANum;
+        }
+
+        const idadeA = calcularIdade(a?.dataNascimento);
+        const idadeB = calcularIdade(b?.dataNascimento);
+        return idadeB - idadeA;
+      });
+    };
+
+    const sugestoesPorSetor = new Map();
+
+    leitosDisponiveis.forEach((leito) => {
+      const setor = setoresPorId.get(leito.setorId);
+      if (!setor) return;
+
+      const sexoContexto = determinarSexoContexto(leito);
+      const isolamentoContexto = determinarIsolamentoContexto(leito);
+
+      if (isolamentoContexto.chave === '__misto__') {
+        return;
+      }
+
+      const candidatos = pacientesPendentes.filter((paciente) => {
+        const sexoPaciente = normalizarSexo(paciente?.sexo);
+        const chaveIsolamentoPaciente = normalizarIsolamentos(paciente?.isolamentos);
+
+        if (sexoContexto.chave !== 'AMBOS') {
+          if (!sexoPaciente || sexoPaciente !== sexoContexto.chave) {
+            return false;
+          }
+        }
+
+        if (chaveIsolamentoPaciente !== isolamentoContexto.chave) {
+          return false;
+        }
+
+        if (leito.isPCP) {
+          const idade = calcularIdade(paciente?.dataNascimento);
+          if (idade < 18 || idade > 60) {
+            return false;
+          }
+          if (chaveIsolamentoPaciente !== '') {
+            return false;
+          }
+        }
+
+        return true;
+      });
+
+      if (!candidatos.length) {
+        return;
+      }
+
+      const pacientesElegiveis = priorizarPacientes(candidatos);
+
+      if (!sugestoesPorSetor.has(setor.id)) {
+        sugestoesPorSetor.set(setor.id, {
+          setorId: setor.id,
+          setorNome: setor.nomeSetor || setor.siglaSetor || 'Setor sem nome',
+          setorSigla: setor.siglaSetor || '',
+          sugestoes: []
+        });
+      }
+
+      const grupo = sugestoesPorSetor.get(setor.id);
+      const leitoComContexto = {
+        ...leito,
+        siglaSetor: setor.siglaSetor || '',
+        nomeSetor: setor.nomeSetor || '',
+        setorNome: setor.nomeSetor || ''
+      };
+
+      grupo.sugestoes.push({
+        leito: leitoComContexto,
+        sexoContexto,
+        isolamentoContexto,
+        pacientesElegiveis
+      });
+    });
+
+    return Array.from(sugestoesPorSetor.values())
+      .map((grupo) => ({
+        ...grupo,
+        sugestoes: grupo.sugestoes.sort((a, b) => {
+          const codigoA = String(a.leito.codigoLeito || '');
+          const codigoB = String(b.leito.codigoLeito || '');
+          return codigoA.localeCompare(codigoB, 'pt-BR', { numeric: true });
+        })
+      }))
+      .sort((a, b) => a.setorNome.localeCompare(b.setorNome, 'pt-BR'));
+  }, [leitos, setores, pacientes, quartos]);
+
+  const temSugestoes = sugestoes.length > 0;
+
+  const handleSelecionarSugestao = (leito, paciente) => {
+    if (!leito || !paciente) return;
+    setLeitoSugestao(leito);
+    setPacienteSugestao(paciente);
+    setSugestoesModalOpen(false);
+    setRegularModalAberto(true);
+  };
+
+  const handleFecharRegularModal = () => {
+    setRegularModalAberto(false);
+    setLeitoSugestao(null);
+    setPacienteSugestao(null);
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -87,9 +507,16 @@ const RegulacaoLeitosPage = () => {
               </Button>
               <Button
                 variant="outline"
-                className="flex items-center gap-2 opacity-60 cursor-not-allowed"
-                disabled
+                className={cn(
+                  "flex items-center gap-2 relative",
+                  temSugestoes ? "sugestoes-disponiveis" : "opacity-60 cursor-not-allowed"
+                )}
+                disabled={!temSugestoes}
+                onClick={() => temSugestoes && setSugestoesModalOpen(true)}
               >
+                {temSugestoes && (
+                  <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-red-500 border-2 border-white" />
+                )}
                 <Sparkles className="h-4 w-4" />
                 Sugestões de Regulação
               </Button>
@@ -157,6 +584,19 @@ const RegulacaoLeitosPage = () => {
       </section>
 
       {/* Modal de Importação */}
+      <SugestoesRegulacaoModal
+        isOpen={isSugestoesModalOpen}
+        onClose={() => setSugestoesModalOpen(false)}
+        sugestoes={sugestoes}
+        onSelecionarSugestao={handleSelecionarSugestao}
+      />
+      <RegularPacienteModal
+        isOpen={regularModalAberto}
+        onClose={handleFecharRegularModal}
+        paciente={pacienteSugestao}
+        modo="enfermaria"
+        leitoSugerido={leitoSugestao}
+      />
       <ImportarPacientesMVModal
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}
