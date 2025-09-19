@@ -162,3 +162,14 @@ All colors MUST be HSL.
     @apply transition-smooth hover:shadow-card hover:-translate-y-0.5 cursor-pointer;
   }
 }
+
+.header-main {
+  transition: background-color 0.3s ease, backdrop-filter 0.3s ease;
+  background-color: #ffffff;
+}
+
+.header-main.scrolled {
+  background-color: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
