@@ -29,6 +29,8 @@ import PanoramaDatePickerModal from './modals/PanoramaDatePickerModal';
 import PanoramaRegulacoesModal from './modals/PanoramaRegulacoesModal';
 import SugestoesRegulacaoModal from './modals/SugestoesRegulacaoModal';
 import RegularPacienteModal from './modals/RegularPacienteModal';
+import SelecionarPeriodoModal from './modals/SelecionarPeriodoModal';
+import PassagemPlantaoModal from './modals/PassagemPlantaoModal';
 
 const filtrosIniciais = {
   searchTerm: '',
@@ -57,6 +59,8 @@ const RegulacaoLeitosPage = () => {
   const [regularModalAberto, setRegularModalAberto] = useState(false);
   const [pacienteSugestao, setPacienteSugestao] = useState(null);
   const [leitoSugestao, setLeitoSugestao] = useState(null);
+  const [selecionarPeriodoOpen, setSelecionarPeriodoOpen] = useState(false);
+  const [relatorioPlantao, setRelatorioPlantao] = useState(null);
 
   useEffect(() => {
     const unsubscribes = [];
@@ -499,8 +503,8 @@ const RegulacaoLeitosPage = () => {
               </Button>
               <Button
                 variant="outline"
-                className="flex items-center gap-2 opacity-60 cursor-not-allowed"
-                disabled
+                className="flex items-center gap-2"
+                onClick={() => setSelecionarPeriodoOpen(true)}
               >
                 <BookUser className="h-4 w-4" />
                 Passagem de Plantão
@@ -614,6 +618,21 @@ const RegulacaoLeitosPage = () => {
           isOpen={!!periodoRelatorio}
           onClose={() => setPeriodoRelatorio(null)}
           periodo={periodoRelatorio}
+        />
+      )}
+      <SelecionarPeriodoModal
+        isOpen={selecionarPeriodoOpen}
+        onClose={() => setSelecionarPeriodoOpen(false)}
+        onConfirm={(periodo) => {
+          setRelatorioPlantao(periodo);
+          setSelecionarPeriodoOpen(false);
+        }}
+      />
+      {relatorioPlantao && (
+        <PassagemPlantaoModal
+          isOpen={!!relatorioPlantao}
+          onClose={() => setRelatorioPlantao(null)}
+          periodo={relatorioPlantao}
         />
       )}
     </div>
