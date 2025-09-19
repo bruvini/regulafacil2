@@ -7,10 +7,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Tooltip,
   TooltipContent,
@@ -268,12 +276,13 @@ const Header = ({ currentPage, onToggleSidebar, currentUser, isScrolled }) => {
               <div className="text-xs text-muted-foreground mt-1">
                 {currentUser?.tipoUsuario}
               </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                Matrícula: {currentUser?.matricula || 'N/A'}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                Acessos: {currentUser?.qtdAcessos ?? currentUser?.acessos ?? 0}
+              </div>
             </div>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <User className="h-4 w-4 mr-2" />
-              Meu Perfil
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -284,6 +293,12 @@ const Header = ({ currentPage, onToggleSidebar, currentUser, isScrolled }) => {
 // Componente do Sidebar
 const Sidebar = ({ isExpanded, currentPage, onNavigate, currentUser }) => {
   const { hasPermission, logout } = useAuth();
+  const [alertaLogoutAberto, setAlertaLogoutAberto] = useState(false);
+
+  const handleConfirmarLogout = useCallback(() => {
+    setAlertaLogoutAberto(false);
+    logout();
+  }, [logout]);
 
   return (
     <aside
@@ -338,7 +353,7 @@ const Sidebar = ({ isExpanded, currentPage, onNavigate, currentUser }) => {
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                onClick={logout}
+                onClick={() => setAlertaLogoutAberto(true)}
                 className={cn(
                   "w-full justify-start gap-3 h-11 text-sm font-medium text-destructive hover:bg-nav-hover transition-smooth",
                   !isExpanded && "justify-center px-0"
@@ -356,6 +371,24 @@ const Sidebar = ({ isExpanded, currentPage, onNavigate, currentUser }) => {
           </Tooltip>
         </div>
       </TooltipProvider>
+      <AlertDialog open={alertaLogoutAberto} onOpenChange={setAlertaLogoutAberto}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Saída</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza de que deseja sair do sistema?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setAlertaLogoutAberto(false)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmarLogout}>
+              Sair
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </aside>
   );
 };
@@ -401,15 +434,15 @@ const HomePage = ({ onNavigate, currentUser }) => {
   useEffect(() => {
     const unsubscribers = [];
 
-    const createListener = (categoria, setter, filterTerms) => {
-      const categoriaQuery = query(
+    const createListener = (pagina, setter, filterTerms) => {
+      const paginaQuery = query(
         getAuditoriaCollection(),
-        where("categoria", "==", categoria),
+        where("pagina", "==", pagina),
         orderBy("timestamp", "desc"),
         limit(10)
       );
 
-      const unsubscribe = onSnapshot(categoriaQuery, (snapshot) => {
+      const unsubscribe = onSnapshot(paginaQuery, (snapshot) => {
         let registros = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
@@ -441,7 +474,7 @@ const HomePage = ({ onNavigate, currentUser }) => {
       "transferência externa",
       "transferencia externa",
     ]);
-    createListener("Observações", setObservacoesLogs);
+    createListener("Mapa de Leitos", setObservacoesLogs, ["observação", "observacao"]);
     createListener("Mapa de Leitos", setAltasLeitoLogs, ["alta no leito"]);
     createListener("Mapa de Leitos", setProvaveisAltasLogs, ["provável alta", "provavel alta"]);
 
@@ -770,13 +803,23 @@ const RegulaFacilApp = () => {
   const handleNavigate = (pageId) => {
     setCurrentPage(pageId);
     const newUrl = pathFromPage(pageId);
-    window.history.pushState({ page: pageId }, "", newUrl);
+
+    if (window.location.pathname !== newUrl) {
+      window.history.pushState({ page: pageId }, "", newUrl);
+    } else {
+      window.history.replaceState({ page: pageId }, "", newUrl);
+    }
   };
 
   // Gerenciar navegação do browser
   useEffect(() => {
     const initialPage = pageFromPath(window.location.pathname);
     setCurrentPage(initialPage);
+    window.history.replaceState(
+      { page: initialPage },
+      "",
+      pathFromPage(initialPage)
+    );
 
     const handlePopState = (event) => {
       const page = event.state?.page || pageFromPath(window.location.pathname);
