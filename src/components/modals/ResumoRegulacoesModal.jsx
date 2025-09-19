@@ -26,10 +26,20 @@ const ResumoRegulacoesModal = ({ isOpen, onClose, regulacoes, leitos, setores })
       const setorDestino = setores.find(s => s.id === leitoDestino.setorId) || {};
       
       // Calcular tempo de espera
-      const inicioRegulacao = regulacaoAtiva.iniciadoEm?.toDate?.() || new Date(regulacaoAtiva.iniciadoEm);
+      let inicioRegulacao;
+      try {
+        inicioRegulacao = regulacaoAtiva.iniciadoEm?.toDate?.() || new Date(regulacaoAtiva.iniciadoEm);
+        // Verificar se a data é válida
+        if (isNaN(inicioRegulacao.getTime())) {
+          inicioRegulacao = new Date(); // Fallback para data atual
+        }
+      } catch (error) {
+        inicioRegulacao = new Date(); // Fallback para data atual
+      }
+      
       const tempoEsperaMs = Date.now() - inicioRegulacao.getTime();
-      const horas = Math.floor(tempoEsperaMs / (1000 * 60 * 60));
-      const minutos = Math.floor((tempoEsperaMs % (1000 * 60 * 60)) / (1000 * 60));
+      const horas = Math.floor(Math.abs(tempoEsperaMs) / (1000 * 60 * 60));
+      const minutos = Math.floor((Math.abs(tempoEsperaMs) % (1000 * 60 * 60)) / (1000 * 60));
       const tempoEsperaHHMM = `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}`;
       
       return {
