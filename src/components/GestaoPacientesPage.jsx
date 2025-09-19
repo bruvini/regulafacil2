@@ -39,7 +39,9 @@ import {
   deleteDoc,
   writeBatch,
   getDocs,
-  deleteField
+  deleteField,
+  arrayUnion,
+  serverTimestamp
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
 import { toast } from '@/components/ui/use-toast';
@@ -119,7 +121,7 @@ const GestaoPacientesPage = () => {
 
         return {
           ...paciente,
-          codigoLeito: leito?.codigo || 'N/A',
+          codigoLeito: leito?.codigoLeito || 'N/A',
           siglaSetor: setor?.siglaSetor || 'N/A',
           nomeSetor: setor?.nomeSetor || 'N/A',
         };
@@ -129,7 +131,7 @@ const GestaoPacientesPage = () => {
 
   const handleEditarPaciente = async (pacienteId, dadosAtualizados) => {
     try {
-      const pacienteRef = doc(db, 'pacientes', pacienteId);
+      const pacienteRef = doc(db, 'pacientesRegulaFacil', pacienteId);
       await updateDoc(pacienteRef, dadosAtualizados);
 
       const paciente = pacientes.find(p => p.id === pacienteId);
@@ -156,14 +158,18 @@ const GestaoPacientesPage = () => {
       const batch = writeBatch(db);
 
       // Delete patient document
-      const pacienteRef = doc(db, 'pacientes', paciente.id);
+      const pacienteRef = doc(db, 'pacientesRegulaFacil', paciente.id);
       batch.delete(pacienteRef);
 
       // Update bed if patient is assigned to one
       if (paciente.leitoId) {
-        const leitoRef = doc(db, 'leitos', paciente.leitoId);
+        const leitoRef = doc(db, 'leitosRegulaFacil', paciente.leitoId);
         batch.update(leitoRef, { 
-          status: 'Vago',
+          historicoMovimentacao: arrayUnion({
+            statusLeito: 'Vago',
+            dataHora: serverTimestamp(),
+            usuario: 'Sistema - Gestão de Pacientes'
+          }),
           pacienteId: deleteField()
         });
       }
@@ -201,9 +207,13 @@ const GestaoPacientesPage = () => {
 
         // Update bed if patient is assigned
         if (pacienteData.leitoId) {
-          const leitoRef = doc(db, 'leitos', pacienteData.leitoId);
+          const leitoRef = doc(db, 'leitosRegulaFacil', pacienteData.leitoId);
           batch.update(leitoRef, { 
-            status: 'Vago',
+            historicoMovimentacao: arrayUnion({
+              statusLeito: 'Vago',
+              dataHora: serverTimestamp(),
+              usuario: 'Sistema - Limpeza Geral'
+            }),
             pacienteId: deleteField()
           });
         }
@@ -233,8 +243,26 @@ const GestaoPacientesPage = () => {
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     try {
-      const date = typeof dateString === 'string' ? parseISO(dateString) : dateString.toDate();
-      return format(date, 'dd/MM/yyyy', { locale: ptBR });
+      // Handle Firestore timestamp objects
+      if (dateString.toDate && typeof dateString.toDate === 'function') {
+        return format(dateString.toDate(), 'dd/MM/yyyy', { locale: ptBR });
+      }
+      // Handle string dates in dd/MM/yyyy format
+      if (typeof dateString === 'string' && dateString.includes('/')) {
+        const [day, month, year] = dateString.split('/');
+        const date = new Date(year, month - 1, day);
+        return format(date, 'dd/MM/yyyy', { locale: ptBR });
+      }
+      // Handle ISO string dates
+      if (typeof dateString === 'string') {
+        const date = parseISO(dateString);
+        return format(date, 'dd/MM/yyyy', { locale: ptBR });
+      }
+      // Handle Date objects
+      if (dateString instanceof Date) {
+        return format(dateString, 'dd/MM/yyyy', { locale: ptBR });
+      }
+      return 'Data inválida';
     } catch {
       return 'Data inválida';
     }
