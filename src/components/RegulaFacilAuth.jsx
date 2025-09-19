@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,10 +52,12 @@ import {
   getLeitosCollection,
   getPacientesCollection,
   getAuditoriaCollection,
+  getInfeccoesCollection,
   onSnapshot,
   query,
   orderBy,
-  limit
+  limit,
+  where
 } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
 import { format } from 'date-fns';
@@ -172,6 +175,24 @@ const moduleCards = [
   },
 ];
 
+const extractLogMessage = (log) => {
+  if (!log) return "";
+  return (
+    log.acao ||
+    log.mensagem ||
+    log.mensagemLog ||
+    log.descricao ||
+    log.description ||
+    log.message ||
+    ""
+  );
+};
+
+const extractLogModule = (log) => {
+  if (!log) return "";
+  return log.pagina || log.categoria || log.modulo || "Sistema";
+};
+
 // Função para obter o título da página
 const getPageTitle = (pageId) => {
   const titles = {
@@ -206,9 +227,14 @@ const pathFromPage = (page) => {
 };
 
 // Componente do Header
-const Header = ({ currentPage, onToggleSidebar, onLogout, currentUser }) => {
+const Header = ({ currentPage, onToggleSidebar, currentUser, isScrolled }) => {
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-header-bg border-b border-header-border">
+    <header
+      className={cn(
+        "header-main fixed top-0 left-0 right-0 z-50 border-b border-header-border",
+        isScrolled && "scrolled"
+      )}
+    >
       <div className="flex items-center justify-between h-16 px-4">
         {/* Left - Hamburger Menu */}
         <Button
@@ -248,11 +274,6 @@ const Header = ({ currentPage, onToggleSidebar, onLogout, currentUser }) => {
               <User className="h-4 w-4 mr-2" />
               Meu Perfil
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onLogout} className="text-destructive focus:text-destructive">
-              <LogOut className="h-4 w-4 mr-2" />
-              Sair
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -262,17 +283,17 @@ const Header = ({ currentPage, onToggleSidebar, onLogout, currentUser }) => {
 
 // Componente do Sidebar
 const Sidebar = ({ isExpanded, currentPage, onNavigate, currentUser }) => {
-  const { hasPermission } = useAuth();
+  const { hasPermission, logout } = useAuth();
 
   return (
     <aside
       className={cn(
-        "fixed left-0 top-16 h-[calc(100vh-4rem)] bg-sidebar border-r border-sidebar-border transition-all duration-300 z-40",
+        "fixed left-0 top-16 flex h-[calc(100vh-4rem)] flex-col bg-sidebar border-r border-sidebar-border transition-all duration-300 z-40",
         isExpanded ? "w-64" : "w-16"
       )}
     >
-      <nav className="p-2 space-y-1">
-        <TooltipProvider>
+      <TooltipProvider>
+        <nav className="flex-1 space-y-1 overflow-y-auto p-2">
           {navigationItems.map((item) => {
             const isActive = currentPage === item.id;
             const Icon = item.icon;
@@ -311,8 +332,30 @@ const Sidebar = ({ isExpanded, currentPage, onNavigate, currentUser }) => {
               </Tooltip>
             );
           })}
-        </TooltipProvider>
-      </nav>
+        </nav>
+        <div className="border-t border-sidebar-border p-2">
+          <Tooltip delayDuration={300}>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                onClick={logout}
+                className={cn(
+                  "w-full justify-start gap-3 h-11 text-sm font-medium text-destructive hover:bg-nav-hover transition-smooth",
+                  !isExpanded && "justify-center px-0"
+                )}
+              >
+                <LogOut className="h-5 w-5 flex-shrink-0" />
+                {isExpanded && <span>Sair</span>}
+              </Button>
+            </TooltipTrigger>
+            {!isExpanded && (
+              <TooltipContent side="right" className="ml-2">
+                Sair
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </div>
+      </TooltipProvider>
     </aside>
   );
 };
@@ -332,32 +375,109 @@ const Footer = () => {
 
 // Componente da página inicial
 const HomePage = ({ onNavigate, currentUser }) => {
-  const [atividadesRecentes, setAtividadesRecentes] = useState([]);
+  const [regulacaoLogs, setRegulacaoLogs] = useState([]);
+  const [isolamentoLogs, setIsolamentoLogs] = useState([]);
+  const [statusLeitosLogs, setStatusLeitosLogs] = useState([]);
+  const [higienizacaoLogs, setHigienizacaoLogs] = useState([]);
+  const [pedidosLogs, setPedidosLogs] = useState([]);
+  const [observacoesLogs, setObservacoesLogs] = useState([]);
+  const [altasLeitoLogs, setAltasLeitoLogs] = useState([]);
+  const [provaveisAltasLogs, setProvaveisAltasLogs] = useState([]);
+  const [infeccoes, setInfeccoes] = useState([]);
   const { hasPermission } = useAuth();
 
-  // Buscar atividades recentes do Firestore
   useEffect(() => {
-    const auditoriaQuery = query(
-      getAuditoriaCollection(),
-      orderBy('timestamp', 'desc'),
-      limit(10)
-    );
-
-    const unsubscribe = onSnapshot(auditoriaQuery, (snapshot) => {
-      const atividades = snapshot.docs.map(doc => ({
+    const unsubscribe = onSnapshot(getInfeccoesCollection(), (snapshot) => {
+      const lista = snapshot.docs.map((doc) => ({
         id: doc.id,
-        ...doc.data()
+        ...doc.data(),
       }));
-      setAtividadesRecentes(atividades);
+      setInfeccoes(lista);
     });
 
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    const unsubscribers = [];
+
+    const createListener = (categoria, setter, filterTerms) => {
+      const categoriaQuery = query(
+        getAuditoriaCollection(),
+        where("categoria", "==", categoria),
+        orderBy("timestamp", "desc"),
+        limit(10)
+      );
+
+      const unsubscribe = onSnapshot(categoriaQuery, (snapshot) => {
+        let registros = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+
+        if (Array.isArray(filterTerms) && filterTerms.length > 0) {
+          const terms = filterTerms.map((term) => term.toLowerCase());
+          registros = registros
+            .filter((log) => {
+              const mensagem = extractLogMessage(log).toLowerCase();
+              return terms.some((term) => mensagem.includes(term));
+            })
+            .slice(0, 10);
+        }
+
+        setter(registros);
+      });
+
+      unsubscribers.push(unsubscribe);
+    };
+
+    createListener("Regulação de Leitos", setRegulacaoLogs);
+    createListener("Gestão de Isolamentos", setIsolamentoLogs);
+    createListener("Mapa de Leitos", setStatusLeitosLogs, ["status alterado para"]);
+    createListener("Central de Higienização", setHigienizacaoLogs);
+    createListener("Regulação de Leitos", setPedidosLogs, [
+      "pedido de uti",
+      "remanejamento",
+      "transferência externa",
+      "transferencia externa",
+    ]);
+    createListener("Observações", setObservacoesLogs);
+    createListener("Mapa de Leitos", setAltasLeitoLogs, ["alta no leito"]);
+    createListener("Mapa de Leitos", setProvaveisAltasLogs, ["provável alta", "provavel alta"]);
+
+    return () => {
+      unsubscribers.forEach((unsubscribe) => unsubscribe && unsubscribe());
+    };
+  }, []);
+
+  const replaceInfeccaoIdWithSigla = useCallback(
+    (mensagem) => {
+      if (!mensagem) return mensagem;
+
+      let textoFormatado = mensagem;
+      const escapeRegex = (valor) => String(valor).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+      infeccoes.forEach((infeccao) => {
+        if (!infeccao?.id) return;
+        const idTexto = String(infeccao.id);
+        if (!textoFormatado.includes(idTexto)) return;
+
+        const padraoId = new RegExp(escapeRegex(idTexto), "g");
+        textoFormatado = textoFormatado.replace(
+          padraoId,
+          infeccao.siglaInfeccao || infeccao.nomeInfeccao || idTexto
+        );
+      });
+
+      return textoFormatado;
+    },
+    [infeccoes]
+  );
+
   // Função para formatar tempo relativo
   const formatarTempoRelativo = (timestamp) => {
     if (!timestamp) return 'Agora';
-    
+
     let data;
     if (typeof timestamp.toDate === 'function') {
       data = timestamp.toDate();
@@ -378,8 +498,17 @@ const HomePage = ({ onNavigate, currentUser }) => {
     
     const diffDias = Math.floor(diffHoras / 24);
     if (diffDias < 7) return `há ${diffDias} dia${diffDias > 1 ? 's' : ''}`;
-    
+
     return format(data, 'dd/MM/yyyy \'às\' HH:mm', { locale: ptBR });
+  };
+
+  const formatarLegendaLog = (log) => {
+    const modulo = extractLogModule(log);
+    const tempo = formatarTempoRelativo(log.timestamp);
+    if (modulo && tempo) {
+      return `${modulo} • ${tempo}`;
+    }
+    return modulo || tempo;
   };
 
   // Data atual formatada
@@ -390,6 +519,57 @@ const HomePage = ({ onNavigate, currentUser }) => {
     const navItem = navigationItems.find(nav => nav.id === module.id);
     return navItem && hasPermission(navItem.route);
   });
+
+  const atividadeTabs = [
+    {
+      value: "regulacao",
+      label: "Regulação",
+      logs: regulacaoLogs,
+      emptyMessage: "Nenhuma atividade de regulação registrada.",
+    },
+    {
+      value: "isolamentos",
+      label: "Isolamentos",
+      logs: isolamentoLogs,
+      emptyMessage: "Nenhuma atividade de isolamento registrada.",
+    },
+    {
+      value: "status-leitos",
+      label: "Status dos Leitos",
+      logs: statusLeitosLogs,
+      emptyMessage: "Nenhuma alteração de status de leito registrada.",
+    },
+    {
+      value: "higienizacoes",
+      label: "Higienizações",
+      logs: higienizacaoLogs,
+      emptyMessage: "Nenhuma higienização registrada.",
+    },
+    {
+      value: "pedidos",
+      label: "Pedidos",
+      logs: pedidosLogs,
+      emptyMessage: "Nenhum pedido recente registrado.",
+    },
+    {
+      value: "observacoes",
+      label: "Observações",
+      logs: observacoesLogs,
+      emptyMessage: "Nenhuma observação registrada.",
+    },
+    {
+      value: "altas-leito",
+      label: "Altas no Leito",
+      logs: altasLeitoLogs,
+      emptyMessage: "Nenhuma alta registrada no leito.",
+    },
+    {
+      value: "provaveis-altas",
+      label: "Prováveis Altas",
+      logs: provaveisAltasLogs,
+      emptyMessage: "Nenhuma provável alta registrada.",
+    },
+  ];
 
   return (
     <div className="space-y-8">
@@ -460,25 +640,55 @@ const HomePage = ({ onNavigate, currentUser }) => {
           Atividades Recentes
         </h2>
         <Card className="shadow-card">
-          <CardContent className="p-4">
-            <ul className="divide-y divide-border">
-              {atividadesRecentes.map((atividade) => (
-                <li key={atividade.id} className="py-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        {atividade.acao}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {atividade.pagina} - {formatarTempoRelativo(atividade.timestamp)}
-                      </p>
-                    </div>
-                    <Activity className="h-4 w-4 text-muted-foreground" />
+          <Tabs defaultValue="regulacao" className="w-full">
+            <div className="px-4 pt-4">
+              <TabsList className="flex w-full flex-wrap gap-2 border-b border-border bg-transparent p-0">
+                {atividadeTabs.map((tab) => (
+                  <TabsTrigger
+                    key={tab.value}
+                    value={tab.value}
+                    className="rounded-full border border-transparent px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors data-[state=active]:border-primary/30 data-[state=active]:bg-primary/10 data-[state=active]:text-primary"
+                  >
+                    {tab.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
+            {atividadeTabs.map((tab) => (
+              <TabsContent key={tab.value} value={tab.value} className="mt-0 px-4 pb-4">
+                {tab.logs.length > 0 ? (
+                  <ul className="divide-y divide-border rounded-lg border border-border bg-card">
+                    {tab.logs.map((log) => {
+                      const mensagemBase = extractLogMessage(log);
+                      const mensagemFormatada =
+                        (tab.value === "isolamentos" ? replaceInfeccaoIdWithSigla(mensagemBase) : mensagemBase) ||
+                        "Atividade registrada";
+
+                      return (
+                        <li key={log.id} className="py-3">
+                          <div className="flex items-start gap-3">
+                            <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
+                              <Activity className="h-4 w-4" />
+                            </div>
+                            <div className="flex-1 space-y-1">
+                              <p className="text-sm font-medium text-foreground">{mensagemFormatada}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {formatarLegendaLog(log)}
+                              </p>
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <div className="py-8 text-center text-sm text-muted-foreground">
+                    {tab.emptyMessage}
                   </div>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
+                )}
+              </TabsContent>
+            ))}
+          </Tabs>
         </Card>
       </div>
     </div>
@@ -488,8 +698,9 @@ const HomePage = ({ onNavigate, currentUser }) => {
 // Componente Principal Interno (após autenticação) - Updated
 const RegulaFacilApp = () => {
   const [currentPage, setCurrentPage] = useState("home");
-  const [sidebarExpanded, setSidebarExpanded] = useState(true);
-  
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [isHeaderScrolled, setIsHeaderScrolled] = useState(false);
+
   const { currentUser, logout } = useAuth();
   
   // Controle de inatividade (logout automático)
@@ -543,6 +754,18 @@ const RegulaFacilApp = () => {
   }, [currentUser, handleActivity, resetTimer]);
 
 
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsHeaderScrolled(window.scrollY > 10);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
+
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  
   // Navegação entre páginas
   const handleNavigate = (pageId) => {
     setCurrentPage(pageId);
@@ -645,13 +868,13 @@ const RegulaFacilApp = () => {
   return (
     <>
       <div className="min-h-screen bg-gradient-subtle">
-        <Header 
+        <Header
           currentPage={getPageTitle(currentPage)}
           onToggleSidebar={() => setSidebarExpanded(!sidebarExpanded)}
-          onLogout={logout}
           currentUser={currentUser}
+          isScrolled={isHeaderScrolled}
         />
-        
+
         <Sidebar
           isExpanded={sidebarExpanded}
           currentPage={currentPage}
