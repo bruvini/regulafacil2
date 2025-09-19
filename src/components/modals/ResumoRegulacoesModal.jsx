@@ -12,7 +12,7 @@ const ResumoRegulacoesModal = ({ isOpen, onClose, regulacoes, leitos, setores })
 
   const dadosProcessados = useMemo(() => {
     if (!regulacoes?.length || !leitos?.length || !setores?.length) {
-      return { agrupadoPorOrigem: {}, agruladoPorDestino: {} };
+      return { agrupadoPorOrigem: {}, agrupadoPorDestino: {} };
     }
 
     // Enriquecimento dos dados
