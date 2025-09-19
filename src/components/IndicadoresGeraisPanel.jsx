@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
   TrendingUp, 
   Users, 
@@ -243,24 +244,60 @@ const IndicadoresGeraisPanel = ({ setores, leitos, pacientes }) => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-red-600 font-medium">Ocupados:</span>
-                <span>{indicadores.resumoStatus.ocupados.total}</span>
+            <TooltipProvider>
+              <div className="space-y-2">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-red-600 font-medium">Ocupados:</span>
+                      <span>{indicadores.resumoStatus.ocupados.total}</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>
+                      Soma de todos os leitos com status 'Ocupado', 'Regulado' ou que possuem uma
+                      reserva externa confirmada.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-green-600 font-medium">Vagos (Reguláveis):</span>
+                      <span>{indicadores.resumoStatus.vagosRegulaveis.total}</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>
+                      Soma de todos os leitos com status 'Vago' que não possuem nenhuma regulação ou
+                      reserva pendente.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-yellow-600 font-medium">Higienização:</span>
+                      <span>{indicadores.resumoStatus.higienizacao.total}</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Soma de todos os leitos com status 'Higienização'.</p>
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-gray-600 font-medium">Bloqueados:</span>
+                      <span>{indicadores.resumoStatus.bloqueados.total}</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Soma de todos os leitos com status 'Bloqueado'.</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-green-600 font-medium">Vagos (Reguláveis):</span>
-                <span>{indicadores.resumoStatus.vagosRegulaveis.total}</span>
-              </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-yellow-600 font-medium">Higienização:</span>
-                <span>{indicadores.resumoStatus.higienizacao.total}</span>
-              </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-600 font-medium">Bloqueados:</span>
-                <span>{indicadores.resumoStatus.bloqueados.total}</span>
-              </div>
-            </div>
+            </TooltipProvider>
           </CardContent>
         </Card>
       </div>
