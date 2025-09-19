@@ -108,49 +108,44 @@ const MapaLeitosPage = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex items-center gap-2"
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <Button 
+              variant="outline" 
+              className="flex items-center gap-2" 
               onClick={() => setShowGerenciamentoModal(true)}
             >
               <Settings2 className="h-4 w-4" />
               Gerenciar leitos
             </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
+            
+            <Button 
+              variant="outline" 
               className="flex items-center gap-2"
               onClick={() => setShowRelatorioIsolamentosModal(true)}
             >
               <Activity className="h-4 w-4" />
               Relatório de isolamentos
             </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
+            
+            <Button 
+              variant="outline" 
               className="flex items-center gap-2"
               onClick={() => setShowRelatorioLeitosVagosModal(true)}
             >
               <Download className="h-4 w-4" />
               Relatório de leitos vagos
             </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
+            
+            <Button 
+              variant="outline" 
               className="flex items-center gap-2"
             >
               <Activity className="h-4 w-4" />
               Boletim diário
             </Button>
 
-            <Button
-              variant="outline"
-              size="sm"
+            <Button 
+              variant="outline" 
               className="flex items-center gap-2"
               onClick={() => setShowReservasLeitosModal(true)}
             >
