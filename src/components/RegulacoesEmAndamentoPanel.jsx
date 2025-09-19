@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader, ClipboardCopy, CheckCircle, Pencil, XCircle } from "lucide-react";
+import { Loader, ClipboardCopy, CheckCircle, Pencil, XCircle, FileText } from "lucide-react";
 import { intervalToDuration, differenceInMinutes } from 'date-fns';
 import { 
   getSetoresCollection, 
@@ -24,6 +25,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import ConcluirRegulacaoModal from './modals/ConcluirRegulacaoModal';
 import CancelarRegulacaoModal from './modals/CancelarRegulacaoModal';
 import AlterarRegulacaoModal from './modals/AlterarRegulacaoModal';
+import ResumoRegulacoesModal from './modals/ResumoRegulacoesModal';
 
 const normalizarTexto = (texto) =>
   String(texto || '')
@@ -49,6 +51,7 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
   const [modalConcluir, setModalConcluir] = useState({ open: false, paciente: null });
   const [modalCancelar, setModalCancelar] = useState({ open: false, paciente: null });
   const [modalAlterar, setModalAlterar] = useState({ isOpen: false, regulacao: null });
+  const [isResumoModalOpen, setIsResumoModalOpen] = useState(false);
 
   const { toast } = useToast();
   const { currentUser } = useAuth();
@@ -631,10 +634,33 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
     <>
       <Card className="shadow-card">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Loader className="h-5 w-5 text-orange-600" />
-            Regulações em Andamento
-          </CardTitle>
+          <div className="flex justify-between items-center w-full">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Loader className="h-5 w-5 text-orange-600" />
+              Regulações em Andamento
+            </CardTitle>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsResumoModalOpen(true)}
+                    disabled={regulacoes.length === 0}
+                    className="flex items-center gap-2"
+                  >
+                    <FileText className="h-4 w-4" />
+                    Resumo
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {regulacoes.length === 0 
+                    ? "Nenhuma regulação em andamento" 
+                    : "Ver resumo das regulações"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -692,6 +718,14 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
           regulacao={modalAlterar.regulacao}
         />
       )}
+
+      <ResumoRegulacoesModal
+        isOpen={isResumoModalOpen}
+        onClose={() => setIsResumoModalOpen(false)}
+        regulacoes={regulacoes}
+        leitos={leitos}
+        setores={setores}
+      />
     </>
   );
 };
