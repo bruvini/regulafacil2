@@ -28,15 +28,12 @@ import {
   Users,
   AlertTriangle
 } from 'lucide-react';
-import { 
-  getPacientesCollection,
-  getLeitosCollection,
-  getSetoresCollection,
+import {
+  collection,
   onSnapshot,
   updateDoc,
   doc,
   db,
-  deleteDoc,
   writeBatch,
   getDocs,
   deleteField,
@@ -117,7 +114,7 @@ const GestaoPacientesPage = () => {
     const unsubscribers = [];
 
     // Patients
-    const unsubscribePacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
+    const unsubscribePacientes = onSnapshot(collection(db, 'pacientesRegulaFacil'), (snapshot) => {
       const lista = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
@@ -131,7 +128,7 @@ const GestaoPacientesPage = () => {
     });
 
     // Beds
-    const unsubscribeLeitos = onSnapshot(getLeitosCollection(), (snapshot) => {
+    const unsubscribeLeitos = onSnapshot(collection(db, 'leitosRegulaFacil'), (snapshot) => {
       const lista = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
@@ -143,7 +140,7 @@ const GestaoPacientesPage = () => {
     });
 
     // Sectors
-    const unsubscribeSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
+    const unsubscribeSetores = onSnapshot(collection(db, 'setoresRegulaFacil'), (snapshot) => {
       const lista = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
@@ -265,7 +262,7 @@ const GestaoPacientesPage = () => {
   const handleConfirmarLimpezaGeral = async () => {
     console.log('GestaoPacientesPage: Iniciando limpeza geral...');
     try {
-      const pacientesSnapshot = await getDocs(getPacientesCollection());
+      const pacientesSnapshot = await getDocs(collection(db, 'pacientesRegulaFacil'));
       console.log('GestaoPacientesPage: Documentos de pacientes encontrados:', pacientesSnapshot.docs.length);
       const batch = writeBatch(db);
 
@@ -281,6 +278,23 @@ const GestaoPacientesPage = () => {
           console.log('GestaoPacientesPage: Desocupando leito:', pacienteData.leitoId);
           const leitoRef = doc(db, 'leitosRegulaFacil', pacienteData.leitoId);
           batch.update(leitoRef, { 
+            historicoMovimentacao: arrayUnion({
+              statusLeito: 'Vago',
+              dataHora: serverTimestamp(),
+              usuario: 'Sistema - Limpeza Geral'
+            }),
+            pacienteId: deleteField()
+          });
+        }
+      });
+
+      // Garantir que todos os leitos fiquem vagos (mesmo se houver vínculos órfãos)
+      const leitosSnapshot = await getDocs(collection(db, 'leitosRegulaFacil'));
+      console.log('GestaoPacientesPage: Verificando leitos com vínculo de paciente:', leitosSnapshot.docs.length);
+      leitosSnapshot.forEach((leitoDoc) => {
+        const leitoData = leitoDoc.data();
+        if (leitoData.pacienteId) {
+          batch.update(leitoDoc.ref, {
             historicoMovimentacao: arrayUnion({
               statusLeito: 'Vago',
               dataHora: serverTimestamp(),
