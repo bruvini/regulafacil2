@@ -52,6 +52,49 @@ import { ptBR } from 'date-fns/locale';
 import VisualizarPacienteModal from './modals/VisualizarPacienteModal';
 import EditarPacienteModal from './modals/EditarPacienteModal';
 
+// Helper function to calculate age
+const calcularIdade = (dataNascimento) => {
+  if (!dataNascimento) return 0;
+  
+  try {
+    let birthDate;
+    
+    // Handle Firestore timestamp
+    if (dataNascimento.toDate && typeof dataNascimento.toDate === 'function') {
+      birthDate = dataNascimento.toDate();
+    }
+    // Handle Date object
+    else if (dataNascimento instanceof Date) {
+      birthDate = dataNascimento;
+    }
+    // Handle string dates
+    else if (typeof dataNascimento === 'string') {
+      if (dataNascimento.includes('/')) {
+        const [day, month, year] = dataNascimento.split('/');
+        birthDate = new Date(year, month - 1, day);
+      } else {
+        birthDate = parseISO(dataNascimento);
+      }
+    }
+    else {
+      return 0;
+    }
+
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    
+    return age;
+  } catch (error) {
+    console.error('Erro ao calcular idade:', error);
+    return 0;
+  }
+};
+
 const GestaoPacientesPage = () => {
   const [pacientes, setPacientes] = useState([]);
   const [leitos, setLeitos] = useState([]);
@@ -70,6 +113,7 @@ const GestaoPacientesPage = () => {
 
   // Real-time data fetching
   useEffect(() => {
+    console.log('GestaoPacientesPage: Iniciando busca de dados...');
     const unsubscribers = [];
 
     // Patients
@@ -78,7 +122,11 @@ const GestaoPacientesPage = () => {
         id: doc.id,
         ...doc.data(),
       }));
+      console.log('GestaoPacientesPage: Pacientes carregados:', lista.length, lista);
       setPacientes(lista);
+      setLoading(false);
+    }, (error) => {
+      console.error('Erro ao carregar pacientes:', error);
       setLoading(false);
     });
 
@@ -88,7 +136,10 @@ const GestaoPacientesPage = () => {
         id: doc.id,
         ...doc.data(),
       }));
+      console.log('GestaoPacientesPage: Leitos carregados:', lista.length);
       setLeitos(lista);
+    }, (error) => {
+      console.error('Erro ao carregar leitos:', error);
     });
 
     // Sectors
@@ -97,21 +148,35 @@ const GestaoPacientesPage = () => {
         id: doc.id,
         ...doc.data(),
       }));
+      console.log('GestaoPacientesPage: Setores carregados:', lista.length);
       setSetores(lista);
+    }, (error) => {
+      console.error('Erro ao carregar setores:', error);
     });
 
     unsubscribers.push(unsubscribePacientes, unsubscribeLeitos, unsubscribeSetores);
 
     return () => {
+      console.log('GestaoPacientesPage: Limpando listeners...');
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
   }, []);
 
   // Enhanced patient list with location info
   const pacientesEnriquecidos = useMemo(() => {
-    if (!pacientes.length || !leitos.length || !setores.length) return [];
+    console.log('GestaoPacientesPage: Calculando pacientesEnriquecidos...', {
+      pacientes: pacientes.length,
+      leitos: leitos.length,
+      setores: setores.length,
+      searchTerm
+    });
+    
+    if (!pacientes.length) {
+      console.log('GestaoPacientesPage: Nenhum paciente encontrado');
+      return [];
+    }
 
-    return pacientes
+    const resultado = pacientes
       .filter((paciente) =>
         paciente.nomeCompleto?.toLowerCase().includes(searchTerm.toLowerCase())
       )
@@ -127,6 +192,9 @@ const GestaoPacientesPage = () => {
         };
       })
       .sort((a, b) => a.nomeCompleto?.localeCompare(b.nomeCompleto) || 0);
+    
+    console.log('GestaoPacientesPage: Pacientes enriquecidos:', resultado.length, resultado);
+    return resultado;
   }, [pacientes, leitos, setores, searchTerm]);
 
   const handleEditarPaciente = async (pacienteId, dadosAtualizados) => {
@@ -195,18 +263,22 @@ const GestaoPacientesPage = () => {
   };
 
   const handleConfirmarLimpezaGeral = async () => {
+    console.log('GestaoPacientesPage: Iniciando limpeza geral...');
     try {
       const pacientesSnapshot = await getDocs(getPacientesCollection());
+      console.log('GestaoPacientesPage: Documentos de pacientes encontrados:', pacientesSnapshot.docs.length);
       const batch = writeBatch(db);
 
       pacientesSnapshot.forEach((pacienteDoc) => {
         const pacienteData = pacienteDoc.data();
+        console.log('GestaoPacientesPage: Processando paciente:', pacienteData.nomeCompleto);
         
         // Delete patient
         batch.delete(pacienteDoc.ref);
 
         // Update bed if patient is assigned
         if (pacienteData.leitoId) {
+          console.log('GestaoPacientesPage: Desocupando leito:', pacienteData.leitoId);
           const leitoRef = doc(db, 'leitosRegulaFacil', pacienteData.leitoId);
           batch.update(leitoRef, { 
             historicoMovimentacao: arrayUnion({
@@ -219,6 +291,7 @@ const GestaoPacientesPage = () => {
         }
       });
 
+      console.log('GestaoPacientesPage: Executando batch commit...');
       await batch.commit();
 
       await logAction('Gestão de Pacientes', 'LIMPEZA GERAL EXECUTADA: Todos os pacientes foram removidos e leitos desocupados.');
@@ -230,6 +303,7 @@ const GestaoPacientesPage = () => {
 
       setLimpezaStep(0);
       setConfirmText('');
+      console.log('GestaoPacientesPage: Limpeza geral concluída com sucesso');
     } catch (error) {
       console.error('Erro na limpeza geral:', error);
       toast({
@@ -305,7 +379,10 @@ const GestaoPacientesPage = () => {
         
         <Button
           variant="destructive"
-          onClick={() => setLimpezaStep(1)}
+          onClick={() => {
+            console.log('GestaoPacientesPage: Botão limpeza geral clicado, pacientes:', pacientes.length);
+            setLimpezaStep(1);
+          }}
           disabled={pacientes.length === 0}
         >
           <Trash2 className="h-4 w-4 mr-2" />
