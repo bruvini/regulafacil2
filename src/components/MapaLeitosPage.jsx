@@ -7,35 +7,15 @@ import {
   Upload,
   Settings2,
   Activity,
-  Map,
-  RotateCcw,
-  AlertTriangle
+  Map
 } from 'lucide-react';
 import { 
   getSetoresCollection, 
   getLeitosCollection,
   getPacientesCollection,
   getInfeccoesCollection,
-  onSnapshot,
-  getDocs,
-  writeBatch,
-  doc,
-  db,
-  arrayUnion,
-  serverTimestamp
+  onSnapshot
 } from '@/lib/firebase';
-import { logAction } from '@/lib/auditoria';
-import { toast } from '@/components/ui/use-toast';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 
 // Importar componentes
 import IndicadoresGeraisPanel from './IndicadoresGeraisPanel';
@@ -60,7 +40,6 @@ const MapaLeitosPage = () => {
   const [showRelatorioIsolamentosModal, setShowRelatorioIsolamentosModal] = useState(false);
   const [showRelatorioLeitosVagosModal, setShowRelatorioLeitosVagosModal] = useState(false);
   const [showReservasLeitosModal, setShowReservasLeitosModal] = useState(false);
-  const [showResetLeitosDialog, setShowResetLeitosDialog] = useState(false);
 
   // Carregar dados do Firestore
   useEffect(() => {
@@ -111,66 +90,6 @@ const MapaLeitosPage = () => {
     };
   }, []);
 
-  // Função para resetar todos os leitos
-  const handleResetarLeitos = async () => {
-    try {
-      console.log('MapaLeitosPage: Iniciando reset de leitos...');
-      const leitosSnapshot = await getDocs(getLeitosCollection());
-      const batch = writeBatch(db);
-      let leitosResetados = 0;
-
-      leitosSnapshot.forEach((leitoDoc) => {
-        const leitoData = leitoDoc.data();
-        const historicoMovimentacao = leitoData.historicoMovimentacao || [];
-        
-        // Verificar o último status do leito
-        const ultimoStatus = historicoMovimentacao.length > 0 
-          ? historicoMovimentacao[historicoMovimentacao.length - 1].statusLeito 
-          : 'Vago';
-
-        // Se não estiver vago, resetar para vago
-        if (ultimoStatus !== 'Vago') {
-          console.log(`MapaLeitosPage: Resetando leito ${leitoData.codigoLeito} de ${ultimoStatus} para Vago`);
-          batch.update(leitoDoc.ref, {
-            historicoMovimentacao: arrayUnion({
-              statusLeito: 'Vago',
-              dataHora: serverTimestamp(),
-              usuario: 'Sistema - Reset de Leitos',
-              observacao: `Status anterior: ${ultimoStatus}`
-            })
-          });
-          leitosResetados++;
-        }
-      });
-
-      if (leitosResetados > 0) {
-        console.log(`MapaLeitosPage: Executando batch commit para ${leitosResetados} leitos...`);
-        await batch.commit();
-
-        await logAction('Mapa de Leitos', `RESET DE LEITOS EXECUTADO: ${leitosResetados} leitos foram marcados como Vago.`);
-        
-        toast({
-          title: "Reset Concluído",
-          description: `${leitosResetados} leitos foram marcados como Vago.`,
-        });
-      } else {
-        toast({
-          title: "Nenhuma Alteração",
-          description: "Todos os leitos já estão vagos.",
-        });
-      }
-
-      setShowResetLeitosDialog(false);
-    } catch (error) {
-      console.error('Erro no reset de leitos:', error);
-      toast({
-        title: "Erro",
-        description: "Erro ao executar reset de leitos.",
-        variant: "destructive",
-      });
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Indicadores Gerais */}
@@ -189,7 +108,7 @@ const MapaLeitosPage = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <Button
               variant="outline"
               size="sm"
@@ -238,16 +157,6 @@ const MapaLeitosPage = () => {
               <Settings2 className="h-4 w-4" />
               Reservas de leitos
             </Button>
-
-            <Button
-              variant="destructive"
-              size="sm"
-              className="flex items-center gap-2"
-              onClick={() => setShowResetLeitosDialog(true)}
-            >
-              <RotateCcw className="h-4 w-4" />
-              Resetar Leitos
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -290,32 +199,6 @@ const MapaLeitosPage = () => {
         isOpen={showReservasLeitosModal} 
         onClose={() => setShowReservasLeitosModal(false)} 
       />
-
-      {/* Dialog de Confirmação para Reset de Leitos */}
-      <AlertDialog open={showResetLeitosDialog} onOpenChange={setShowResetLeitosDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              Resetar Todos os Leitos
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta ação irá marcar <strong>todos os leitos ocupados, reservados ou regulados</strong> como "Vago".
-              <br /><br />
-              Esta operação não pode ser desfeita. Deseja continuar?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleResetarLeitos}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Resetar Leitos
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 };
