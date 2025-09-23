@@ -28,8 +28,10 @@ import {
   Users,
   AlertTriangle
 } from 'lucide-react';
-import {
-  collection,
+import { 
+  getPacientesCollection,
+  getLeitosCollection,
+  getSetoresCollection,
   onSnapshot,
   updateDoc,
   doc,
@@ -114,7 +116,7 @@ const GestaoPacientesPage = () => {
     const unsubscribers = [];
 
     // Patients
-    const unsubscribePacientes = onSnapshot(collection(db, 'pacientesRegulaFacil'), (snapshot) => {
+    const unsubscribePacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
       const lista = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
@@ -128,7 +130,7 @@ const GestaoPacientesPage = () => {
     });
 
     // Beds
-    const unsubscribeLeitos = onSnapshot(collection(db, 'leitosRegulaFacil'), (snapshot) => {
+    const unsubscribeLeitos = onSnapshot(getLeitosCollection(), (snapshot) => {
       const lista = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
@@ -140,7 +142,7 @@ const GestaoPacientesPage = () => {
     });
 
     // Sectors
-    const unsubscribeSetores = onSnapshot(collection(db, 'setoresRegulaFacil'), (snapshot) => {
+    const unsubscribeSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
       const lista = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
@@ -196,7 +198,7 @@ const GestaoPacientesPage = () => {
 
   const handleEditarPaciente = async (pacienteId, dadosAtualizados) => {
     try {
-      const pacienteRef = doc(db, 'pacientesRegulaFacil', pacienteId);
+      const pacienteRef = doc(getPacientesCollection(), pacienteId);
       await updateDoc(pacienteRef, dadosAtualizados);
 
       const paciente = pacientes.find(p => p.id === pacienteId);
@@ -223,12 +225,12 @@ const GestaoPacientesPage = () => {
       const batch = writeBatch(db);
 
       // Delete patient document
-      const pacienteRef = doc(db, 'pacientesRegulaFacil', paciente.id);
+      const pacienteRef = doc(getPacientesCollection(), paciente.id);
       batch.delete(pacienteRef);
 
       // Update bed if patient is assigned to one
       if (paciente.leitoId) {
-        const leitoRef = doc(db, 'leitosRegulaFacil', paciente.leitoId);
+        const leitoRef = doc(getLeitosCollection(), paciente.leitoId);
         batch.update(leitoRef, { 
           historicoMovimentacao: arrayUnion({
             statusLeito: 'Vago',
@@ -262,7 +264,7 @@ const GestaoPacientesPage = () => {
   const handleConfirmarLimpezaGeral = async () => {
     console.log('GestaoPacientesPage: Iniciando limpeza geral...');
     try {
-      const pacientesSnapshot = await getDocs(collection(db, 'pacientesRegulaFacil'));
+      const pacientesSnapshot = await getDocs(getPacientesCollection());
       console.log('GestaoPacientesPage: Documentos de pacientes encontrados:', pacientesSnapshot.docs.length);
       const batch = writeBatch(db);
 
@@ -276,7 +278,7 @@ const GestaoPacientesPage = () => {
         // Update bed if patient is assigned
         if (pacienteData.leitoId) {
           console.log('GestaoPacientesPage: Desocupando leito:', pacienteData.leitoId);
-          const leitoRef = doc(db, 'leitosRegulaFacil', pacienteData.leitoId);
+          const leitoRef = doc(getLeitosCollection(), pacienteData.leitoId);
           batch.update(leitoRef, { 
             historicoMovimentacao: arrayUnion({
               statusLeito: 'Vago',
@@ -289,7 +291,7 @@ const GestaoPacientesPage = () => {
       });
 
       // Garantir que todos os leitos fiquem vagos (mesmo se houver vínculos órfãos)
-      const leitosSnapshot = await getDocs(collection(db, 'leitosRegulaFacil'));
+      const leitosSnapshot = await getDocs(getLeitosCollection());
       console.log('GestaoPacientesPage: Verificando leitos com vínculo de paciente:', leitosSnapshot.docs.length);
       leitosSnapshot.forEach((leitoDoc) => {
         const leitoData = leitoDoc.data();
