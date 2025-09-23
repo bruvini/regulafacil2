@@ -109,11 +109,13 @@ const GestaoPacientesPage = () => {
 
   // Enhanced patient list with location info
   const pacientesEnriquecidos = useMemo(() => {
-    if (!pacientes.length || !leitos.length || !setores.length) return [];
+    // Allow showing patients even if leitos/setores aren't loaded yet
+    if (!pacientes.length) return [];
 
     return pacientes
       .filter((paciente) =>
-        paciente.nomeCompleto?.toLowerCase().includes(searchTerm.toLowerCase())
+        paciente.nomeCompleto?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        paciente.numeroCarteirinha?.toLowerCase().includes(searchTerm.toLowerCase())
       )
       .map((paciente) => {
         const leito = leitos.find((l) => l.id === paciente.leitoId);
@@ -131,7 +133,7 @@ const GestaoPacientesPage = () => {
 
   const handleEditarPaciente = async (pacienteId, dadosAtualizados) => {
     try {
-      const pacienteRef = doc(db, 'pacientesRegulaFacil', pacienteId);
+      const pacienteRef = doc(getPacientesCollection(), pacienteId);
       await updateDoc(pacienteRef, dadosAtualizados);
 
       const paciente = pacientes.find(p => p.id === pacienteId);
@@ -158,19 +160,22 @@ const GestaoPacientesPage = () => {
       const batch = writeBatch(db);
 
       // Delete patient document
-      const pacienteRef = doc(db, 'pacientesRegulaFacil', paciente.id);
+      const pacienteRef = doc(getPacientesCollection(), paciente.id);
       batch.delete(pacienteRef);
 
       // Update bed if patient is assigned to one
       if (paciente.leitoId) {
-        const leitoRef = doc(db, 'leitosRegulaFacil', paciente.leitoId);
+        const leitoRef = doc(getLeitosCollection(), paciente.leitoId);
         batch.update(leitoRef, { 
+          statusLeito: 'Vago',
           historicoMovimentacao: arrayUnion({
             statusLeito: 'Vago',
             dataHora: serverTimestamp(),
             usuario: 'Sistema - Gestão de Pacientes'
           }),
-          pacienteId: deleteField()
+          pacienteId: deleteField(),
+          reservaExterna: deleteField(),
+          regulacaoEmAndamento: deleteField()
         });
       }
 
@@ -196,36 +201,53 @@ const GestaoPacientesPage = () => {
 
   const handleConfirmarLimpezaGeral = async () => {
     try {
-      const pacientesSnapshot = await getDocs(getPacientesCollection());
+      // Get all patients and beds collections
+      const [pacientesSnapshot, leitosSnapshot] = await Promise.all([
+        getDocs(getPacientesCollection()),
+        getDocs(getLeitosCollection())
+      ]);
+      
       const batch = writeBatch(db);
+      let totalPacientesRemovidos = 0;
+      let totalLeitosLiberados = 0;
 
+      // Delete all patients
       pacientesSnapshot.forEach((pacienteDoc) => {
-        const pacienteData = pacienteDoc.data();
-        
-        // Delete patient
         batch.delete(pacienteDoc.ref);
+        totalPacientesRemovidos++;
+      });
 
-        // Update bed if patient is assigned
-        if (pacienteData.leitoId) {
-          const leitoRef = doc(db, 'leitosRegulaFacil', pacienteData.leitoId);
-          batch.update(leitoRef, { 
+      // Update all beds that are not 'Vago'
+      leitosSnapshot.forEach((leitoDoc) => {
+        const leitoData = leitoDoc.data();
+        const statusAtual = leitoData.statusLeito;
+        
+        if (statusAtual && statusAtual !== 'Vago') {
+          batch.update(leitoDoc.ref, {
+            statusLeito: 'Vago',
             historicoMovimentacao: arrayUnion({
               statusLeito: 'Vago',
               dataHora: serverTimestamp(),
               usuario: 'Sistema - Limpeza Geral'
             }),
-            pacienteId: deleteField()
+            // Remove any patient/reservation associations
+            pacienteId: deleteField(),
+            reservaExterna: deleteField(),
+            regulacaoEmAndamento: deleteField()
           });
+          totalLeitosLiberados++;
         }
       });
 
       await batch.commit();
 
-      await logAction('Gestão de Pacientes', 'LIMPEZA GERAL EXECUTADA: Todos os pacientes foram removidos e leitos desocupados.');
+      await logAction('Gestão de Pacientes', 
+        `LIMPEZA GERAL EXECUTADA: ${totalPacientesRemovidos} pacientes removidos e ${totalLeitosLiberados} leitos liberados.`
+      );
       
       toast({
         title: "Limpeza Concluída",
-        description: "Todos os pacientes foram removidos com sucesso.",
+        description: `${totalPacientesRemovidos} pacientes removidos e ${totalLeitosLiberados} leitos liberados.`,
       });
 
       setLimpezaStep(0);
