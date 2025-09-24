@@ -297,6 +297,17 @@ const LeitoCard = ({
     const badges = [];
     const paciente = leito.paciente;
 
+    // Badges de isolamentos
+    if (paciente.isolamentos && paciente.isolamentos.length > 0) {
+      paciente.isolamentos.forEach(isolamento => {
+        badges.push(
+          <Badge key={isolamento.id || isolamento.infeccaoId || isolamento.siglaInfeccao} variant="destructive" className="text-xs px-1.5 py-0.5">
+            {isolamento.siglaInfeccao}
+          </Badge>
+        );
+      });
+    }
+
     if (paciente.observacoes && paciente.observacoes.length > 0) {
       badges.push(
         <Badge key="obs" variant="outline" className="text-xs p-1">
@@ -1061,24 +1072,35 @@ const MapaLeitosPanel = () => {
     try {
       const { leito: leitoOrigem, paciente } = modalMoverPaciente;
       
+      // Criar objetos de histórico com timestamp atual do cliente
+      const historicoOrigemEntry = {
+        status: 'Vago',
+        timestamp: new Date()
+      };
+      
+      const historicoDestinoEntry = {
+        status: 'Ocupado',
+        timestamp: new Date()
+      };
+      
       // Atualizar leito de origem para Vago
       const leitoOrigemRef = doc(getLeitosCollection(), leitoOrigem.id);
       await updateDoc(leitoOrigemRef, {
         status: 'Vago',
-        historico: arrayUnion({
-          status: 'Vago',
-          timestamp: serverTimestamp()
-        })
+        statusLeito: 'Vago',
+        pacienteId: deleteField(),
+        historico: arrayUnion(historicoOrigemEntry),
+        dataUltimaMovimentacao: serverTimestamp()
       });
       
       // Atualizar leito de destino para Ocupado
       const leitoDestinoRef = doc(getLeitosCollection(), leitoDestino.id);
       await updateDoc(leitoDestinoRef, {
         status: 'Ocupado',
-        historico: arrayUnion({
-          status: 'Ocupado',
-          timestamp: serverTimestamp()
-        })
+        statusLeito: 'Ocupado',
+        pacienteId: paciente.id,
+        historico: arrayUnion(historicoDestinoEntry),
+        dataUltimaMovimentacao: serverTimestamp()
       });
       
       // Atualizar dados do paciente

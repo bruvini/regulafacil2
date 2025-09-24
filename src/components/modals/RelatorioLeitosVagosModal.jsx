@@ -117,12 +117,13 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
     };
 
     setoresElegiveis.forEach(setor => {
-      const leitosVagos = leitos
-        .filter(leito =>
-          leito.setorId === setor.id &&
-          (leito.status === 'Vago' || leito.status === 'Higienização') &&
-          !pacientesPorLeito[leito.id]
-        )
+    const leitosVagos = leitos
+      .filter(leito =>
+        leito.setorId === setor.id &&
+        ((leito.statusLeito === 'Vago' || leito.statusLeito === 'Higienização') || 
+         (leito.status === 'Vago' || leito.status === 'Higienização')) &&
+        !pacientesPorLeito[leito.id]
+      )
         .map(leito => {
           let sexoCompativel = 'Ambos';
           let isolamentoExigido = null;
