@@ -2,8 +2,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader, ClipboardCopy, CheckCircle, Pencil, XCircle, FileText } from "lucide-react";
+import { Loader, ClipboardCopy, CheckCircle, Pencil, XCircle, FileText, MoreHorizontal } from "lucide-react";
 import { intervalToDuration, differenceInMinutes } from 'date-fns';
 import { 
   getSetoresCollection, 
@@ -521,112 +528,62 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
     }
   };
 
-  const RegulacaoCard = ({ paciente }) => {
+  const RegulacaoListItem = ({ paciente }) => {
     const { regulacaoAtiva } = paciente;
     const leitoOrigem = obterInfoLeito(regulacaoAtiva.leitoOrigemId);
     const leitoDestino = obterInfoLeito(regulacaoAtiva.leitoDestinoId);
     const tempoRegulacao = calcularTempoRegulacao(regulacaoAtiva.iniciadoEm);
 
     return (
-      <Card className="p-4 hover:shadow-md transition-shadow border border-muted">
-        <div className="space-y-3">
-          {/* Nome do Paciente */}
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <h4 className="font-semibold text-sm leading-tight truncate">
-                {paciente.nomePaciente}
-              </h4>
-            </div>
-            <Badge variant="outline" className="text-xs font-medium bg-orange-100 text-orange-800 border-orange-300">
+      <div className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between md:gap-6">
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="truncate text-sm font-semibold leading-tight text-foreground">
+              {paciente.nomePaciente}
+            </h4>
+            <Badge variant="outline" className="border-orange-300 bg-orange-100 text-xs font-medium text-orange-800">
               Em Regulação
             </Badge>
           </div>
-
-          {/* Origem e Destino */}
-          <div className="text-xs text-muted-foreground space-y-1">
-            <div>
-              <span className="font-medium">DE: </span>
-              <span className="font-semibold">{leitoOrigem.siglaSetor} - {leitoOrigem.codigo}</span>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <div className="font-medium">
+              DE:{' '}
+              <span className="font-semibold text-foreground">{leitoOrigem.siglaSetor} - {leitoOrigem.codigo}</span>
             </div>
-            <div>
-              <span className="font-medium">PARA: </span>
-              <span className="font-semibold">{leitoDestino.siglaSetor} - {leitoDestino.codigo}</span>
+            <div className="font-medium">
+              PARA:{' '}
+              <span className="font-semibold text-foreground">{leitoDestino.siglaSetor} - {leitoDestino.codigo}</span>
             </div>
           </div>
-
-          {/* Tempo da Regulação */}
-          <div className="text-xs text-muted-foreground">
-            <span className="font-medium">{tempoRegulacao}</span>
-          </div>
-
-          {/* Ações */}
-          <div className="flex justify-end gap-2">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button 
-                    className="p-1.5 hover:bg-muted rounded-md transition-colors"
-                    onClick={() => handleCopiarTexto(paciente)}
-                  >
-                    <ClipboardCopy className="h-4 w-4 text-muted-foreground" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Copiar Texto Personalizado</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button 
-                    className="p-1.5 hover:bg-muted rounded-md transition-colors"
-                    onClick={() => setModalConcluir({ open: true, paciente })}
-                  >
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Concluir Regulação</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button 
-                    className="p-1.5 hover:bg-muted rounded-md transition-colors"
-                    onClick={() => setModalAlterar({ isOpen: true, regulacao: paciente })}
-                  >
-                    <Pencil className="h-4 w-4 text-blue-600" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Alterar Regulação</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button 
-                    className="p-1.5 hover:bg-muted rounded-md transition-colors"
-                    onClick={() => setModalCancelar({ open: true, paciente })}
-                  >
-                    <XCircle className="h-4 w-4 text-destructive" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Cancelar Regulação</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
+          <div className="text-xs font-medium text-muted-foreground">{tempoRegulacao}</div>
         </div>
-      </Card>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem onSelect={() => handleCopiarTexto(paciente)}>
+              <ClipboardCopy className="mr-2 h-4 w-4" />
+              Copiar texto personalizado
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => setModalConcluir({ open: true, paciente })}>
+              <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
+              Concluir regulação
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setModalAlterar({ isOpen: true, regulacao: paciente })}>
+              <Pencil className="mr-2 h-4 w-4 text-blue-600" />
+              Alterar regulação
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setModalCancelar({ open: true, paciente })}>
+              <XCircle className="mr-2 h-4 w-4 text-destructive" />
+              Cancelar regulação
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     );
   };
 
@@ -679,10 +636,12 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
               <p className="text-sm">Nenhuma regulação corresponde aos filtros aplicados</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {regulacoesFiltradas.map((paciente) => (
-                <RegulacaoCard key={paciente.id} paciente={paciente} />
-              ))}
+            <div className="overflow-hidden rounded-lg border border-border">
+              <div className="divide-y divide-border">
+                {regulacoesFiltradas.map((paciente) => (
+                  <RegulacaoListItem key={paciente.id} paciente={paciente} />
+                ))}
+              </div>
             </div>
           )}
         </CardContent>
