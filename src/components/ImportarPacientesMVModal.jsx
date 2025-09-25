@@ -412,6 +412,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       }
       return acc;
     }, {});
+    const leitosIdSet = new Set(Object.values(leitosMap).map(leito => leito.id));
 
     const errosLeitosMap = new Map();
     const registrarErroLeito = (nome, codigo) => {
@@ -510,7 +511,9 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       processedData.altas.forEach(paciente => {
         const pacienteRef = doc(db, PATIENTS_COLLECTION_PATH, paciente.id);
         batch.delete(pacienteRef);
-        leitosParaAtualizar.add(paciente.leitoId);
+        if (paciente.leitoId && leitosIdSet.has(paciente.leitoId)) {
+          leitosParaAtualizar.add(paciente.leitoId);
+        }
       });
 
       // Executar movimentações
@@ -613,6 +616,9 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
 
       // Atualizar status de todos os leitos afetados
       leitosParaAtualizar.forEach(leitoId => {
+        if (!leitosIdSet.has(leitoId)) {
+          return;
+        }
         const leitoRef = doc(db, BEDS_COLLECTION_PATH, leitoId);
         const novoStatus = pacientesFinais[leitoId] ? 'Ocupado' : 'Vago';
         batch.update(leitoRef, {
