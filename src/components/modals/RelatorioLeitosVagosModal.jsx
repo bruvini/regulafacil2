@@ -23,6 +23,19 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
     loading: true
   });
 
+  const formatarMensagemRestricaoCoorte = (restricao) => {
+    if (!restricao) {
+      return '';
+    }
+
+    const isolamentos = restricao.isolamentos || [];
+    if (isolamentos.length > 0) {
+      return `Permitido apenas pacientes do sexo ${restricao.sexo} com isolamento de ${isolamentos.join(', ')}`;
+    }
+
+    return `Permitido apenas pacientes do sexo ${restricao.sexo}`;
+  };
+
   // Buscar dados do Firestore
   useEffect(() => {
     if (!isOpen) return;
@@ -101,23 +114,29 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
           .map(leitoQuarto => pacientesPorLeito[leitoQuarto.id])
           .filter(paciente => paciente);
 
-        const isolamentosSet = new Set();
-        pacientesOcupantes.forEach(pacienteOcupante => {
-          (pacienteOcupante.isolamentos || []).forEach(isolamento => {
-            const sigla = isolamento?.siglaInfeccao || isolamento?.sigla || isolamento?.nomeInfeccao;
-            if (sigla) {
-              isolamentosSet.add(String(sigla).trim());
-            }
-          });
-        });
+        const possuiOcupantes = pacientesOcupantes.length > 0;
+        let restricao = null;
 
-        const possuiRestricao = pacientesOcupantes.length > 0 && isolamentosSet.size > 0;
-        const restricao = possuiRestricao
-          ? {
-              sexo: normalizarSexo(pacientesOcupantes[0]?.sexo),
-              isolamentos: Array.from(isolamentosSet).sort((a, b) => a.localeCompare(b))
-            }
-          : null;
+        if (possuiOcupantes) {
+          restricao = {
+            sexo: normalizarSexo(pacientesOcupantes[0]?.sexo),
+            isolamentos: []
+          };
+
+          const isolamentosSet = new Set();
+          pacientesOcupantes.forEach(pacienteOcupante => {
+            (pacienteOcupante.isolamentos || []).forEach(isolamento => {
+              const sigla = isolamento?.siglaInfeccao || isolamento?.sigla || isolamento?.nomeInfeccao;
+              if (sigla) {
+                isolamentosSet.add(String(sigla).trim());
+              }
+            });
+          });
+
+          if (isolamentosSet.size > 0) {
+            restricao.isolamentos = Array.from(isolamentosSet).sort((a, b) => a.localeCompare(b));
+          }
+        }
 
         quartoAtual.leitos.forEach(leitoQuarto => {
           const possuiPaciente = Boolean(pacientesPorLeito[leitoQuarto.id]);
@@ -246,7 +265,7 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
     leitosVagos.forEach(leito => {
       const statusDetalhado = leito.status;
       const restricaoInfo = leito.restricaoCoorte
-        ? ` | Coorte: Permitido apenas pacientes do sexo ${leito.restricaoCoorte.sexo} com isolamento de ${leito.restricaoCoorte.isolamentos.join(', ')}`
+        ? ` | Coorte: ${formatarMensagemRestricaoCoorte(leito.restricaoCoorte)}`
         : '';
 
       mensagem += `_${leito.codigoLeito} - Status: ${statusDetalhado}${restricaoInfo}_\n`;
@@ -345,7 +364,7 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
                             <td className="px-4 py-3">
                               {leito.restricaoCoorte ? (
                                 <span className="text-xs font-semibold text-blue-700">
-                                  Permitido apenas pacientes do sexo {leito.restricaoCoorte.sexo} com isolamento de {leito.restricaoCoorte.isolamentos.join(', ')}
+                                  {formatarMensagemRestricaoCoorte(leito.restricaoCoorte)}
                                 </span>
                               ) : (
                                 <span className="text-xs text-muted-foreground">Sem restrição de coorte</span>
