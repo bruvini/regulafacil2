@@ -54,11 +54,24 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     novosSetores: 0,
     novosLeitos: 0
   });
-  
+
   // Novos estados para validação
   const [setoresFaltantes, setSetoresFaltantes] = useState([]);
   const [leitosFaltantes, setLeitosFaltantes] = useState([]);
   const [parsedFileData, setParsedFileData] = useState(null); // Para armazenar dados do arquivo já processado
+
+  const normalizarCodigoLeito = (codigo) => {
+    if (!codigo) return '';
+
+    return codigo
+      .toString()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  };
 
   const handleFileChange = (event) => {
     const file = event.target.files[0];
@@ -146,8 +159,14 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
 
     leitosSnapshot.forEach(docSnap => {
       const data = docSnap.data();
-      const key = (data.codigoLeito || '').toString().trim().toUpperCase();
-      leitos[key] = { id: docSnap.id, ...data };
+      const codigoNormalizado = normalizarCodigoLeito(data.codigoLeito);
+      const leito = { id: docSnap.id, ...data, codigoLeitoNormalizado: codigoNormalizado };
+
+      if (codigoNormalizado) {
+        leitos[codigoNormalizado] = leito;
+      }
+
+      leitos[`__ID__${leito.id}`] = leito;
     });
 
     pacientesSnapshot.forEach(docSnap => {
@@ -161,7 +180,11 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       console.log('--- DADOS BUSCADOS DO FIRESTORE (SETORES) ---');
       console.table(Object.entries(setores).map(([k, v]) => ({ key: k, id: v.id, nome: (v.nomeSetor || '').toString(), sigla: v.sigla || '' })));
       console.log('--- DADOS BUSCADOS DO FIRESTORE (LEITOS) ---');
-      console.table(Object.entries(leitos).map(([k, v]) => ({ key: k, id: v.id, codigo: (v.codigoLeito || '').toString(), setorId: v.setorId || '' })));
+      console.table(
+        Object.entries(leitos)
+          .filter(([key]) => !key.startsWith('__ID__'))
+          .map(([k, v]) => ({ key: k, id: v.id, codigo: (v.codigoLeito || '').toString(), setorId: v.setorId || '' }))
+      );
     } catch (_) { /* noop for environments without console.table */ }
 
     return { setores, leitos, pacientes };
@@ -192,22 +215,27 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
         console.log('--- DADOS BUSCADOS DO FIRESTORE (SETORES) ---');
         console.table(Object.entries(setores).map(([key, v]) => ({ key, id: v.id, nome: (v.nome || '').toString() })));
         console.log('--- DADOS BUSCADOS DO FIRESTORE (LEITOS) ---');
-        console.table(Object.entries(leitos).map(([key, v]) => ({ key, id: v.id, codigo: (v.codigo || '').toString() })));
+        console.table(
+          Object.entries(leitos)
+            .filter(([key]) => !key.startsWith('__ID__'))
+            .map(([key, v]) => ({ key, id: v.id, codigo: (v.codigo || '').toString() }))
+        );
       } catch (_) { /* noop */ }
       // Identificar setores e leitos faltantes
       const setoresParaCriar = new Set();
       const leitosParaCriar = [];
 
       for (const paciente of pacientesArquivo) {
+        const codigoLeitoNormalizado = normalizarCodigoLeito(paciente.codigoLeito);
         // Diagnóstico: mostrar exatamente o que está sendo comparado
         try {
           console.log(`Comparando Setor: [ARQ] '${paciente.nomeSetor}' vs [DB] exists=${!!setores[paciente.nomeSetor]}`);
-          console.log(`Comparando Leito: [ARQ] '${paciente.codigoLeito}' vs [DB] exists=${!!leitos[paciente.codigoLeito]}`);
+          console.log(`Comparando Leito: [ARQ] '${paciente.codigoLeito}' vs [DB] exists=${!!leitos[codigoLeitoNormalizado]}`);
         } catch (_) { /* noop */ }
         if (!setores[paciente.nomeSetor]) {
           setoresParaCriar.add(paciente.nomeSetor);
         }
-        if (!leitos[paciente.codigoLeito]) {
+        if (!leitos[codigoLeitoNormalizado]) {
           leitosParaCriar.push({
             codigo: paciente.codigoLeito,
             nomeSetor: paciente.nomeSetor
@@ -257,7 +285,10 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
   // MOVER DECLARAÇÃO DO pacientesArquivoMap PARA O INÍCIO (FIX DO BUG)
   const pacientesArquivoMap = {};
   pacientesArquivo.forEach(p => {
-    pacientesArquivoMap[p.nomePaciente] = p;
+    pacientesArquivoMap[p.nomePaciente] = {
+      ...p,
+      codigoLeitoNormalizado: normalizarCodigoLeito(p.codigoLeito)
+    };
   });
 
   // PARTE 1: SINCRONIZAÇÃO INTELIGENTE DE REGULAÇÕES
@@ -280,7 +311,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     const { regulacaoAtiva } = pacienteDB;
     const leitoOrigemId = regulacaoAtiva.leitoOrigemId;
     const leitoDestinoId = regulacaoAtiva.leitoDestinoId;
-    const leitoAtualArquivo = leitos[pacienteArquivo.codigoLeito];
+    const leitoAtualArquivo = leitos[pacienteArquivo.codigoLeitoNormalizado];
 
     if (!leitoAtualArquivo) continue;
 
@@ -307,7 +338,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       // Verificar conflitos: o leito atual já está ocupado por outro paciente?
       const outrosPacientesNesteLeito = Object.values(pacientesArquivoMap).filter(p => 
         p.nomePaciente !== pacienteDB.nomePaciente && 
-        leitos[p.codigoLeito]?.id === leitoAtualArquivo.id
+        leitos[p.codigoLeitoNormalizado]?.id === leitoAtualArquivo.id
       );
 
       if (outrosPacientesNesteLeito.length > 0) {
@@ -350,7 +381,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       if (pacienteFirestore) {
         // Verificar se mudou de leito
         const leitoAtualId = pacienteFirestore.leitoId;
-        const leitoNovoId = leitos[pacienteArquivo.codigoLeito]?.id;
+        const leitoNovoId = leitos[pacienteArquivo.codigoLeitoNormalizado]?.id;
         
         if (leitoAtualId !== leitoNovoId) {
           movimentacoes.push({
@@ -366,7 +397,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
         // Nova internação
         internacoes.push({
           ...pacienteArquivo,
-          leitoId: leitos[pacienteArquivo.codigoLeito].id,
+          leitoId: leitos[pacienteArquivo.codigoLeitoNormalizado].id,
           setorId: setores[pacienteArquivo.nomeSetor].id
         });
       }
@@ -405,20 +436,21 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
 
     setIsProcessing(true);
 
+    const leitosIdSet = new Set(Object.values(processedData.leitos || {}).map(leito => leito.id));
     const leitosMap = Object.values(processedData.leitos || {}).reduce((acc, leito) => {
-      const codigo = (leito?.codigoLeito || '').toString().trim().toUpperCase();
+      const codigo = leito?.codigoLeitoNormalizado || normalizarCodigoLeito(leito?.codigoLeito);
       if (codigo) {
         acc[codigo] = leito;
       }
       return acc;
     }, {});
-    const leitosIdSet = new Set(Object.values(leitosMap).map(leito => leito.id));
 
     const errosLeitosMap = new Map();
     const registrarErroLeito = (nome, codigo) => {
       const nomeFormatado = (nome || 'Paciente sem nome').toString().trim();
+      const codigoNormalizado = normalizarCodigoLeito(codigo);
       const codigoFormatado = (codigo || 'Não informado').toString().trim() || 'Não informado';
-      const key = `${nomeFormatado.toUpperCase()}|${codigoFormatado.toUpperCase()}`;
+      const key = `${nomeFormatado.toUpperCase()}|${(codigoNormalizado || codigoFormatado.toUpperCase() || 'NÃO INFORMADO')}`;
 
       if (!errosLeitosMap.has(key)) {
         errosLeitosMap.set(key, {
@@ -432,11 +464,11 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     const pacientesValidosPlanilha = new Set();
 
     pacientesDaPlanilha.forEach(pacientePlanilha => {
-      const codigo = (pacientePlanilha.codigoLeito || '').toString().trim().toUpperCase();
+      const codigoNormalizado = normalizarCodigoLeito(pacientePlanilha.codigoLeito);
       const nome = (pacientePlanilha.nomePaciente || '').toString().trim().toUpperCase();
 
-      if (codigo && leitosMap[codigo]) {
-        pacientesValidosPlanilha.add(`${nome}|${codigo}`);
+      if (codigoNormalizado && leitosMap[codigoNormalizado]) {
+        pacientesValidosPlanilha.add(`${nome}|${codigoNormalizado}`);
       } else {
         registrarErroLeito(pacientePlanilha.nomePaciente, pacientePlanilha.codigoLeito);
       }
@@ -444,18 +476,19 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
 
     const movimentacoesValidas = [];
     (processedData.movimentacoes || []).forEach(({ paciente, dadosNovos }) => {
-      const codigo = (dadosNovos?.codigoLeito || '').toString().trim().toUpperCase();
+      const codigoOriginal = dadosNovos?.codigoLeito ?? paciente?.codigoLeito;
+      const codigoNormalizado = dadosNovos?.codigoLeitoNormalizado || normalizarCodigoLeito(codigoOriginal);
       const nomeDadosNovos = (dadosNovos?.nomePaciente || '').toString().trim().toUpperCase();
       const nomePaciente = nomeDadosNovos || (paciente?.nomePaciente || '').toString().trim().toUpperCase();
-      const chaveValidacao = `${nomePaciente}|${codigo}`;
+      const chaveValidacao = `${nomePaciente}|${codigoNormalizado}`;
 
-      if (!codigo || !leitosMap[codigo]) {
-        registrarErroLeito(dadosNovos?.nomePaciente || paciente?.nomePaciente, dadosNovos?.codigoLeito || codigo);
+      if (!codigoNormalizado || !leitosMap[codigoNormalizado]) {
+        registrarErroLeito(dadosNovos?.nomePaciente || paciente?.nomePaciente, codigoOriginal);
         return;
       }
 
       if (pacientesValidosPlanilha.size > 0 && !pacientesValidosPlanilha.has(chaveValidacao)) {
-        registrarErroLeito(dadosNovos?.nomePaciente || paciente?.nomePaciente, dadosNovos?.codigoLeito || codigo);
+        registrarErroLeito(dadosNovos?.nomePaciente || paciente?.nomePaciente, codigoOriginal);
         return;
       }
 
@@ -463,29 +496,30 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
         paciente,
         dadosNovos: {
           ...dadosNovos,
-          leitoId: leitosMap[codigo].id
+          leitoId: leitosMap[codigoNormalizado].id
         }
       });
     });
 
     const internacoesValidas = [];
     (processedData.internacoes || []).forEach(paciente => {
-      const codigo = (paciente.codigoLeito || '').toString().trim().toUpperCase();
-      const chaveValidacao = `${(paciente.nomePaciente || '').toString().trim().toUpperCase()}|${codigo}`;
+      const codigoOriginal = paciente.codigoLeito;
+      const codigoNormalizado = paciente.codigoLeitoNormalizado || normalizarCodigoLeito(codigoOriginal);
+      const chaveValidacao = `${(paciente.nomePaciente || '').toString().trim().toUpperCase()}|${codigoNormalizado}`;
 
-      if (!codigo || !leitosMap[codigo]) {
-        registrarErroLeito(paciente.nomePaciente, paciente.codigoLeito);
+      if (!codigoNormalizado || !leitosMap[codigoNormalizado]) {
+        registrarErroLeito(paciente.nomePaciente, codigoOriginal);
         return;
       }
 
       if (pacientesValidosPlanilha.size > 0 && !pacientesValidosPlanilha.has(chaveValidacao)) {
-        registrarErroLeito(paciente.nomePaciente, paciente.codigoLeito);
+        registrarErroLeito(paciente.nomePaciente, codigoOriginal);
         return;
       }
 
       internacoesValidas.push({
         ...paciente,
-        leitoId: leitosMap[codigo].id
+        leitoId: leitosMap[codigoNormalizado].id
       });
     });
 
@@ -685,7 +719,11 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
         console.log('--- (REVALIDAÇÃO) DADOS BUSCADOS DO FIRESTORE (SETORES) ---');
         console.table(Object.entries(setores).map(([key, v]) => ({ key, id: v.id, nome: (v.nome || '').toString() })));
         console.log('--- (REVALIDAÇÃO) DADOS BUSCADOS DO FIRESTORE (LEITOS) ---');
-        console.table(Object.entries(leitos).map(([key, v]) => ({ key, id: v.id, codigo: (v.codigo || '').toString() })));
+        console.table(
+          Object.entries(leitos)
+            .filter(([key]) => !key.startsWith('__ID__'))
+            .map(([key, v]) => ({ key, id: v.id, codigo: (v.codigo || '').toString() }))
+        );
       } catch (_) { /* noop */ }
 
       // Verificar novamente se ainda há pendências
@@ -693,15 +731,16 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       const leitosParaCriar = [];
 
       for (const paciente of parsedFileData) {
+        const codigoLeitoNormalizado = normalizarCodigoLeito(paciente.codigoLeito);
         // Diagnóstico: mostrar exatamente o que está sendo comparado (revalidação)
         try {
           console.log(`(REVALIDAÇÃO) Comparando Setor: [ARQ] '${paciente.nomeSetor}' vs [DB] exists=${!!setores[paciente.nomeSetor]}`);
-          console.log(`(REVALIDAÇÃO) Comparando Leito: [ARQ] '${paciente.codigoLeito}' vs [DB] exists=${!!leitos[paciente.codigoLeito]}`);
+          console.log(`(REVALIDAÇÃO) Comparando Leito: [ARQ] '${paciente.codigoLeito}' vs [DB] exists=${!!leitos[codigoLeitoNormalizado]}`);
         } catch (_) { /* noop */ }
         if (!setores[paciente.nomeSetor]) {
           setoresParaCriar.add(paciente.nomeSetor);
         }
-        if (!leitos[paciente.codigoLeito]) {
+        if (!leitos[codigoLeitoNormalizado]) {
           leitosParaCriar.push({
             codigo: paciente.codigoLeito,
             nomeSetor: paciente.nomeSetor
