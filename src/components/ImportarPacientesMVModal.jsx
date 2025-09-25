@@ -398,7 +398,109 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
   };
 
   const executeSynchronization = async () => {
+    if (!processedData) {
+      toast.error('Nenhum dado processado para sincronizar.');
+      return;
+    }
+
     setIsProcessing(true);
+
+    const leitosMap = Object.values(processedData.leitos || {}).reduce((acc, leito) => {
+      const codigo = (leito?.codigoLeito || '').toString().trim().toUpperCase();
+      if (codigo) {
+        acc[codigo] = leito;
+      }
+      return acc;
+    }, {});
+
+    const errosLeitosMap = new Map();
+    const registrarErroLeito = (nome, codigo) => {
+      const nomeFormatado = (nome || 'Paciente sem nome').toString().trim();
+      const codigoFormatado = (codigo || 'Não informado').toString().trim() || 'Não informado';
+      const key = `${nomeFormatado.toUpperCase()}|${codigoFormatado.toUpperCase()}`;
+
+      if (!errosLeitosMap.has(key)) {
+        errosLeitosMap.set(key, {
+          nomePaciente: nomeFormatado || 'Paciente sem nome',
+          codigoLeito: codigoFormatado || 'Não informado'
+        });
+      }
+    };
+
+    const pacientesDaPlanilha = parsedFileData || [];
+    const pacientesValidosPlanilha = new Set();
+
+    pacientesDaPlanilha.forEach(pacientePlanilha => {
+      const codigo = (pacientePlanilha.codigoLeito || '').toString().trim().toUpperCase();
+      const nome = (pacientePlanilha.nomePaciente || '').toString().trim().toUpperCase();
+
+      if (codigo && leitosMap[codigo]) {
+        pacientesValidosPlanilha.add(`${nome}|${codigo}`);
+      } else {
+        registrarErroLeito(pacientePlanilha.nomePaciente, pacientePlanilha.codigoLeito);
+      }
+    });
+
+    const movimentacoesValidas = [];
+    (processedData.movimentacoes || []).forEach(({ paciente, dadosNovos }) => {
+      const codigo = (dadosNovos?.codigoLeito || '').toString().trim().toUpperCase();
+      const nomeDadosNovos = (dadosNovos?.nomePaciente || '').toString().trim().toUpperCase();
+      const nomePaciente = nomeDadosNovos || (paciente?.nomePaciente || '').toString().trim().toUpperCase();
+      const chaveValidacao = `${nomePaciente}|${codigo}`;
+
+      if (!codigo || !leitosMap[codigo]) {
+        registrarErroLeito(dadosNovos?.nomePaciente || paciente?.nomePaciente, dadosNovos?.codigoLeito || codigo);
+        return;
+      }
+
+      if (pacientesValidosPlanilha.size > 0 && !pacientesValidosPlanilha.has(chaveValidacao)) {
+        registrarErroLeito(dadosNovos?.nomePaciente || paciente?.nomePaciente, dadosNovos?.codigoLeito || codigo);
+        return;
+      }
+
+      movimentacoesValidas.push({
+        paciente,
+        dadosNovos: {
+          ...dadosNovos,
+          leitoId: leitosMap[codigo].id
+        }
+      });
+    });
+
+    const internacoesValidas = [];
+    (processedData.internacoes || []).forEach(paciente => {
+      const codigo = (paciente.codigoLeito || '').toString().trim().toUpperCase();
+      const chaveValidacao = `${(paciente.nomePaciente || '').toString().trim().toUpperCase()}|${codigo}`;
+
+      if (!codigo || !leitosMap[codigo]) {
+        registrarErroLeito(paciente.nomePaciente, paciente.codigoLeito);
+        return;
+      }
+
+      if (pacientesValidosPlanilha.size > 0 && !pacientesValidosPlanilha.has(chaveValidacao)) {
+        registrarErroLeito(paciente.nomePaciente, paciente.codigoLeito);
+        return;
+      }
+
+      internacoesValidas.push({
+        ...paciente,
+        leitoId: leitosMap[codigo].id
+      });
+    });
+
+    const leitosNaoEncontrados = Array.from(errosLeitosMap.values());
+
+    const totalOperacoes =
+      (processedData.altas?.length || 0) +
+      movimentacoesValidas.length +
+      internacoesValidas.length +
+      (processedData.regulacoesProcessadas?.concluidas?.length || 0);
+
+    if (totalOperacoes === 0) {
+      setIsProcessing(false);
+      toast.error('Nenhuma operação válida encontrada. Verifique os leitos informados na planilha.');
+      return;
+    }
 
     try {
       const batch = writeBatch(db);
@@ -412,7 +514,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       });
 
       // Executar movimentações
-      processedData.movimentacoes.forEach(({ paciente, dadosNovos }) => {
+      movimentacoesValidas.forEach(({ paciente, dadosNovos }) => {
         const pacienteRef = doc(db, PATIENTS_COLLECTION_PATH, paciente.id);
         batch.update(pacienteRef, {
           leitoId: dadosNovos.leitoId,
@@ -424,7 +526,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       });
 
       // Executar internações
-      processedData.internacoes.forEach(paciente => {
+      internacoesValidas.forEach(paciente => {
         const pacienteRef = doc(getPacientesCollection());
         batch.set(pacienteRef, {
           nomePaciente: paciente.nomePaciente,
@@ -442,7 +544,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       if (processedData.regulacoesProcessadas && processedData.regulacoesProcessadas.concluidas) {
         processedData.regulacoesProcessadas.concluidas.forEach(({ paciente, leitoDestino, leitoOriginalmente }) => {
           const pacienteRef = doc(db, PATIENTS_COLLECTION_PATH, paciente.id);
-          
+
           // Remover regulacaoAtiva e atualizar posição do paciente
           batch.update(pacienteRef, {
             regulacaoAtiva: deleteField(),
@@ -451,10 +553,10 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
           });
 
           // Se o paciente tinha pedido de UTI e foi para UTI, remover o pedido
-          const setorDestino = processedData.setores[Object.keys(processedData.setores).find(k => 
+          const setorDestino = processedData.setores[Object.keys(processedData.setores).find(k =>
             processedData.setores[k].id === leitoDestino.setorId
           )];
-          
+
           if (paciente.pedidoUTI && setorDestino?.tipoSetor === 'UTI') {
             batch.update(pacienteRef, {
               pedidoUTI: deleteField()
@@ -500,15 +602,12 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
 
       // Atualizar status dos leitos afetados
       const pacientesFinais = {};
-      
-      // Pacientes que ficaram (não foram dados alta)
-      Object.keys(processedData.setores).forEach(nomeSetor => {
-        processedData.movimentacoes.forEach(({ dadosNovos }) => {
-          pacientesFinais[dadosNovos.leitoId] = true;
-        });
+
+      movimentacoesValidas.forEach(({ dadosNovos }) => {
+        pacientesFinais[dadosNovos.leitoId] = true;
       });
-      
-      processedData.internacoes.forEach(paciente => {
+
+      internacoesValidas.forEach(paciente => {
         pacientesFinais[paciente.leitoId] = true;
       });
 
@@ -516,7 +615,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       leitosParaAtualizar.forEach(leitoId => {
         const leitoRef = doc(db, BEDS_COLLECTION_PATH, leitoId);
         const novoStatus = pacientesFinais[leitoId] ? 'Ocupado' : 'Vago';
-        batch.update(leitoRef, { 
+        batch.update(leitoRef, {
           status: novoStatus,
           historico: arrayUnion({
             status: novoStatus,
@@ -530,21 +629,32 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
 
       // Log de auditoria
       let logMessage = `Sincronização via MV concluída: ${syncSummary.altas} altas, ${syncSummary.movimentacoes} movimentações, ${syncSummary.internacoes} internações`;
-      
+
       if (syncSummary.regulacoesConcluidas > 0) {
         logMessage += `, ${syncSummary.regulacoesConcluidas} regulações concluídas automaticamente`;
       }
-      
+
       if (syncSummary.regulacoesConflitos > 0) {
         logMessage += `, ${syncSummary.regulacoesConflitos} conflitos de regulação detectados`;
       }
-      
+
       logMessage += '.';
-      
+
       await logAction('Regulação de Leitos', logMessage);
 
       setCurrentStep('completed');
-      toast.success('Sincronização concluída com sucesso!');
+
+      if (leitosNaoEncontrados.length > 0) {
+        const detalhes = leitosNaoEncontrados
+          .map(({ nomePaciente, codigoLeito }) => `${nomePaciente} (Leito ${codigoLeito || 'não informado'})`)
+          .join(', ');
+
+        toast.success(
+          `Sincronização concluída. Atenção: Os seguintes pacientes não foram importados pois seus leitos não foram encontrados: ${detalhes}.`
+        );
+      } else {
+        toast.success('Sincronização concluída com sucesso!');
+      }
 
     } catch (error) {
       console.error('Erro na sincronização:', error);
