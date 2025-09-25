@@ -5,10 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Copy, Loader2 } from 'lucide-react';
 import { 
-  getSetoresCollection, 
-  getLeitosCollection, 
+  getSetoresCollection,
+  getLeitosCollection,
   getQuartosCollection,
   getPacientesCollection,
+  getInfeccoesCollection,
   onSnapshot
 } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
@@ -20,6 +21,7 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
     leitos: [],
     quartos: [],
     pacientes: [],
+    infeccoes: [],
     loading: true
   });
 
@@ -82,10 +84,26 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
     });
     unsubscribes.push(unsubPacientes);
 
+    const unsubInfeccoes = onSnapshot(getInfeccoesCollection(), (snapshot) => {
+      const infeccoesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setDados(prev => ({ ...prev, infeccoes: infeccoesData }));
+    });
+    unsubscribes.push(unsubInfeccoes);
+
     return () => {
       unsubscribes.forEach(unsubscribe => unsubscribe());
     };
   }, [isOpen]);
+
+  const infeccoesPorId = useMemo(() => {
+    return (dados.infeccoes || []).reduce((acc, infeccaoAtual) => {
+      acc[infeccaoAtual.id] = infeccaoAtual;
+      return acc;
+    }, {});
+  }, [dados.infeccoes]);
 
   // Processar dados e aplicar lógica de coorte
   const dadosProcessados = useMemo(() => {
@@ -126,7 +144,19 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
           const isolamentosSet = new Set();
           pacientesOcupantes.forEach(pacienteOcupante => {
             (pacienteOcupante.isolamentos || []).forEach(isolamento => {
-              const sigla = isolamento?.siglaInfeccao || isolamento?.sigla || isolamento?.nomeInfeccao;
+              let sigla = null;
+              const infeccaoRef = isolamento?.infeccaoId;
+              if (infeccaoRef && infeccaoRef.id) {
+                const infeccaoCompleta = infeccoesPorId[infeccaoRef.id];
+                if (infeccaoCompleta) {
+                  sigla = infeccaoCompleta.siglaInfeccao || infeccaoCompleta.sigla || sigla;
+                }
+              }
+
+              if (!sigla) {
+                sigla = isolamento?.siglaInfeccao || isolamento?.sigla || isolamento?.nomeInfeccao;
+              }
+
               if (sigla) {
                 isolamentosSet.add(String(sigla).trim());
               }
@@ -256,7 +286,7 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
     });
 
     return estruturarPorSetor;
-  }, [dados]);
+  }, [dados, infeccoesPorId]);
 
   const gerarMensagemWhatsApp = (nomeSetor, leitosVagos) => {
     let mensagem = `*Verificação de disponibilidade de leitos - ${nomeSetor}*\n\n`;

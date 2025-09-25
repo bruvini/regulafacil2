@@ -39,6 +39,7 @@ import {
   getLeitosCollection, 
   getQuartosCollection,
   getPacientesCollection,
+  getInfeccoesCollection,
   onSnapshot,
   doc,
   updateDoc,
@@ -685,6 +686,7 @@ const MapaLeitosPanel = () => {
   const [quartos, setQuartos] = useState([]);
   const [leitos, setLeitos] = useState([]);
   const [pacientes, setPacientes] = useState([]);
+  const [infeccoes, setInfeccoes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedSections, setExpandedSections] = useState({});
   const [expandedSetores, setExpandedSetores] = useState({});
@@ -1278,13 +1280,29 @@ const MapaLeitosPanel = () => {
       setLoading(false);
     });
 
+    const unsubscribeInfeccoes = onSnapshot(getInfeccoesCollection(), (snapshot) => {
+      const infeccoesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setInfeccoes(infeccoesData);
+    });
+
     return () => {
       unsubscribeSetores();
       unsubscribeQuartos();
       unsubscribeLeitos();
       unsubscribePacientes();
+      unsubscribeInfeccoes();
     };
   }, []);
+
+  const infeccoesPorId = useMemo(() => {
+    return infeccoes.reduce((acc, infeccaoAtual) => {
+      acc[infeccaoAtual.id] = infeccaoAtual;
+      return acc;
+    }, {});
+  }, [infeccoes]);
 
   // Obter especialidades únicas para o filtro
   const especialidadesUnicas = useMemo(() => {
@@ -1378,7 +1396,19 @@ const MapaLeitosPanel = () => {
           const isolamentosSet = new Set();
           pacientesOcupantes.forEach(pacienteOcupante => {
             (pacienteOcupante.isolamentos || []).forEach(isolamento => {
-              const sigla = isolamento?.siglaInfeccao || isolamento?.sigla || isolamento?.nomeInfeccao;
+              let sigla = null;
+              const infeccaoRef = isolamento?.infeccaoId;
+              if (infeccaoRef && infeccaoRef.id) {
+                const infeccaoCompleta = infeccoesPorId[infeccaoRef.id];
+                if (infeccaoCompleta) {
+                  sigla = infeccaoCompleta.siglaInfeccao || infeccaoCompleta.sigla || sigla;
+                }
+              }
+
+              if (!sigla) {
+                sigla = isolamento?.siglaInfeccao || isolamento?.sigla || isolamento?.nomeInfeccao;
+              }
+
               if (sigla) {
                 isolamentosSet.add(String(sigla).trim());
               }
@@ -1545,7 +1575,7 @@ const MapaLeitosPanel = () => {
     });
 
     return estrutura;
-  }, [setores, quartos, leitos, pacientes]);
+  }, [setores, quartos, leitos, pacientes, infeccoesPorId]);
 
   // Aplicar filtros aos dados estruturados
   const dadosFiltrados = useMemo(() => {
