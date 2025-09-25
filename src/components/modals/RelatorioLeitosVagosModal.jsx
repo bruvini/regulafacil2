@@ -78,7 +78,7 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
   const dadosProcessados = useMemo(() => {
     if (dados.loading) return {};
 
-    const { setores, leitos, pacientes } = dados;
+    const { setores, leitos, pacientes, quartos } = dados;
 
     const pacientesPorLeito = {};
     pacientes.forEach(paciente => {
@@ -87,14 +87,48 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
       }
     });
 
-    const leitosPorQuarto = {};
-    leitos.forEach(leitoAtual => {
-      if (!leitoAtual.quartoId) return;
-      if (!leitosPorQuarto[leitoAtual.quartoId]) {
-        leitosPorQuarto[leitoAtual.quartoId] = [];
-      }
-      leitosPorQuarto[leitoAtual.quartoId].push(leitoAtual);
-    });
+    const normalizarSexo = (valor) => {
+      if (!valor) return 'Não informado';
+      const texto = String(valor).trim().toUpperCase();
+      if (texto.startsWith('M')) return 'Masculino';
+      if (texto.startsWith('F')) return 'Feminino';
+      return 'Não informado';
+    };
+
+    const aplicarRestricoesCoorte = (quartosAlvo = []) => {
+      quartosAlvo.forEach(quartoAtual => {
+        const pacientesOcupantes = quartoAtual.leitos
+          .map(leitoQuarto => pacientesPorLeito[leitoQuarto.id])
+          .filter(paciente => paciente);
+
+        const isolamentosSet = new Set();
+        pacientesOcupantes.forEach(pacienteOcupante => {
+          (pacienteOcupante.isolamentos || []).forEach(isolamento => {
+            const sigla = isolamento?.siglaInfeccao || isolamento?.sigla || isolamento?.nomeInfeccao;
+            if (sigla) {
+              isolamentosSet.add(String(sigla).trim());
+            }
+          });
+        });
+
+        const possuiRestricao = pacientesOcupantes.length > 0 && isolamentosSet.size > 0;
+        const restricao = possuiRestricao
+          ? {
+              sexo: normalizarSexo(pacientesOcupantes[0]?.sexo),
+              isolamentos: Array.from(isolamentosSet).sort((a, b) => a.localeCompare(b))
+            }
+          : null;
+
+        quartoAtual.leitos.forEach(leitoQuarto => {
+          const possuiPaciente = Boolean(pacientesPorLeito[leitoQuarto.id]);
+          if (restricao && !possuiPaciente && leitoQuarto.status === 'Vago') {
+            leitoQuarto.restricaoCoorte = restricao;
+          } else {
+            leitoQuarto.restricaoCoorte = null;
+          }
+        });
+      });
+    };
 
     const setoresElegiveis = setores.filter(setor =>
       setor.tipoSetor === 'Enfermaria' || setor.tipoSetor === 'UTI'
@@ -102,91 +136,97 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
 
     const estruturarPorSetor = {};
 
-    const normalizarSexo = (valor) => {
-      if (!valor) return null;
-      const texto = String(valor).trim().toUpperCase();
-      if (texto.startsWith('M')) return 'Masculino';
-      if (texto.startsWith('F')) return 'Feminino';
-      return null;
-    };
-
-    const normalizarIdentificadorIsolamento = (valor) => {
-      if (!valor) return null;
-      const texto = String(valor).trim();
-      return texto.length > 0 ? texto : null;
-    };
-
     setoresElegiveis.forEach(setor => {
-    const leitosVagos = leitos
-      .filter(leito =>
-        leito.setorId === setor.id &&
-        ((leito.statusLeito === 'Vago' || leito.statusLeito === 'Higienização') || 
-         (leito.status === 'Vago' || leito.status === 'Higienização')) &&
-        !pacientesPorLeito[leito.id]
-      )
-        .map(leito => {
-          let sexoCompativel = 'Ambos';
-          let isolamentoExigido = null;
-          let isolamentosSiglas = [];
+      const leitosDoSetor = leitos
+        .filter(leito => leito.setorId === setor.id)
+        .map(leito => ({
+          ...leito,
+          status: leito.status || leito.statusLeito || 'Desconhecido',
+          paciente: pacientesPorLeito[leito.id] || null,
+          restricaoCoorte: null
+        }));
 
-          if (leito.quartoId) {
-            const leitosDoQuarto = leitosPorQuarto[leito.quartoId] || [];
-            const leitosOcupados = leitosDoQuarto.filter(outro =>
-              outro.id !== leito.id && outro.status === 'Ocupado'
-            );
+      if (leitosDoSetor.length === 0) return;
 
-            if (leitosOcupados.length > 0) {
-              const ocupantes = leitosOcupados
-                .map(outro => pacientesPorLeito[outro.id])
-                .filter(paciente => paciente != null);
+      let quartosComLeitos = [];
+      let leitosSemQuarto = [];
 
-              if (ocupantes.length > 0) {
-                const primeiroOcupante = ocupantes[0];
-                const sexoOcupante = normalizarSexo(primeiroOcupante.sexo);
-                if (sexoOcupante) {
-                  sexoCompativel = sexoOcupante;
-                }
-
-                const idsIsolamentos = new Set();
-                const siglasIsolamentos = new Set();
-
-                ocupantes.forEach(pacienteOcupante => {
-                  (pacienteOcupante.isolamentos || []).forEach(isolamento => {
-                    const identificador = normalizarIdentificadorIsolamento(
-                      isolamento.infeccaoId || isolamento.id || isolamento.siglaInfeccao
-                    );
-                    if (identificador) {
-                      idsIsolamentos.add(identificador);
-                    }
-
-                    if (isolamento.siglaInfeccao) {
-                      siglasIsolamentos.add(String(isolamento.siglaInfeccao).trim().toUpperCase());
-                    }
-                  });
-                });
-
-                if (idsIsolamentos.size > 0) {
-                  isolamentoExigido = Array.from(idsIsolamentos)
-                    .sort((a, b) => a.localeCompare(b))
-                    .join('-');
-                }
-
-                if (siglasIsolamentos.size > 0) {
-                  isolamentosSiglas = Array.from(siglasIsolamentos)
-                    .sort((a, b) => a.localeCompare(b));
-                }
-              }
-            }
+      if (setor.tipoSetor === 'Enfermaria') {
+        const gruposQuarto = leitosDoSetor.reduce((acc, leitoAtual) => {
+          const codigo = leitoAtual.codigoLeito || '';
+          const codigoNormalizado = String(codigo).trim();
+          const chave = (codigoNormalizado.substring(0, 3) || '---').toUpperCase();
+          if (!acc[chave]) {
+            acc[chave] = {
+              id: `din-${setor.id}-${chave}`,
+              nomeQuarto: `Quarto ${chave}`,
+              leitos: []
+            };
           }
+          acc[chave].leitos.push(leitoAtual);
+          return acc;
+        }, {});
+
+        quartosComLeitos = Object.values(gruposQuarto)
+          .map(quarto => ({
+            ...quarto,
+            leitos: quarto.leitos.sort((a, b) => {
+              const codeA = a.codigoLeito || '';
+              const codeB = b.codigoLeito || '';
+              return codeA.localeCompare(codeB);
+            })
+          }))
+          .sort((a, b) => {
+            const nomeA = a.nomeQuarto || '';
+            const nomeB = b.nomeQuarto || '';
+            return nomeA.localeCompare(nomeB);
+          });
+
+        aplicarRestricoesCoorte(quartosComLeitos);
+        leitosSemQuarto = [];
+      } else {
+        const quartosDoSetor = quartos
+          .filter(quarto => quarto.setorId === setor.id)
+          .sort((a, b) => {
+            const nameA = a.nomeQuarto || '';
+            const nameB = b.nomeQuarto || '';
+            return nameA.localeCompare(nameB);
+          });
+
+        leitosSemQuarto = [...leitosDoSetor];
+
+        quartosComLeitos = quartosDoSetor.map(quarto => {
+          const leitosDoQuarto = leitosDoSetor
+            .filter(leito => quarto.leitosIds && quarto.leitosIds.includes(leito.id))
+            .sort((a, b) => {
+              const codeA = a.codigoLeito || '';
+              const codeB = b.codigoLeito || '';
+              return codeA.localeCompare(codeB);
+            });
+
+          leitosDoQuarto.forEach(leito => {
+            const index = leitosSemQuarto.findIndex(l => l.id === leito.id);
+            if (index > -1) {
+              leitosSemQuarto.splice(index, 1);
+            }
+          });
 
           return {
-            ...leito,
-            sexoCompativel,
-            isolamentoExigido,
-            isolamentosSiglas
+            ...quarto,
+            leitos: leitosDoQuarto
           };
-        })
-        .sort((a, b) => a.codigoLeito.localeCompare(b.codigoLeito));
+        });
+
+        aplicarRestricoesCoorte(quartosComLeitos);
+      }
+
+      const leitosVagos = [...quartosComLeitos.flatMap(quarto => quarto.leitos), ...leitosSemQuarto]
+        .filter(leito => (leito.status === 'Vago' || leito.status === 'Higienização') && !leito.paciente)
+        .sort((a, b) => {
+          const codeA = a.codigoLeito || '';
+          const codeB = b.codigoLeito || '';
+          return codeA.localeCompare(codeB);
+        });
 
       if (leitosVagos.length > 0) {
         estruturarPorSetor[setor.id] = {
@@ -204,18 +244,12 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
     mensagem += `Poderia nos dar a informação dos leitos abaixo?\n`;
     
     leitosVagos.forEach(leito => {
-      const sexoInfo =
-        leito.sexoCompativel && leito.sexoCompativel !== 'Ambos'
-          ? ` (${leito.sexoCompativel})`
-          : '';
-
       const statusDetalhado = leito.status;
-      const isolamentoInfo =
-        leito.isolamentosSiglas && leito.isolamentosSiglas.length > 0
-          ? ` | Isolamento: ${leito.isolamentosSiglas.join(', ')}`
-          : '';
+      const restricaoInfo = leito.restricaoCoorte
+        ? ` | Coorte: Permitido apenas pacientes do sexo ${leito.restricaoCoorte.sexo} com isolamento de ${leito.restricaoCoorte.isolamentos.join(', ')}`
+        : '';
 
-      mensagem += `_${leito.codigoLeito}${sexoInfo} - Status: ${statusDetalhado}${isolamentoInfo}_\n`;
+      mensagem += `_${leito.codigoLeito} - Status: ${statusDetalhado}${restricaoInfo}_\n`;
     });
     
     mensagem += `\n_Se houver outros leitos vagos, com alta provável ou alta no leito, nos informar também._`;
@@ -309,18 +343,13 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
                               </Badge>
                             </td>
                             <td className="px-4 py-3">
-                              <div className="flex flex-col gap-1">
-                                {leito.sexoCompativel && leito.sexoCompativel !== 'Ambos' && (
-                                  <Badge variant="secondary" className="w-fit">
-                                    {leito.sexoCompativel}
-                                  </Badge>
-                                )}
-                                {leito.isolamentosSiglas && leito.isolamentosSiglas.length > 0 && (
-                                  <span className="text-xs font-semibold text-destructive">
-                                    Isolamento: {leito.isolamentosSiglas.join(', ')}
-                                  </span>
-                                )}
-                              </div>
+                              {leito.restricaoCoorte ? (
+                                <span className="text-xs font-semibold text-blue-700">
+                                  Permitido apenas pacientes do sexo {leito.restricaoCoorte.sexo} com isolamento de {leito.restricaoCoorte.isolamentos.join(', ')}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Sem restrição de coorte</span>
+                              )}
                             </td>
                           </tr>
                         ))}

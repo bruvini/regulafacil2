@@ -647,14 +647,11 @@ const LeitoCard = ({
           )}
 
           {/* Informações de coorte para leitos vagos */}
-          {leito.status === 'Vago' && leito.contextoQuarto && (
+          {leito.status === 'Vago' && leito.restricaoCoorte && (
             <div className="text-xs bg-blue-50 border border-blue-200 p-2 rounded">
-              <strong className="text-blue-800">Coorte:</strong> 
-              <span className="text-blue-700">
-                {' '}Apenas {leito.contextoQuarto.sexo}
-                {leito.contextoQuarto.isolamentos.length > 0 && 
-                  ` com ${leito.contextoQuarto.isolamentos.map(i => i.sigla).join(', ')}`
-                }
+              <span className="font-semibold text-blue-800">Restrição de coorte:</span>
+              <span className="text-blue-700 block">
+                Permitido apenas pacientes do sexo {leito.restricaoCoorte.sexo} com isolamento de {leito.restricaoCoorte.isolamentos.join(', ')}
               </span>
             </div>
           )}
@@ -1344,23 +1341,62 @@ const MapaLeitosPanel = () => {
       }
     });
 
+    const normalizarSexo = (valor) => {
+      if (!valor) return 'Não informado';
+      const texto = String(valor).trim().toUpperCase();
+      if (texto.startsWith('M')) return 'Masculino';
+      if (texto.startsWith('F')) return 'Feminino';
+      return 'Não informado';
+    };
+
+    const aplicarRestricoesCoorte = (quartosAlvo = []) => {
+      quartosAlvo.forEach(quartoAtual => {
+        const pacientesOcupantes = quartoAtual.leitos
+          .map(leitoQuarto => pacientesPorLeito[leitoQuarto.id])
+          .filter(paciente => paciente);
+
+        const isolamentosSet = new Set();
+        pacientesOcupantes.forEach(pacienteOcupante => {
+          (pacienteOcupante.isolamentos || []).forEach(isolamento => {
+            const sigla = isolamento?.siglaInfeccao || isolamento?.sigla || isolamento?.nomeInfeccao;
+            if (sigla) {
+              isolamentosSet.add(String(sigla).trim());
+            }
+          });
+        });
+
+        const possuiRestricao = pacientesOcupantes.length > 0 && isolamentosSet.size > 0;
+        const restricao = possuiRestricao
+          ? {
+              sexo: normalizarSexo(pacientesOcupantes[0]?.sexo),
+              isolamentos: Array.from(isolamentosSet).sort((a, b) => a.localeCompare(b))
+            }
+          : null;
+
+        quartoAtual.leitos.forEach(leitoQuarto => {
+          const possuiPaciente = Boolean(pacientesPorLeito[leitoQuarto.id]);
+          if (restricao && !possuiPaciente && leitoQuarto.status === 'Vago') {
+            leitoQuarto.restricaoCoorte = restricao;
+            leitoQuarto.contextoQuarto = {
+              sexo: restricao.sexo,
+              isolamentos: restricao.isolamentos.map(sigla => ({ sigla, nome: sigla }))
+            };
+          } else {
+            leitoQuarto.restricaoCoorte = null;
+            leitoQuarto.contextoQuarto = null;
+          }
+        });
+      });
+    };
+
     // Agrupar por tipo de setor
     setores.forEach(setor => {
       const tipoSetor = setor.tipoSetor || 'Outros';
-      
+
       if (!estrutura[tipoSetor]) {
         estrutura[tipoSetor] = [];
       }
 
-      // Buscar quartos deste setor
-      const quartosDoSetor = quartos
-        .filter(quarto => quarto.setorId === setor.id)
-        .sort((a, b) => {
-          const nameA = a.nomeQuarto || '';
-          const nameB = b.nomeQuarto || '';
-          return nameA.localeCompare(nameB);
-        });
-      
       // Buscar leitos deste setor e vincular pacientes
       const leitosDoSetor = leitos
         .filter(leito => leito.setorId === setor.id)
@@ -1396,52 +1432,15 @@ const MapaLeitosPanel = () => {
             statusAjustado = 'Ocupado';
           }
 
-          const leitoComPaciente = {
+          return {
             ...leito,
             paciente: pacienteDoLeito,
             status: statusAjustado,
-            contextoQuarto: null, // Default
+            contextoQuarto: null,
+            restricaoCoorte: null,
             regulacaoOrigem,
             regulacaoReserva: regulacaoDestino
           };
-
-          // LÓGICA DE COORTE - Enriquecimento do contextoQuarto
-          if (leito.quartoId && !pacienteDoLeito) { // Só para leitos sem paciente no momento
-            // Encontrar quarto
-            const quartoDoLeito = quartos.find(q => q.id === leito.quartoId);
-            if (quartoDoLeito && quartoDoLeito.leitosIds) {
-              // Encontrar companheiros de quarto ocupados
-              const companheirosDeQuarto = quartoDoLeito.leitosIds
-                .map(leitoId => pacientesPorLeito[leitoId])
-                .filter(paciente => paciente != null);
-
-              if (companheirosDeQuarto.length > 0) {
-                // Usar dados do primeiro companheiro para determinar contexto
-                const primeiroCompanheiro = companheirosDeQuarto[0];
-                const sexoQuarto = primeiroCompanheiro.sexo === 'M' ? 'Masculino' : 'Feminino';
-                
-                // Coletar isolamentos únicos
-                const isolamentosQuarto = [];
-                if (primeiroCompanheiro.isolamentos && Array.isArray(primeiroCompanheiro.isolamentos)) {
-                  primeiroCompanheiro.isolamentos.forEach(isolamento => {
-                    if (isolamento.siglaInfeccao && !isolamentosQuarto.find(i => i.sigla === isolamento.siglaInfeccao)) {
-                      isolamentosQuarto.push({
-                        sigla: isolamento.siglaInfeccao,
-                        nome: isolamento.nomeInfeccao || isolamento.siglaInfeccao
-                      });
-                    }
-                  });
-                }
-
-                leitoComPaciente.contextoQuarto = {
-                  sexo: sexoQuarto,
-                  isolamentos: isolamentosQuarto.sort((a, b) => a.sigla.localeCompare(b.sigla))
-                };
-              }
-            }
-          }
-
-          return leitoComPaciente;
         })
         .sort((a, b) => {
           const codeA = a.codigoLeito || '';
@@ -1449,37 +1448,82 @@ const MapaLeitosPanel = () => {
           return codeA.localeCompare(codeB);
         });
 
-      // Separar leitos em quartos e sem quarto
-      const leitosComQuarto = [];
-      const leitosSemQuarto = [...leitosDoSetor];
+      let quartosComLeitos = [];
+      let leitosSemQuarto = [];
 
-      const quartosComLeitos = quartosDoSetor.map(quarto => {
-        const leitosDoQuarto = leitosDoSetor
-          .filter(leito => quarto.leitosIds && quarto.leitosIds.includes(leito.id))
-          .sort((a, b) => {
-            const codeA = a.codigoLeito || '';
-            const codeB = b.codigoLeito || '';
-            return codeA.localeCompare(codeB);
-          });
-        
-        // Remover leitos que estão em quartos da lista de leitos sem quarto
-        leitosDoQuarto.forEach(leito => {
-          const index = leitosSemQuarto.findIndex(l => l.id === leito.id);
-          if (index > -1) {
-            leitosSemQuarto.splice(index, 1);
+      if (tipoSetor === 'Enfermaria') {
+        const gruposQuarto = leitosDoSetor.reduce((acc, leitoAtual) => {
+          const codigo = leitoAtual.codigoLeito || '';
+          const codigoNormalizado = String(codigo).trim();
+          const chave = (codigoNormalizado.substring(0, 3) || '---').toUpperCase();
+          if (!acc[chave]) {
+            acc[chave] = {
+              id: `din-${setor.id}-${chave}`,
+              nomeQuarto: `Quarto ${chave}`,
+              leitos: []
+            };
           }
+          acc[chave].leitos.push(leitoAtual);
+          return acc;
+        }, {});
+
+        quartosComLeitos = Object.values(gruposQuarto)
+          .map(quarto => ({
+            ...quarto,
+            leitos: quarto.leitos.sort((a, b) => {
+              const codeA = a.codigoLeito || '';
+              const codeB = b.codigoLeito || '';
+              return codeA.localeCompare(codeB);
+            })
+          }))
+          .sort((a, b) => {
+            const nomeA = a.nomeQuarto || '';
+            const nomeB = b.nomeQuarto || '';
+            return nomeA.localeCompare(nomeB);
+          });
+
+        aplicarRestricoesCoorte(quartosComLeitos);
+        leitosSemQuarto = [];
+      } else {
+        const quartosDoSetor = quartos
+          .filter(quarto => quarto.setorId === setor.id)
+          .sort((a, b) => {
+            const nameA = a.nomeQuarto || '';
+            const nameB = b.nomeQuarto || '';
+            return nameA.localeCompare(nameB);
+          });
+
+        leitosSemQuarto = [...leitosDoSetor];
+
+        quartosComLeitos = quartosDoSetor.map(quarto => {
+          const leitosDoQuarto = leitosDoSetor
+            .filter(leito => quarto.leitosIds && quarto.leitosIds.includes(leito.id))
+            .sort((a, b) => {
+              const codeA = a.codigoLeito || '';
+              const codeB = b.codigoLeito || '';
+              return codeA.localeCompare(codeB);
+            });
+
+          leitosDoQuarto.forEach(leito => {
+            const index = leitosSemQuarto.findIndex(l => l.id === leito.id);
+            if (index > -1) {
+              leitosSemQuarto.splice(index, 1);
+            }
+          });
+
+          return {
+            ...quarto,
+            leitos: leitosDoQuarto
+          };
         });
 
-        return {
-          ...quarto,
-          leitos: leitosDoQuarto
-        };
-      });
+        aplicarRestricoesCoorte(quartosComLeitos);
+      }
 
       estrutura[tipoSetor].push({
         ...setor,
         quartos: quartosComLeitos,
-        leitosSemQuarto: leitosSemQuarto
+        leitosSemQuarto
       });
     });
 
