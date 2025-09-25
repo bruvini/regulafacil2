@@ -57,6 +57,7 @@ import TransferenciaExternaModal from './modals/TransferenciaExternaModal';
 import AltaNoLeitoModal from './modals/AltaNoLeitoModal';
 import CancelarReservaExternaModal from './modals/CancelarReservaExternaModal';
 import ConfirmarInternacaoExternaModal from './modals/ConfirmarInternacaoExternaModal';
+import InternacaoManualModal from './modals/InternacaoManualModal';
 
 // Color mapping for sector types
 const getSectorTypeColor = (tipoSetor) => {
@@ -86,7 +87,8 @@ const LeitoCard = ({
   onProvavelAlta,
   onAltaNoLeito,
   onCancelarReservaExterna,
-  onConfirmarInternacaoExterna
+  onConfirmarInternacaoExterna,
+  onInternarManual
 }) => {
   const { toast } = useToast();
 
@@ -405,7 +407,7 @@ const LeitoCard = ({
       case 'Vago':
         return (
           <>
-            <DropdownMenuItem disabled className="opacity-50">
+            <DropdownMenuItem onClick={() => onInternarManual?.(leito)}>
               INTERNAR PACIENTE MANUALMENTE
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onBloquearLeito(leito)}>
@@ -706,6 +708,7 @@ const MapaLeitosPanel = () => {
   const [modalAltaNoLeito, setModalAltaNoLeito] = useState({ open: false, paciente: null });
   const [modalCancelarReservaExterna, setModalCancelarReservaExterna] = useState({ open: false, reserva: null, leito: null });
   const [modalConfirmarInternacaoExterna, setModalConfirmarInternacaoExterna] = useState({ open: false, reserva: null, leito: null });
+  const [modalInternacaoManual, setModalInternacaoManual] = useState({ open: false, leito: null });
 
   const construirContextoReservaExterna = (leitoAtual) => {
     const dadosReserva = leitoAtual?.reservaExterna || {};
@@ -743,6 +746,11 @@ const MapaLeitosPanel = () => {
       reserva: construirContextoReservaExterna(leitoAtual),
       leito: leitoAtual
     });
+  };
+
+  const handleAbrirInternacaoManual = (leitoAtual) => {
+    if (!leitoAtual) return;
+    setModalInternacaoManual({ open: true, leito: leitoAtual });
   };
   const [motivoBloqueio, setMotivoBloqueio] = useState('');
   
@@ -1808,6 +1816,7 @@ const MapaLeitosPanel = () => {
                                   onAltaNoLeito={handleToggleAltaNoLeito}
                                   onCancelarReservaExterna={handleAbrirCancelarReservaExterna}
                                   onConfirmarInternacaoExterna={handleAbrirConfirmarInternacaoExterna}
+                                  onInternarManual={handleAbrirInternacaoManual}
                                 />
                               ))}
                             </div>
@@ -1845,6 +1854,7 @@ const MapaLeitosPanel = () => {
                                   onAltaNoLeito={handleToggleAltaNoLeito}
                                   onCancelarReservaExterna={handleAbrirCancelarReservaExterna}
                                   onConfirmarInternacaoExterna={handleAbrirConfirmarInternacaoExterna}
+                                  onInternarManual={handleAbrirInternacaoManual}
                                 />
                               ))}
                             </div>
@@ -2005,6 +2015,12 @@ const MapaLeitosPanel = () => {
         onClose={() => setModalConfirmarInternacaoExterna({ open: false, reserva: null, leito: null })}
         reserva={modalConfirmarInternacaoExterna.reserva}
         leito={modalConfirmarInternacaoExterna.leito}
+      />
+
+      <InternacaoManualModal
+        isOpen={modalInternacaoManual.open}
+        onClose={() => setModalInternacaoManual({ open: false, leito: null })}
+        leito={modalInternacaoManual.leito}
       />
     </div>
   );
