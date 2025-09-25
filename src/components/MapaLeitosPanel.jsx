@@ -453,6 +453,19 @@ const LeitoCard = ({
     </>
   );
 
+  const formatarMensagemRestricaoCoorte = (restricao) => {
+    if (!restricao) {
+      return '';
+    }
+
+    const isolamentos = restricao.isolamentos || [];
+    if (isolamentos.length > 0) {
+      return `Permitido apenas pacientes do sexo ${restricao.sexo} com isolamento de ${isolamentos.join(', ')}`;
+    }
+
+    return `Permitido apenas pacientes do sexo ${restricao.sexo}`;
+  };
+
   return (
     <Card className={getCardStyle()}>
       <CardContent className="p-4 relative">
@@ -650,9 +663,7 @@ const LeitoCard = ({
           {leito.status === 'Vago' && leito.restricaoCoorte && (
             <div className="text-xs bg-blue-50 border border-blue-200 p-2 rounded">
               <span className="font-semibold text-blue-800">Restrição de coorte:</span>
-              <span className="text-blue-700 block">
-                Permitido apenas pacientes do sexo {leito.restricaoCoorte.sexo} com isolamento de {leito.restricaoCoorte.isolamentos.join(', ')}
-              </span>
+              <span className="text-blue-700 block">{formatarMensagemRestricaoCoorte(leito.restricaoCoorte)}</span>
             </div>
           )}
 
@@ -1355,23 +1366,29 @@ const MapaLeitosPanel = () => {
           .map(leitoQuarto => pacientesPorLeito[leitoQuarto.id])
           .filter(paciente => paciente);
 
-        const isolamentosSet = new Set();
-        pacientesOcupantes.forEach(pacienteOcupante => {
-          (pacienteOcupante.isolamentos || []).forEach(isolamento => {
-            const sigla = isolamento?.siglaInfeccao || isolamento?.sigla || isolamento?.nomeInfeccao;
-            if (sigla) {
-              isolamentosSet.add(String(sigla).trim());
-            }
-          });
-        });
+        const possuiOcupantes = pacientesOcupantes.length > 0;
+        let restricao = null;
 
-        const possuiRestricao = pacientesOcupantes.length > 0 && isolamentosSet.size > 0;
-        const restricao = possuiRestricao
-          ? {
-              sexo: normalizarSexo(pacientesOcupantes[0]?.sexo),
-              isolamentos: Array.from(isolamentosSet).sort((a, b) => a.localeCompare(b))
-            }
-          : null;
+        if (possuiOcupantes) {
+          restricao = {
+            sexo: normalizarSexo(pacientesOcupantes[0]?.sexo),
+            isolamentos: []
+          };
+
+          const isolamentosSet = new Set();
+          pacientesOcupantes.forEach(pacienteOcupante => {
+            (pacienteOcupante.isolamentos || []).forEach(isolamento => {
+              const sigla = isolamento?.siglaInfeccao || isolamento?.sigla || isolamento?.nomeInfeccao;
+              if (sigla) {
+                isolamentosSet.add(String(sigla).trim());
+              }
+            });
+          });
+
+          if (isolamentosSet.size > 0) {
+            restricao.isolamentos = Array.from(isolamentosSet).sort((a, b) => a.localeCompare(b));
+          }
+        }
 
         quartoAtual.leitos.forEach(leitoQuarto => {
           const possuiPaciente = Boolean(pacientesPorLeito[leitoQuarto.id]);
