@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -64,8 +64,7 @@ import {
   onSnapshot,
   query,
   orderBy,
-  limit,
-  where
+  limit
 } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
 import { format } from 'date-fns';
@@ -184,8 +183,87 @@ const moduleCards = [
   },
 ];
 
+const REGULACAO_ACTIONS = [
+  'Regulação Iniciada',
+  'Regulação Concluída',
+  'Regulação Alterada',
+  'Regulação Cancelada',
+];
+
+const REGULACAO_KEYWORDS = [
+  'regulação iniciada',
+  'regulação concluída',
+  'regulação alterada',
+  'regulação cancelada',
+];
+
+const STATUS_LEITO_ACTIONS = [
+  'Leito Liberado',
+  'Leito Ocupado',
+  'Leito Higienização',
+  'Sincronização via MV',
+];
+
+const STATUS_LEITO_KEYWORDS = [
+  'foi liberado',
+  'foi bloqueado',
+  'status alterado',
+  'sincronização via mv',
+  'sincronizacao via mv',
+  'higienização',
+  'higienizacao',
+];
+
+const PEDIDOS_ACTIONS = [
+  'Pedido UTI Solicitado',
+  'Pedido UTI Cancelado',
+  'Pedido UTI Atendido',
+  'Remanejamento Solicitado',
+  'Remanejamento Atendido',
+  'Remanejamento Cancelado',
+  'Transferência Externa Solicitada',
+];
+
+const PEDIDOS_KEYWORDS = [
+  'pedido de uti',
+  'remanejamento',
+  'transferência externa',
+  'transferencia externa',
+];
+
+const OBSERVACOES_ACTIONS = ['Observação Adicionada'];
+
+const OBSERVACOES_KEYWORDS = ['observação', 'observacao'];
+
+const PROVAVEIS_ALTAS_ACTIONS = ['Provável Alta Adicionada', 'Provável Alta Removida'];
+
+const PROVAVEIS_ALTAS_KEYWORDS = ['provável alta', 'provavel alta'];
+
+const ALTAS_LEITO_ACTIONS = ['Alta no Leito Adicionada', 'Alta no Leito Removida'];
+
+const ALTAS_LEITO_KEYWORDS = ['alta no leito'];
+
 const extractLogMessage = (log) => {
   if (!log) return "";
+  const { details } = log;
+
+  if (typeof details === 'string') return details;
+
+  if (Array.isArray(details)) {
+    return details
+      .map((item) => (typeof item === 'string' ? item : ''))
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  if (details && typeof details === 'object') {
+    if (typeof details.texto === 'string') return details.texto;
+    if (typeof details.mensagem === 'string') return details.mensagem;
+    if (typeof details.message === 'string') return details.message;
+    if (typeof details.descricao === 'string') return details.descricao;
+    if (typeof details.resumo === 'string') return details.resumo;
+  }
+
   return (
     log.acao ||
     log.mensagem ||
@@ -199,7 +277,7 @@ const extractLogMessage = (log) => {
 
 const extractLogModule = (log) => {
   if (!log) return "";
-  return log.pagina || log.categoria || log.modulo || "Sistema";
+  return log.module || log.modulo || log.pagina || log.categoria || log.contexto || log.context || "Sistema";
 };
 
 // Função para obter o título da página
@@ -409,14 +487,7 @@ const Footer = () => {
 
 // Componente da página inicial
 const HomePage = ({ onNavigate, currentUser }) => {
-  const [regulacaoLogs, setRegulacaoLogs] = useState([]);
-  const [isolamentoLogs, setIsolamentoLogs] = useState([]);
-  const [statusLeitosLogs, setStatusLeitosLogs] = useState([]);
-  const [higienizacaoLogs, setHigienizacaoLogs] = useState([]);
-  const [pedidosLogs, setPedidosLogs] = useState([]);
-  const [observacoesLogs, setObservacoesLogs] = useState([]);
-  const [altasLeitoLogs, setAltasLeitoLogs] = useState([]);
-  const [provaveisAltasLogs, setProvaveisAltasLogs] = useState([]);
+  const [todosLogs, setTodosLogs] = useState([]);
   const [infeccoes, setInfeccoes] = useState([]);
   const { hasPermission } = useAuth();
 
@@ -433,56 +504,358 @@ const HomePage = ({ onNavigate, currentUser }) => {
   }, []);
 
   useEffect(() => {
-    const unsubscribers = [];
+    const auditoriaQuery = query(
+      getAuditoriaCollection(),
+      orderBy('timestamp', 'desc'),
+      limit(100)
+    );
 
-    const createListener = (pagina, setter, filterTerms) => {
-      const paginaQuery = query(
-        getAuditoriaCollection(),
-        where("pagina", "==", pagina),
-        orderBy("timestamp", "desc"),
-        limit(10)
-      );
+    const unsubscribe = onSnapshot(auditoriaQuery, (snapshot) => {
+      const registros = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
 
-      const unsubscribe = onSnapshot(paginaQuery, (snapshot) => {
-        let registros = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
+      setTodosLogs(registros);
+    });
 
-        if (Array.isArray(filterTerms) && filterTerms.length > 0) {
-          const terms = filterTerms.map((term) => term.toLowerCase());
-          registros = registros
-            .filter((log) => {
-              const mensagem = extractLogMessage(log).toLowerCase();
-              return terms.some((term) => mensagem.includes(term));
-            })
-            .slice(0, 10);
-        }
-
-        setter(registros);
-      });
-
-      unsubscribers.push(unsubscribe);
-    };
-
-    createListener("Regulação de Leitos", setRegulacaoLogs);
-    createListener("Gestão de Isolamentos", setIsolamentoLogs);
-    createListener("Mapa de Leitos", setStatusLeitosLogs, ["status alterado para"]);
-    createListener("Central de Higienização", setHigienizacaoLogs);
-    createListener("Regulação de Leitos", setPedidosLogs, [
-      "pedido de uti",
-      "remanejamento",
-      "transferência externa",
-      "transferencia externa",
-    ]);
-    createListener("Mapa de Leitos", setObservacoesLogs, ["observação", "observacao"]);
-    createListener("Mapa de Leitos", setAltasLeitoLogs, ["alta no leito"]);
-    createListener("Mapa de Leitos", setProvaveisAltasLogs, ["provável alta", "provavel alta"]);
-
-    return () => {
-      unsubscribers.forEach((unsubscribe) => unsubscribe && unsubscribe());
-    };
+    return () => unsubscribe();
   }, []);
+
+  const normalizar = useCallback((valor) => {
+    if (valor === undefined || valor === null) return '';
+    return String(valor).toLowerCase();
+  }, []);
+
+  const matchesAction = useCallback(
+    (log, actions = [], keywords = []) => {
+      const actionSet = actions.map((acao) => normalizar(acao));
+      const actionTexto = normalizar(log?.action || log?.acao);
+
+      if (actionTexto && actionSet.includes(actionTexto)) {
+        return true;
+      }
+
+      if (keywords.length > 0) {
+        const mensagem = normalizar(extractLogMessage(log));
+        return keywords.some((palavra) => mensagem.includes(normalizar(palavra)));
+      }
+
+      return false;
+    },
+    [normalizar]
+  );
+
+  const limitarLogs = useCallback((logs) => logs.slice(0, 10), []);
+
+  const getDetalhesObjeto = useCallback((log) => {
+    if (log?.details && typeof log.details === 'object' && !Array.isArray(log.details)) {
+      return log.details;
+    }
+    return {};
+  }, []);
+
+  const getNomeUsuario = useCallback((log) => {
+    return log?.userName || log?.usuario || 'Usuário';
+  }, []);
+
+  const regulacaoLogs = useMemo(
+    () =>
+      limitarLogs(
+        todosLogs.filter((log) => matchesAction(log, REGULACAO_ACTIONS, REGULACAO_KEYWORDS))
+      ),
+    [todosLogs, matchesAction, limitarLogs]
+  );
+
+  const isolamentoLogs = useMemo(
+    () =>
+      limitarLogs(
+        todosLogs.filter((log) => matchesAction(log, [], ['isolamento']))
+      ),
+    [todosLogs, matchesAction, limitarLogs]
+  );
+
+  const statusLeitosLogs = useMemo(
+    () =>
+      limitarLogs(
+        todosLogs.filter((log) => matchesAction(log, STATUS_LEITO_ACTIONS, STATUS_LEITO_KEYWORDS))
+      ),
+    [todosLogs, matchesAction, limitarLogs]
+  );
+
+  const higienizacaoLogs = useMemo(
+    () =>
+      limitarLogs(
+        todosLogs.filter((log) => matchesAction(log, [], ['higienização', 'higienizacao']))
+      ),
+    [todosLogs, matchesAction, limitarLogs]
+  );
+
+  const pedidosLogs = useMemo(
+    () =>
+      limitarLogs(
+        todosLogs.filter((log) => matchesAction(log, PEDIDOS_ACTIONS, PEDIDOS_KEYWORDS))
+      ),
+    [todosLogs, matchesAction, limitarLogs]
+  );
+
+  const observacoesLogs = useMemo(
+    () =>
+      limitarLogs(
+        todosLogs.filter((log) => matchesAction(log, OBSERVACOES_ACTIONS, OBSERVACOES_KEYWORDS))
+      ),
+    [todosLogs, matchesAction, limitarLogs]
+  );
+
+  const altasLeitoLogs = useMemo(
+    () =>
+      limitarLogs(
+        todosLogs.filter((log) => matchesAction(log, ALTAS_LEITO_ACTIONS, ALTAS_LEITO_KEYWORDS))
+      ),
+    [todosLogs, matchesAction, limitarLogs]
+  );
+
+  const provaveisAltasLogs = useMemo(
+    () =>
+      limitarLogs(
+        todosLogs.filter((log) => matchesAction(log, PROVAVEIS_ALTAS_ACTIONS, PROVAVEIS_ALTAS_KEYWORDS))
+      ),
+    [todosLogs, matchesAction, limitarLogs]
+  );
+
+  const formatRegulacaoMensagem = useCallback(
+    (log) => {
+      const detalhes = getDetalhesObjeto(log);
+      const usuario = getNomeUsuario(log);
+      const paciente = detalhes.pacienteNome || detalhes.paciente || '';
+      const origem = detalhes.origem || detalhes.origemLeito || detalhes.leitoOrigem || '';
+      const destino = detalhes.destino || detalhes.destinoLeito || detalhes.leitoDestino || '';
+      const tempo = detalhes.tempoRegulacao || detalhes.tempo || detalhes.duracao;
+      const motivo = detalhes.motivo || detalhes.justificativa;
+
+      switch (normalizar(log?.action)) {
+        case normalizar('Regulação Iniciada'):
+          if (paciente && origem && destino) {
+            return `Regulação iniciada por ${usuario} para ${paciente} do leito ${origem} para ${destino}.`;
+          }
+          break;
+        case normalizar('Regulação Concluída'):
+          if (paciente && origem && destino) {
+            const tempoMensagem = tempo ? ` em ${tempo}.` : '.';
+            return `Regulação concluída por ${usuario} para ${paciente} do leito ${origem} para ${destino}${tempoMensagem}`;
+          }
+          break;
+        case normalizar('Regulação Alterada'):
+          if (paciente && origem && destino) {
+            return `Regulação alterada por ${usuario} para ${paciente}: ${origem} → ${destino}.`;
+          }
+          break;
+        case normalizar('Regulação Cancelada'):
+          if (paciente) {
+            const base = `Regulação cancelada por ${usuario}${paciente ? ` para ${paciente}` : ''}`;
+            return motivo ? `${base}. Motivo: ${motivo}.` : `${base}.`;
+          }
+          break;
+        default:
+          break;
+      }
+
+      const mensagemFallback = extractLogMessage(log);
+      if (mensagemFallback) return mensagemFallback;
+      return `${usuario} registrou uma atividade de regulação.`;
+    },
+    [getDetalhesObjeto, getNomeUsuario, normalizar]
+  );
+
+  const formatStatusLeitoMensagem = useCallback(
+    (log) => {
+      const detalhes = getDetalhesObjeto(log);
+      const usuario = getNomeUsuario(log);
+      const codigoLeito = detalhes.codigoLeito || detalhes.leito || detalhes.leitoCodigo || '';
+      const status = detalhes.novoStatus || detalhes.status || detalhes.statusAtual || '';
+      const motivo = detalhes.motivo || detalhes.justificativa;
+      const resumo = detalhes.resumo || detalhes.detalhes || '';
+
+      if (normalizar(log?.action) === normalizar('Sincronização via MV')) {
+        const textoResumo = resumo || extractLogMessage(log);
+        return `Sincronização via MV executada por ${usuario}${textoResumo ? `. ${textoResumo}` : '.'}`;
+      }
+
+      if (codigoLeito || status) {
+        const baseCodigo = codigoLeito ? `${codigoLeito} ` : 'Leito ';
+        const baseStatus = status || log?.action?.replace(/Leito\s+/i, '') || 'novo status';
+        const mensagemMotivo = motivo ? `. Motivo: ${motivo}.` : '.';
+        return `${baseCodigo}teve seu status alterado para ${baseStatus} por ${usuario}${mensagemMotivo}`;
+      }
+
+      const mensagemFallback = extractLogMessage(log);
+      if (mensagemFallback) return mensagemFallback;
+      return `${usuario} atualizou o status de um leito.`;
+    },
+    [getDetalhesObjeto, getNomeUsuario, normalizar]
+  );
+
+  const formatPedidosMensagem = useCallback(
+    (log) => {
+      const detalhes = getDetalhesObjeto(log);
+      const usuario = getNomeUsuario(log);
+      const paciente = detalhes.pacienteNome || detalhes.paciente || '';
+      const motivo = detalhes.motivo || detalhes.tipo || detalhes.justificativa;
+      const destino = detalhes.destino || detalhes.localDestino || '';
+
+      switch (normalizar(log?.action)) {
+        case normalizar('Pedido UTI Solicitado'):
+          if (paciente) {
+            return `Pedido de UTI para ${paciente} foi solicitado por ${usuario}.`;
+          }
+          break;
+        case normalizar('Pedido UTI Cancelado'):
+          if (paciente) {
+            return `Pedido de UTI para ${paciente} foi cancelado por ${usuario}${motivo ? `. Motivo: ${motivo}.` : '.'}`;
+          }
+          break;
+        case normalizar('Pedido UTI Atendido'):
+          if (paciente) {
+            return `Pedido de UTI para ${paciente} foi atendido por ${usuario}.`;
+          }
+          break;
+        case normalizar('Remanejamento Solicitado'):
+          if (paciente) {
+            return `Remanejamento de ${paciente} foi solicitado por ${usuario}${motivo ? `. Motivo: ${motivo}.` : '.'}`;
+          }
+          break;
+        case normalizar('Remanejamento Atendido'):
+          if (paciente) {
+            return `Remanejamento de ${paciente} foi atendido por ${usuario}.`;
+          }
+          break;
+        case normalizar('Remanejamento Cancelado'):
+          if (paciente) {
+            return `Remanejamento de ${paciente} foi cancelado por ${usuario}${motivo ? `. Motivo: ${motivo}.` : '.'}`;
+          }
+          break;
+        case normalizar('Transferência Externa Solicitada'):
+          if (paciente) {
+            const destinoTexto = destino ? `. Destino: ${destino}.` : '.';
+            return `Transferência externa para ${paciente} foi solicitada por ${usuario}${destinoTexto}`;
+          }
+          break;
+        default:
+          break;
+      }
+
+      const mensagemFallback = extractLogMessage(log);
+      if (mensagemFallback) return mensagemFallback;
+      return `${usuario} registrou um pedido.`;
+    },
+    [getDetalhesObjeto, getNomeUsuario, normalizar]
+  );
+
+  const formatObservacaoMensagem = useCallback(
+    (log) => {
+      const detalhes = getDetalhesObjeto(log);
+      const usuario = getNomeUsuario(log);
+      const paciente = detalhes.pacienteNome || detalhes.paciente || '';
+      const texto = detalhes.texto || detalhes.observacao || detalhes.mensagem;
+
+      if (paciente && texto) {
+        return `${usuario} adicionou uma observação para ${paciente}: '${texto}'.`;
+      }
+
+      const mensagemFallback = extractLogMessage(log);
+      if (mensagemFallback) return mensagemFallback;
+      return `${usuario} adicionou uma observação.`;
+    },
+    [getDetalhesObjeto, getNomeUsuario]
+  );
+
+  const formatProvavelAltaMensagem = useCallback(
+    (log) => {
+      const detalhes = getDetalhesObjeto(log);
+      const usuario = getNomeUsuario(log);
+      const paciente = detalhes.pacienteNome || detalhes.paciente || '';
+
+      switch (normalizar(log?.action)) {
+        case normalizar('Provável Alta Adicionada'):
+          if (paciente) {
+            return `${usuario} adicionou a sinalização de Provável Alta para o paciente ${paciente}.`;
+          }
+          break;
+        case normalizar('Provável Alta Removida'):
+          if (paciente) {
+            return `${usuario} removeu a sinalização de Provável Alta para o paciente ${paciente}.`;
+          }
+          break;
+        default:
+          break;
+      }
+
+      const mensagemFallback = extractLogMessage(log);
+      if (mensagemFallback) return mensagemFallback;
+      return `${usuario} atualizou a sinalização de provável alta.`;
+    },
+    [getDetalhesObjeto, getNomeUsuario, normalizar]
+  );
+
+  const formatAltaLeitoMensagem = useCallback(
+    (log) => {
+      const detalhes = getDetalhesObjeto(log);
+      const usuario = getNomeUsuario(log);
+      const paciente = detalhes.pacienteNome || detalhes.paciente || '';
+      const motivo = detalhes.motivo || detalhes.justificativa;
+
+      switch (normalizar(log?.action)) {
+        case normalizar('Alta no Leito Adicionada'):
+          if (paciente) {
+            const motivoTexto = motivo ? `. Motivo: ${motivo}.` : '.';
+            return `${usuario} adicionou a sinalização de Alta no Leito para ${paciente}${motivoTexto}`;
+          }
+          break;
+        case normalizar('Alta no Leito Removida'):
+          if (paciente) {
+            return `${usuario} removeu a sinalização de Alta no Leito para ${paciente}.`;
+          }
+          break;
+        default:
+          break;
+      }
+
+      const mensagemFallback = extractLogMessage(log);
+      if (mensagemFallback) return mensagemFallback;
+      return `${usuario} atualizou a sinalização de alta no leito.`;
+    },
+    [getDetalhesObjeto, getNomeUsuario, normalizar]
+  );
+
+  const formatMensagemPorAba = useCallback(
+    (tab, log) => {
+      switch (tab) {
+        case 'regulacao':
+          return formatRegulacaoMensagem(log);
+        case 'status-leitos':
+          return formatStatusLeitoMensagem(log);
+        case 'pedidos':
+          return formatPedidosMensagem(log);
+        case 'observacoes':
+          return formatObservacaoMensagem(log);
+        case 'provaveis-altas':
+          return formatProvavelAltaMensagem(log);
+        case 'altas-leito':
+          return formatAltaLeitoMensagem(log);
+        default:
+          return extractLogMessage(log) || `${getNomeUsuario(log)} registrou uma atividade.`;
+      }
+    },
+    [
+      formatAltaLeitoMensagem,
+      formatObservacaoMensagem,
+      formatPedidosMensagem,
+      formatProvavelAltaMensagem,
+      formatRegulacaoMensagem,
+      formatStatusLeitoMensagem,
+      getNomeUsuario,
+    ]
+  );
 
   const replaceInfeccaoIdWithSigla = useCallback(
     (mensagem) => {
@@ -537,7 +910,7 @@ const HomePage = ({ onNavigate, currentUser }) => {
   };
 
   const formatarLegendaLog = (log) => {
-    const modulo = extractLogModule(log);
+    const modulo = extractLogModule(log) || log?.action;
     const tempo = formatarTempoRelativo(log.timestamp);
     if (modulo && tempo) {
       return `${modulo} • ${tempo}`;
@@ -693,7 +1066,7 @@ const HomePage = ({ onNavigate, currentUser }) => {
                 {tab.logs.length > 0 ? (
                   <ul className="divide-y divide-border rounded-lg border border-border bg-card">
                     {tab.logs.map((log) => {
-                      const mensagemBase = extractLogMessage(log);
+                      const mensagemBase = formatMensagemPorAba(tab.value, log);
                       const mensagemFormatada =
                         (tab.value === "isolamentos" ? replaceInfeccaoIdWithSigla(mensagemBase) : mensagemBase) ||
                         "Atividade registrada";
