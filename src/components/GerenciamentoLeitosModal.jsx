@@ -29,6 +29,7 @@ import {
   serverTimestamp
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 
 const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
   // Estados para dados
@@ -70,6 +71,7 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
   const isEditandoLeito = itemEmEdicao?.tipo === 'leito';
   const isEditandoQuarto = itemEmEdicao?.tipo === 'quarto';
   const { toast } = useToast();
+  const { currentUser } = useAuth();
 
   // Listeners em tempo real
   useEffect(() => {
@@ -130,12 +132,12 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
       if (editingSetor) {
         await setDoc(doc(getSetoresCollection(), editingSetor), setorData);
         toast({ title: "Setor atualizado com sucesso!" });
-        await logAction('Gerenciamento de Leitos', `Setor '${setorData.nomeSetor}' foi atualizado.`);
+        await logAction('Gerenciamento de Leitos', `Setor '${setorData.nomeSetor}' foi atualizado.`, currentUser);
         setEditingSetor(null);
       } else {
         await addDoc(getSetoresCollection(), setorData);
         toast({ title: "Setor criado com sucesso!" });
-        await logAction('Gerenciamento de Leitos', `Setor '${setorData.nomeSetor}' foi criado.`);
+        await logAction('Gerenciamento de Leitos', `Setor '${setorData.nomeSetor}' foi criado.`, currentUser);
       }
 
       setSetorForm({ id: '', nomeSetor: '', siglaSetor: '', tipoSetor: '' });
@@ -168,7 +170,7 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
       const setor = setores.find(s => s.id === setorId);
       await deleteDoc(doc(getSetoresCollection(), setorId));
       toast({ title: "Setor excluído com sucesso!" });
-      await logAction('Gerenciamento de Leitos', `Setor '${setor?.nomeSetor || setorId}' foi excluído.`);
+      await logAction('Gerenciamento de Leitos', `Setor '${setor?.nomeSetor || setorId}' foi excluído.`, currentUser);
     } catch (error) {
       toast({ 
         title: "Erro ao excluir setor", 
@@ -237,7 +239,7 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
 
         const setorNome = setores.find(s => s.id === leitoForm.setorId)?.nomeSetor || leitoForm.setorId;
         toast({ title: `${codigos.length} leito(s) criado(s) com sucesso!` });
-        await logAction('Gerenciamento de Leitos', `${codigos.length} leito(s) foram criados no setor '${setorNome}'.`);
+        await logAction('Gerenciamento de Leitos', `${codigos.length} leito(s) foram criados no setor '${setorNome}'.`, currentUser);
       }
 
       setLeitoForm({ setorId: '', codigosLeitos: '', isPCP: false });
@@ -280,7 +282,7 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
       const leito = leitos.find(l => l.id === leitoId);
       await deleteDoc(doc(getLeitosCollection(), leitoId));
       toast({ title: "Leito excluído com sucesso!" });
-      await logAction('Gerenciamento de Leitos', `Leito '${leito?.codigoLeito || leitoId}' foi excluído.`);
+      await logAction('Gerenciamento de Leitos', `Leito '${leito?.codigoLeito || leitoId}' foi excluído.`, currentUser);
     } catch (error) {
       toast({ 
         title: "Erro ao excluir leito", 
@@ -317,11 +319,11 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
         const quartoRef = doc(getQuartosCollection(), itemEmEdicao.id);
         await updateDoc(quartoRef, quartoData);
         toast({ title: "Quarto atualizado com sucesso!" });
-        await logAction('Gerenciamento de Leitos', `Quarto '${quartoData.nomeQuarto}' foi atualizado.`);
+        await logAction('Gerenciamento de Leitos', `Quarto '${quartoData.nomeQuarto}' foi atualizado.`, currentUser);
       } else {
         await addDoc(getQuartosCollection(), quartoData);
         toast({ title: "Quarto criado com sucesso!" });
-        await logAction('Gerenciamento de Leitos', `Quarto '${quartoData.nomeQuarto}' foi criado.`);
+        await logAction('Gerenciamento de Leitos', `Quarto '${quartoData.nomeQuarto}' foi criado.`, currentUser);
       }
 
       handleCancelarEdicaoQuarto();
@@ -360,7 +362,7 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
       const quarto = quartos.find(q => q.id === quartoId);
       await deleteDoc(doc(getQuartosCollection(), quartoId));
       toast({ title: "Quarto excluído com sucesso!" });
-      await logAction('Gerenciamento de Leitos', `Quarto '${quarto?.nomeQuarto || quartoId}' foi excluído.`);
+      await logAction('Gerenciamento de Leitos', `Quarto '${quarto?.nomeQuarto || quartoId}' foi excluído.`, currentUser);
     } catch (error) {
       toast({
         title: "Erro ao excluir quarto",

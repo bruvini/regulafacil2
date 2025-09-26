@@ -27,8 +27,9 @@ export async function registrarHistoricoOcupacao(paciente, leito, motivoSaida) {
     await addDoc(getHistoricoOcupacoesCollection(), historicoData);
     
     await logAction(
-      'Sistema BI', 
-      `Histórico de ocupação registrado: ${paciente.nomePaciente} (${motivoSaida})`
+      'Sistema BI',
+      `Histórico de ocupação registrado: ${paciente.nomePaciente} (${motivoSaida})`,
+      null
     );
   } catch (error) {
     console.error('Erro ao registrar histórico de ocupação:', error);

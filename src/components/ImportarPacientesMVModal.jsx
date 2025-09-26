@@ -40,6 +40,7 @@ import {
 } from '@/lib/firebase-constants';
 import { writeBatch } from 'firebase/firestore';
 import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
 const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
@@ -54,6 +55,8 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     novosSetores: 0,
     novosLeitos: 0
   });
+
+  const { currentUser } = useAuth();
 
   // Novos estados para validação
   const [setoresFaltantes, setSetoresFaltantes] = useState([]);
@@ -680,7 +683,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
 
       logMessage += '.';
 
-      await logAction('Regulação de Leitos', logMessage);
+      await logAction('Regulação de Leitos', logMessage, currentUser);
 
       setCurrentStep('completed');
 

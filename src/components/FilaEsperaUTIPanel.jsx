@@ -337,7 +337,8 @@ const FilaEsperaUTIPanel = ({ filtros, sortConfig }) => {
 
       await logAction(
         'Regulação de Leitos',
-        `Transferência externa ${acao} para o paciente '${paciente.nomePaciente}' por ${nomeUsuario}. Motivo: ${dados.motivo}, Destino: ${dados.destino}`
+        `Transferência externa ${acao} para o paciente '${paciente.nomePaciente}' por ${nomeUsuario}. Motivo: ${dados.motivo}, Destino: ${dados.destino}`,
+        currentUser
       );
 
       toast({
@@ -379,7 +380,8 @@ const FilaEsperaUTIPanel = ({ filtros, sortConfig }) => {
       const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
       await logAction(
         'Regulação de Leitos',
-        `Pedido de UTI do paciente '${paciente.nomePaciente}' foi cancelado por ${nomeUsuario}.`
+        `Pedido de UTI do paciente '${paciente.nomePaciente}' foi cancelado por ${nomeUsuario}.`,
+        currentUser
       );
 
       toast({

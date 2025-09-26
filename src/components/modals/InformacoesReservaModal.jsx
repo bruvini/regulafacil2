@@ -67,7 +67,8 @@ const InformacoesReservaModal = ({ isOpen, onClose, reserva }) => {
 
       await logAction(
         'Reservas de Leitos',
-        `Observação adicionada para reserva: ${reserva.nomeCompleto}`
+        `Observação adicionada para reserva: ${reserva.nomeCompleto}`,
+        currentUser
       );
 
       toast({

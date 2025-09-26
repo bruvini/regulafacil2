@@ -298,7 +298,8 @@ const TransferenciaExternaPanel = ({ filtros, sortConfig }) => {
 
       await logAction(
         'Regulação de Leitos',
-        `Transferência externa ${acao} para o paciente '${paciente.nomePaciente}' por ${nomeUsuario}. Motivo: ${dados.motivo}, Destino: ${dados.destino}`
+        `Transferência externa ${acao} para o paciente '${paciente.nomePaciente}' por ${nomeUsuario}. Motivo: ${dados.motivo}, Destino: ${dados.destino}`,
+        currentUser
       );
 
       toast({

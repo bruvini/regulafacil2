@@ -15,11 +15,13 @@ import {
 } from '@/lib/firebase';
 import { db } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
 
 const AlterarDataIsolamentoModal = ({ isOpen, onClose, paciente, isolamento }) => {
   const [novaData, setNovaData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const { currentUser } = useAuth();
 
   React.useEffect(() => {
     if (isolamento && isOpen) {
@@ -64,7 +66,8 @@ const AlterarDataIsolamentoModal = ({ isOpen, onClose, paciente, isolamento }) =
 
       await logAction(
         "Gestão de Isolamentos",
-        `Data de isolamento alterada para ${paciente.nomePaciente}: nova data ${format(novaData, 'dd/MM/yyyy', { locale: ptBR })}`
+        `Data de isolamento alterada para ${paciente.nomePaciente}: nova data ${format(novaData, 'dd/MM/yyyy', { locale: ptBR })}`,
+        currentUser
       );
 
       toast({

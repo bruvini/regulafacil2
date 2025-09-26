@@ -161,7 +161,7 @@ const AlterarRegulacaoModal = ({ isOpen, onClose, regulacao }) => {
       const usuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
       const destAnteriorStr = `${destinoAtualInfo?.siglaSetor} - ${destinoAtualInfo?.codigo}`;
       const novoDestinoStr = `${dados.setores.find(s => s.id === novoLeito.setorId)?.siglaSetor || 'N/A'} - ${novoLeito.codigoLeito}`;
-      await logAction('Regulação de Leitos', `Regulação do paciente '${paciente.nomePaciente}' foi ALTERADA por ${usuario} do leito '${destAnteriorStr}' para '${novoDestinoStr}'. Motivo: '${justificativa}'.`);
+      await logAction('Regulação de Leitos', `Regulação do paciente '${paciente.nomePaciente}' foi ALTERADA por ${usuario} do leito '${destAnteriorStr}' para '${novoDestinoStr}'. Motivo: '${justificativa}'.`, currentUser);
 
       toast({ title: 'Regulação alterada', description: 'A alteração foi aplicada com sucesso.' });
       fechar();

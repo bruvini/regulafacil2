@@ -44,6 +44,7 @@ import {
   serverTimestamp
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/use-toast';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -58,6 +59,7 @@ const GestaoPacientesPage = () => {
   const [setores, setSetores] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const { currentUser } = useAuth();
 
   // Modal states
   const [visualizarPaciente, setVisualizarPaciente] = useState(null);
@@ -137,7 +139,7 @@ const GestaoPacientesPage = () => {
       await updateDoc(pacienteRef, dadosAtualizados);
 
       const paciente = pacientes.find(p => p.id === pacienteId);
-      await logAction('Gestão de Pacientes', `Dados do paciente '${paciente?.nomeCompleto}' foram atualizados.`);
+      await logAction('Gestão de Pacientes', `Dados do paciente '${paciente?.nomeCompleto}' foram atualizados.`, currentUser);
       
       toast({
         title: "Sucesso",
@@ -181,7 +183,7 @@ const GestaoPacientesPage = () => {
 
       await batch.commit();
 
-      await logAction('Gestão de Pacientes', `Paciente '${paciente.nomeCompleto}' foi excluído do sistema.`);
+      await logAction('Gestão de Pacientes', `Paciente '${paciente.nomeCompleto}' foi excluído do sistema.`, currentUser);
       
       toast({
         title: "Sucesso",
@@ -241,8 +243,9 @@ const GestaoPacientesPage = () => {
 
       await batch.commit();
 
-      await logAction('Gestão de Pacientes', 
-        `LIMPEZA GERAL EXECUTADA: ${totalPacientesRemovidos} pacientes removidos e ${totalLeitosLiberados} leitos liberados.`
+      await logAction('Gestão de Pacientes',
+        `LIMPEZA GERAL EXECUTADA: ${totalPacientesRemovidos} pacientes removidos e ${totalLeitosLiberados} leitos liberados.`,
+        currentUser
       );
       
       toast({

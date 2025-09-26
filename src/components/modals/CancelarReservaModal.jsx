@@ -21,11 +21,13 @@ import {
   deleteField
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 
 const CancelarReservaModal = ({ isOpen, onClose, reserva }) => {
   const { toast } = useToast();
   const [justificativa, setJustificativa] = useState('');
   const [cancelando, setCancelando] = useState(false);
+  const { currentUser } = useAuth();
 
   if (!reserva) return null;
 
@@ -47,7 +49,7 @@ const CancelarReservaModal = ({ isOpen, onClose, reserva }) => {
       const observacao = {
         texto: `RESERVA CANCELADA - ${justificativa.trim()}`,
         data: serverTimestamp(),
-        usuarioNome: 'Usuário do Sistema' // TODO: Pegar do contexto de auth
+        usuarioNome: currentUser?.nomeCompleto || 'Sistema'
       };
 
       // Atualizar reserva
@@ -70,7 +72,8 @@ const CancelarReservaModal = ({ isOpen, onClose, reserva }) => {
 
       await logAction(
         'Reservas de Leitos',
-        `Reserva de leito cancelada: ${reserva.nomeCompleto} - ${justificativa.trim()}`
+        `Reserva de leito cancelada: ${reserva.nomeCompleto} - ${justificativa.trim()}`,
+        currentUser
       );
 
       toast({

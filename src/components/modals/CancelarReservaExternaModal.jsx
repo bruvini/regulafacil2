@@ -22,11 +22,13 @@ import {
   arrayUnion
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 
 const CancelarReservaExternaModal = ({ isOpen, onClose, reserva, leito }) => {
   const { toast } = useToast();
   const [decisao, setDecisao] = useState('fila');
   const [carregando, setCarregando] = useState(false);
+  const { currentUser } = useAuth();
 
   useEffect(() => {
     if (!isOpen) {
@@ -72,7 +74,8 @@ const CancelarReservaExternaModal = ({ isOpen, onClose, reserva, leito }) => {
         'Reservas de Leitos',
         decisao === 'fila'
           ? `Reserva externa devolvida para a fila: ${reserva.nomeCompleto}`
-          : `Reserva externa cancelada permanentemente: ${reserva.nomeCompleto}`
+          : `Reserva externa cancelada permanentemente: ${reserva.nomeCompleto}`,
+        currentUser
       );
 
       toast({

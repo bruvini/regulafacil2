@@ -201,7 +201,8 @@ const CentralHigienizacaoPage = () => {
 
       await logAction(
         'Central de Higienização',
-        `Higienização ${tipoDeLimpeza} iniciada no leito '${leito.codigoLeito}' por ${usuarioNome}.`
+        `Higienização ${tipoDeLimpeza} iniciada no leito '${leito.codigoLeito}' por ${usuarioNome}.`,
+        currentUser
       );
 
       toast({
@@ -259,7 +260,8 @@ const CentralHigienizacaoPage = () => {
 
       await logAction(
         'Central de Higienização',
-        `Higienização ${tipoHigienizacao} concluída no leito '${leito.codigoLeito}' por ${usuarioNome}.`
+        `Higienização ${tipoHigienizacao} concluída no leito '${leito.codigoLeito}' por ${usuarioNome}.`,
+        currentUser
       );
 
       toast({

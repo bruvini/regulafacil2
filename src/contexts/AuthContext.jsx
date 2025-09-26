@@ -149,7 +149,7 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       if (currentUser) {
-        await logAction('Sistema', `Usuário deslogado: ${currentUser.nomeCompleto}`);
+        await logAction('Sistema', `Usuário deslogado: ${currentUser.nomeCompleto}`, currentUser);
       }
       await signOut(auth);
       setCurrentUser(null);
@@ -190,7 +190,7 @@ export const AuthProvider = ({ children }) => {
       });
 
       // Log de auditoria
-      await logAction('Sistema', `Login realizado: ${currentUser.nomeCompleto} (${currentUser.emailInstitucional})`);
+      await logAction('Sistema', `Login realizado: ${currentUser.nomeCompleto} (${currentUser.emailInstitucional})`, currentUser);
       
     } catch (error) {
       console.error('Erro ao registrar auditoria de login:', error);

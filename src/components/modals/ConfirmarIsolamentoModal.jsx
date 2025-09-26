@@ -10,11 +10,13 @@ import {
 } from '@/lib/firebase';
 import { db } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
 
 const ConfirmarIsolamentoModal = ({ isOpen, onClose, paciente, isolamento }) => {
   const [loading, setLoading] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const { currentUser } = useAuth();
 
   const handleConfirmar = async () => {
     if (!paciente || !isolamento) return;
@@ -35,7 +37,8 @@ const ConfirmarIsolamentoModal = ({ isOpen, onClose, paciente, isolamento }) => 
 
       await logAction(
         "Gestão de Isolamentos",
-        `Isolamento confirmado para ${paciente.nomePaciente}: infecção ${isolamento.infeccaoId}`
+        `Isolamento confirmado para ${paciente.nomePaciente}: infecção ${isolamento.infeccaoId}`,
+        currentUser
       );
 
       toast({

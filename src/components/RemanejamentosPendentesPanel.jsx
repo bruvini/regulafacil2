@@ -336,7 +336,8 @@ const RemanejamentosPendentesPanel = ({ filtros, sortConfig }) => {
       const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
       await logAction(
         'Regulação de Leitos',
-        `Pedido de remanejamento para o paciente '${paciente.nomePaciente}' foi cancelado por ${nomeUsuario}.`
+        `Pedido de remanejamento para o paciente '${paciente.nomePaciente}' foi cancelado por ${nomeUsuario}.`,
+        currentUser
       );
 
       toast({
