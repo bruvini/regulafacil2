@@ -334,6 +334,14 @@ const GestaoIsolamentosPage = () => {
 
       if (pacientesComIsolamento.length > 0 && pacientesSemIsolamento.length > 0) {
         pacientesComIsolamento.forEach((item) => registrarRisco(item));
+      } else if (pacientesComIsolamento.length > 1) {
+        const assinaturas = new Set(
+          pacientesComIsolamento.map((item) => normalizarIsolamentos(item.paciente))
+        );
+
+        if (assinaturas.size > 1) {
+          pacientesComIsolamento.forEach((item) => registrarRisco(item));
+        }
       }
     });
 
