@@ -180,10 +180,13 @@ const GestaoIsolamentosPage = () => {
         .replace(/\p{Diacritic}/gu, '')
         .toLowerCase();
 
-    const normalizarIsolamentos = (pacienteAtual) => {
-      const isolamentosAtivos = (pacienteAtual?.isolamentos || []).filter((iso) =>
-        iso && (iso.status === 'Confirmado' || iso.status === 'Suspeito')
+    const obterIsolamentosAtivos = (pacienteAtual) =>
+      (pacienteAtual?.isolamentos || []).filter(
+        (iso) => iso && (iso.status === 'Confirmado' || iso.status === 'Suspeito')
       );
+
+    const normalizarIsolamentos = (pacienteAtual) => {
+      const isolamentosAtivos = obterIsolamentosAtivos(pacienteAtual);
 
       if (isolamentosAtivos.length === 0) {
         return '';
@@ -199,8 +202,7 @@ const GestaoIsolamentosPage = () => {
               iso?.codigo ||
               iso?.nome ||
               '';
-            const status = iso?.status || '';
-            return `${String(identificador).trim().toLowerCase()}::${String(status).trim().toLowerCase()}`;
+            return String(identificador).trim().toLowerCase();
           })
         )
       )
@@ -209,96 +211,133 @@ const GestaoIsolamentosPage = () => {
         .join('|');
     };
 
+    const obterChaveQuartoDinamica = (setorId, leitoAtual) => {
+      const codigo = String(leitoAtual?.codigoLeito || '').trim();
+      const chave = (codigo.substring(0, 3) || '---').toUpperCase();
+      return `${setorId || 'setor-desconhecido'}::${chave}`;
+    };
+
+    const setoresEmergenciaAlvo = new Set(
+      ['PS DECISÃO CIRURGICA', 'PS DECISÃO CLINICA', 'SALA LARANJA'].map((nome) =>
+        normalizarTexto(nome)
+      )
+    );
+
     const pacientesPorId = new Map(pacientes.map((paciente) => [paciente.id, paciente]));
     const leitosPorId = new Map(leitos.map((leito) => [leito.id, leito]));
     const setoresPorId = new Map(setores.map((setor) => [setor.id, setor]));
-    const pacientesPorQuartoId = new Map();
-    const pacientesPorSetorId = new Map();
+    const pacientesPorQuartoDinamico = new Map();
+    const pacientesPorSetorEmergencia = new Map();
 
     pacientes.forEach((paciente) => {
       const leito = paciente.leitoId ? leitosPorId.get(paciente.leitoId) : undefined;
       if (!leito) return;
 
-      if (leito.quartoId) {
-        if (!pacientesPorQuartoId.has(leito.quartoId)) {
-          pacientesPorQuartoId.set(leito.quartoId, []);
-        }
-        pacientesPorQuartoId.get(leito.quartoId).push(paciente);
-      }
-
-      if (leito.setorId) {
-        if (!pacientesPorSetorId.has(leito.setorId)) {
-          pacientesPorSetorId.set(leito.setorId, []);
-        }
-        pacientesPorSetorId.get(leito.setorId).push(paciente);
-      }
-    });
-
-    const pacientesEmRiscoDetectados = [];
-
-    pacientes.forEach((paciente) => {
-      const isolamentosAtivos = (paciente?.isolamentos || []).filter((iso) =>
-        iso && (iso.status === 'Confirmado' || iso.status === 'Suspeito')
-      );
-
-      if (isolamentosAtivos.length === 0) {
-        return;
-      }
-
-      const leito = paciente.leitoId ? leitosPorId.get(paciente.leitoId) : undefined;
-      if (!leito) {
-        return;
-      }
-
       const setor = leito.setorId ? setoresPorId.get(leito.setorId) : undefined;
-      if (!setor) {
-        return;
-      }
+      if (!setor) return;
 
       const tipoSetorNormalizado = normalizarTexto(setor.tipoSetor);
-      const setorElegivel = ['emergencia', 'emergência', 'enfermaria'];
-      if (!setorElegivel.includes(tipoSetorNormalizado)) {
+
+      if (['uti', 'centro cirurgico', 'centro cirúrgico'].includes(tipoSetorNormalizado)) {
         return;
       }
 
-      const chaveIsolamentoPaciente = normalizarIsolamentos(paciente);
-      if (!chaveIsolamentoPaciente) {
+      const nomeSetorNormalizado = normalizarTexto(setor.nomeSetor);
+      const isEnfermaria = tipoSetorNormalizado === 'enfermaria';
+      const isEmergenciaAlvo = setoresEmergenciaAlvo.has(nomeSetorNormalizado);
+
+      if (!isEnfermaria && !isEmergenciaAlvo) {
         return;
       }
 
-      let companheiros = [];
-
-      if (leito.quartoId && pacientesPorQuartoId.has(leito.quartoId)) {
-        companheiros = pacientesPorQuartoId
-          .get(leito.quartoId)
-          .filter((outroPaciente) => outroPaciente.id !== paciente.id);
-      } else if (setor.id && pacientesPorSetorId.has(setor.id)) {
-        companheiros = pacientesPorSetorId
-          .get(setor.id)
-          .filter((outroPaciente) => outroPaciente.id !== paciente.id);
+      if (isEnfermaria) {
+        const chaveQuarto = obterChaveQuartoDinamica(setor.id, leito);
+        if (!pacientesPorQuartoDinamico.has(chaveQuarto)) {
+          pacientesPorQuartoDinamico.set(chaveQuarto, []);
+        }
+        pacientesPorQuartoDinamico.get(chaveQuarto).push({ paciente, leito, setor });
       }
 
-      if (companheiros.length === 0) {
-        return;
+      if (isEmergenciaAlvo) {
+        if (!pacientesPorSetorEmergencia.has(setor.id)) {
+          pacientesPorSetorEmergencia.set(setor.id, []);
+        }
+        pacientesPorSetorEmergencia.get(setor.id).push({ paciente, leito, setor });
       }
-
-      const possuiDivergencia = companheiros.some((outroPaciente) => {
-        const chaveCompanheiro = normalizarIsolamentos(outroPaciente);
-        return chaveCompanheiro !== chaveIsolamentoPaciente;
-      });
-
-      if (!possuiDivergencia) {
-        return;
-      }
-
-      pacientesEmRiscoDetectados.push({
-        paciente,
-        leito,
-        setor,
-        isolamentosAtivos,
-        chaveIsolamento: chaveIsolamentoPaciente,
-      });
     });
+
+    const pacientesEmRiscoPorId = new Map();
+
+    const registrarRisco = ({ paciente, leito, setor, isolamentosAtivos }) => {
+      if (!pacientesEmRiscoPorId.has(paciente.id)) {
+        pacientesEmRiscoPorId.set(paciente.id, {
+          paciente,
+          leito,
+          setor,
+          isolamentosAtivos,
+          chaveIsolamento: normalizarIsolamentos(paciente),
+        });
+      }
+    };
+
+    pacientesPorQuartoDinamico.forEach((ocupantes) => {
+      if (!ocupantes || ocupantes.length <= 1) {
+        return;
+      }
+
+      const pacientesComIsolamento = [];
+      const pacientesSemIsolamento = [];
+
+      ocupantes.forEach((item) => {
+        const isolamentosAtivos = obterIsolamentosAtivos(item.paciente);
+        if (isolamentosAtivos.length > 0) {
+          pacientesComIsolamento.push({ ...item, isolamentosAtivos });
+        } else {
+          pacientesSemIsolamento.push(item);
+        }
+      });
+
+      if (pacientesComIsolamento.length === 0) {
+        return;
+      }
+
+      if (pacientesSemIsolamento.length > 0) {
+        pacientesComIsolamento.forEach((item) => registrarRisco(item));
+        return;
+      }
+
+      const assinaturas = new Set(
+        pacientesComIsolamento.map((item) => normalizarIsolamentos(item.paciente))
+      );
+
+      if (assinaturas.size > 1) {
+        pacientesComIsolamento.forEach((item) => registrarRisco(item));
+      }
+    });
+
+    pacientesPorSetorEmergencia.forEach((ocupantes) => {
+      if (!ocupantes || ocupantes.length === 0) {
+        return;
+      }
+
+      const pacientesComIsolamento = [];
+      const pacientesSemIsolamento = [];
+
+      ocupantes.forEach((item) => {
+        const isolamentosAtivos = obterIsolamentosAtivos(item.paciente);
+        if (isolamentosAtivos.length > 0) {
+          pacientesComIsolamento.push({ ...item, isolamentosAtivos });
+        } else {
+          pacientesSemIsolamento.push(item);
+        }
+      });
+
+      if (pacientesComIsolamento.length > 0 && pacientesSemIsolamento.length > 0) {
+        pacientesComIsolamento.forEach((item) => registrarRisco(item));
+      }
+    });
+
+    const pacientesEmRiscoDetectados = Array.from(pacientesEmRiscoPorId.values());
 
     setPacientesEmRisco(pacientesEmRiscoDetectados);
 
