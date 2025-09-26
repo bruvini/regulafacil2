@@ -19,7 +19,8 @@ import {
   writeBatch,
   db,
   deleteField,
-  arrayUnion
+  arrayUnion,
+  serverTimestamp
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
@@ -52,7 +53,13 @@ const CancelarReservaExternaModal = ({ isOpen, onClose, reserva, leito }) => {
       const reservaRef = doc(getReservasExternasCollection(), reserva.id);
       batch.update(reservaRef, {
         leitoReservadoId: deleteField(),
-        status: decisao === 'fila' ? 'Aguardando Leito' : 'Cancelada'
+        leitoCodigo: deleteField(),
+        status: decisao === 'fila' ? 'Aguardando Leito' : 'Cancelada',
+        atualizadoEm: serverTimestamp(),
+        userName: currentUser?.nomeCompleto || 'Usuário',
+        ...(decisao === 'fila'
+          ? { motivoCancelamento: deleteField() }
+          : { motivoCancelamento: 'Cancelamento confirmado pelo usuário' })
       });
 
       if (leitoSelecionadoId) {

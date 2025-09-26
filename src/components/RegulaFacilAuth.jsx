@@ -55,12 +55,13 @@ import {
   Newspaper,
   ArrowRightLeft,
 } from 'lucide-react';
-import { 
-  getSetoresCollection, 
+import {
+  getSetoresCollection,
   getLeitosCollection,
   getPacientesCollection,
   getAuditoriaCollection,
   getInfeccoesCollection,
+  getReservasExternasCollection,
   onSnapshot,
   query,
   orderBy,
@@ -488,6 +489,7 @@ const Footer = () => {
 // Componente da página inicial
 const HomePage = ({ onNavigate, currentUser }) => {
   const [todosLogs, setTodosLogs] = useState([]);
+  const [reservas, setReservas] = useState([]);
   const [infeccoes, setInfeccoes] = useState([]);
   const { hasPermission } = useAuth();
 
@@ -498,6 +500,25 @@ const HomePage = ({ onNavigate, currentUser }) => {
         ...doc.data(),
       }));
       setInfeccoes(lista);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const reservasQuery = query(
+      getReservasExternasCollection(),
+      orderBy('criadoEm', 'desc'),
+      limit(100)
+    );
+
+    const unsubscribe = onSnapshot(reservasQuery, (snapshot) => {
+      const registros = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      setReservas(registros);
     });
 
     return () => unsubscribe();
@@ -548,6 +569,70 @@ const HomePage = ({ onNavigate, currentUser }) => {
 
   const limitarLogs = useCallback((logs) => logs.slice(0, 10), []);
 
+  const extrairDataEvento = useCallback((item) => {
+    if (!item) return null;
+
+    const origemTemporal =
+      item.eventTimestamp ||
+      item.atualizadoEm ||
+      item.timestamp ||
+      item.criadoEm ||
+      item.data;
+
+    if (!origemTemporal) return null;
+
+    if (typeof origemTemporal.toDate === 'function') {
+      return origemTemporal.toDate();
+    }
+
+    if (origemTemporal instanceof Date) {
+      return origemTemporal;
+    }
+
+    const dataConvertida = new Date(origemTemporal);
+    return Number.isNaN(dataConvertida.getTime()) ? null : dataConvertida;
+  }, []);
+
+  const ordenarPorDataDesc = useCallback(
+    (lista) =>
+      [...lista].sort((a, b) => {
+        const dataA = extrairDataEvento(a);
+        const dataB = extrairDataEvento(b);
+
+        const valorA = dataA ? dataA.getTime() : 0;
+        const valorB = dataB ? dataB.getTime() : 0;
+
+        return valorB - valorA;
+      }),
+    [extrairDataEvento]
+  );
+
+  const atividadesUnificadas = useMemo(() => {
+    const logsAuditoria = todosLogs.map((log) => ({
+      ...log,
+      type: 'auditoria',
+      eventTimestamp: log.eventTimestamp || log.timestamp || null,
+    }));
+
+    const logsReservas = reservas.map((reserva) => ({
+      ...reserva,
+      type: 'reserva',
+      eventTimestamp: reserva.atualizadoEm || reserva.criadoEm || null,
+    }));
+
+    return [...logsAuditoria, ...logsReservas];
+  }, [todosLogs, reservas]);
+
+  const auditoriaEventos = useMemo(
+    () => atividadesUnificadas.filter((item) => item.type === 'auditoria'),
+    [atividadesUnificadas]
+  );
+
+  const reservasEventos = useMemo(
+    () => atividadesUnificadas.filter((item) => item.type === 'reserva'),
+    [atividadesUnificadas]
+  );
+
   const getDetalhesObjeto = useCallback((log) => {
     if (log?.details && typeof log.details === 'object' && !Array.isArray(log.details)) {
       return log.details;
@@ -562,65 +647,70 @@ const HomePage = ({ onNavigate, currentUser }) => {
   const regulacaoLogs = useMemo(
     () =>
       limitarLogs(
-        todosLogs.filter((log) => matchesAction(log, REGULACAO_ACTIONS, REGULACAO_KEYWORDS))
+        auditoriaEventos.filter((log) => matchesAction(log, REGULACAO_ACTIONS, REGULACAO_KEYWORDS))
       ),
-    [todosLogs, matchesAction, limitarLogs]
+    [auditoriaEventos, matchesAction, limitarLogs]
   );
 
   const isolamentoLogs = useMemo(
     () =>
       limitarLogs(
-        todosLogs.filter((log) => matchesAction(log, [], ['isolamento']))
+        auditoriaEventos.filter((log) => matchesAction(log, [], ['isolamento']))
       ),
-    [todosLogs, matchesAction, limitarLogs]
+    [auditoriaEventos, matchesAction, limitarLogs]
   );
 
   const statusLeitosLogs = useMemo(
     () =>
       limitarLogs(
-        todosLogs.filter((log) => matchesAction(log, STATUS_LEITO_ACTIONS, STATUS_LEITO_KEYWORDS))
+        auditoriaEventos.filter((log) => matchesAction(log, STATUS_LEITO_ACTIONS, STATUS_LEITO_KEYWORDS))
       ),
-    [todosLogs, matchesAction, limitarLogs]
+    [auditoriaEventos, matchesAction, limitarLogs]
   );
 
   const higienizacaoLogs = useMemo(
     () =>
       limitarLogs(
-        todosLogs.filter((log) => matchesAction(log, [], ['higienização', 'higienizacao']))
+        auditoriaEventos.filter((log) => matchesAction(log, [], ['higienização', 'higienizacao']))
       ),
-    [todosLogs, matchesAction, limitarLogs]
+    [auditoriaEventos, matchesAction, limitarLogs]
   );
 
   const pedidosLogs = useMemo(
     () =>
       limitarLogs(
-        todosLogs.filter((log) => matchesAction(log, PEDIDOS_ACTIONS, PEDIDOS_KEYWORDS))
+        auditoriaEventos.filter((log) => matchesAction(log, PEDIDOS_ACTIONS, PEDIDOS_KEYWORDS))
       ),
-    [todosLogs, matchesAction, limitarLogs]
+    [auditoriaEventos, matchesAction, limitarLogs]
   );
 
   const observacoesLogs = useMemo(
     () =>
       limitarLogs(
-        todosLogs.filter((log) => matchesAction(log, OBSERVACOES_ACTIONS, OBSERVACOES_KEYWORDS))
+        auditoriaEventos.filter((log) => matchesAction(log, OBSERVACOES_ACTIONS, OBSERVACOES_KEYWORDS))
       ),
-    [todosLogs, matchesAction, limitarLogs]
+    [auditoriaEventos, matchesAction, limitarLogs]
   );
 
   const altasLeitoLogs = useMemo(
     () =>
       limitarLogs(
-        todosLogs.filter((log) => matchesAction(log, ALTAS_LEITO_ACTIONS, ALTAS_LEITO_KEYWORDS))
+        auditoriaEventos.filter((log) => matchesAction(log, ALTAS_LEITO_ACTIONS, ALTAS_LEITO_KEYWORDS))
       ),
-    [todosLogs, matchesAction, limitarLogs]
+    [auditoriaEventos, matchesAction, limitarLogs]
   );
 
   const provaveisAltasLogs = useMemo(
     () =>
       limitarLogs(
-        todosLogs.filter((log) => matchesAction(log, PROVAVEIS_ALTAS_ACTIONS, PROVAVEIS_ALTAS_KEYWORDS))
+        auditoriaEventos.filter((log) => matchesAction(log, PROVAVEIS_ALTAS_ACTIONS, PROVAVEIS_ALTAS_KEYWORDS))
       ),
-    [todosLogs, matchesAction, limitarLogs]
+    [auditoriaEventos, matchesAction, limitarLogs]
+  );
+
+  const reservasLogs = useMemo(
+    () => limitarLogs(ordenarPorDataDesc(reservasEventos)),
+    [reservasEventos, ordenarPorDataDesc, limitarLogs]
   );
 
   const formatRegulacaoMensagem = useCallback(
@@ -827,6 +917,40 @@ const HomePage = ({ onNavigate, currentUser }) => {
     [getDetalhesObjeto, getNomeUsuario, normalizar]
   );
 
+  const formatReservaMensagem = useCallback((reserva) => {
+    if (!reserva) return 'Atualização de reserva registrada.';
+
+    const usuario = reserva.userName || 'Usuário';
+    const paciente = reserva.pacienteNome || reserva.nomeCompleto || 'paciente';
+    const origem = reserva.origem || 'Origem não informada';
+    const leito = reserva.leitoCodigo || reserva.leitoReservadoCodigo || reserva.leitoReservadoId;
+    const motivoCancelamento = reserva.motivoCancelamento || reserva.motivo || reserva.justificativa;
+    const statusNormalizado = normalizar(reserva.status);
+
+    switch (statusNormalizado) {
+      case normalizar('Criada'):
+      case normalizar('Aguardando Leito'):
+        return `${usuario} criou uma reserva para o paciente "${paciente}" da origem "${origem}".`;
+      case normalizar('Reservado'):
+        if (leito) {
+          return `${usuario} associou o leito "${leito}" à reserva do paciente "${paciente}".`;
+        }
+        return `${usuario} atualizou a reserva do paciente "${paciente}" para o status Reservado.`;
+      case normalizar('Cancelada'):
+        return `${usuario} cancelou a reserva para "${paciente}"${
+          motivoCancelamento ? `. Motivo: "${motivoCancelamento}".` : '.'
+        }`;
+      case normalizar('Concluída'):
+      case normalizar('Concluida'):
+      case normalizar('Internado'):
+        return `Internação da reserva de "${paciente}" foi confirmada${
+          leito ? ` no leito "${leito}"` : ''
+        } por "${usuario}".`;
+      default:
+        return `${usuario} atualizou a reserva de "${paciente}" para o status "${reserva.status || 'Indefinido'}".`;
+    }
+  }, [normalizar]);
+
   const formatMensagemPorAba = useCallback(
     (tab, log) => {
       switch (tab) {
@@ -842,6 +966,8 @@ const HomePage = ({ onNavigate, currentUser }) => {
           return formatProvavelAltaMensagem(log);
         case 'altas-leito':
           return formatAltaLeitoMensagem(log);
+        case 'reservas':
+          return formatReservaMensagem(log);
         default:
           return extractLogMessage(log) || `${getNomeUsuario(log)} registrou uma atividade.`;
       }
@@ -853,6 +979,7 @@ const HomePage = ({ onNavigate, currentUser }) => {
       formatProvavelAltaMensagem,
       formatRegulacaoMensagem,
       formatStatusLeitoMensagem,
+      formatReservaMensagem,
       getNomeUsuario,
     ]
   );
@@ -894,6 +1021,10 @@ const HomePage = ({ onNavigate, currentUser }) => {
       data = new Date(timestamp);
     }
 
+    if (!(data instanceof Date) || Number.isNaN(data.getTime())) {
+      return 'Agora';
+    }
+
     const agora = new Date();
     const diffMinutos = Math.floor((agora - data) / (1000 * 60));
 
@@ -910,12 +1041,19 @@ const HomePage = ({ onNavigate, currentUser }) => {
   };
 
   const formatarLegendaLog = (log) => {
-    const modulo = extractLogModule(log) || log?.action;
-    const tempo = formatarTempoRelativo(log.timestamp);
-    if (modulo && tempo) {
-      return `${modulo} • ${tempo}`;
+    if (!log) return '';
+
+    const moduloBase =
+      log.type === 'reserva'
+        ? 'Reservas'
+        : extractLogModule(log) || log?.action;
+    const tempo = formatarTempoRelativo(extrairDataEvento(log) || log.timestamp);
+
+    if (moduloBase && tempo) {
+      return `${moduloBase} • ${tempo}`;
     }
-    return modulo || tempo;
+
+    return moduloBase || tempo || '';
   };
 
   // Data atual formatada
@@ -933,6 +1071,12 @@ const HomePage = ({ onNavigate, currentUser }) => {
       label: "Regulação",
       logs: regulacaoLogs,
       emptyMessage: "Nenhuma atividade de regulação registrada.",
+    },
+    {
+      value: "reservas",
+      label: "Reservas",
+      logs: reservasLogs,
+      emptyMessage: "Nenhuma atividade de reservas registrada.",
     },
     {
       value: "isolamentos",

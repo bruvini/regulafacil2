@@ -276,6 +276,7 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
       // Criar documento da reserva
       const reservaData = {
         nomeCompleto: novaReserva.nomeCompleto,
+        pacienteNome: novaReserva.nomeCompleto,
         dataNascimento: novaReserva.dataNascimento,
         sexo: novaReserva.sexo,
         isolamento: novaReserva.isolamento,
@@ -283,7 +284,9 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
         status: 'Aguardando Leito',
         leitoReservadoId: null,
         observacoes: [],
-        criadoEm: serverTimestamp()
+        criadoEm: serverTimestamp(),
+        atualizadoEm: serverTimestamp(),
+        userName: currentUser?.nomeCompleto || 'Usuário'
       };
 
       // Adicionar campos específicos por origem
@@ -784,7 +787,11 @@ const ReservaCard = ({ reserva, onOpenSubModal, leitos }) => {
         doc(db, 'artifacts/regulafacil/public/data/reservasExternas', reserva.id),
         {
           status: 'Cancelada',
-          leitoReservadoId: deleteField()
+          leitoReservadoId: deleteField(),
+          leitoCodigo: deleteField(),
+          atualizadoEm: serverTimestamp(),
+          userName: currentUser?.nomeCompleto || 'Usuário',
+          motivoCancelamento: 'Cancelamento do pedido de reserva'
         }
       );
 

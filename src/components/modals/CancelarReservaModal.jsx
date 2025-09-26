@@ -11,9 +11,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  updateDoc, 
-  doc, 
+import {
+  doc,
   db,
   writeBatch,
   arrayUnion,
@@ -56,7 +55,10 @@ const CancelarReservaModal = ({ isOpen, onClose, reserva }) => {
       const reservaRef = doc(db, 'artifacts/regulafacil/public/data/reservasExternas', reserva.id);
       batch.update(reservaRef, {
         leitoReservadoId: null,
-        observacoes: arrayUnion(observacao)
+        observacoes: arrayUnion(observacao),
+        atualizadoEm: serverTimestamp(),
+        userName: currentUser?.nomeCompleto || 'Sistema',
+        motivoCancelamento: deleteField()
       });
 
       // Liberar o leito se estiver reservado
