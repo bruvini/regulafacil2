@@ -12,11 +12,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { BedDouble, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
-  updateDoc,
   doc,
   db,
   writeBatch,
-  arrayUnion
+  arrayUnion,
+  serverTimestamp
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
@@ -354,7 +354,10 @@ const SelecionarLeitoModal = ({ isOpen, onClose, reserva, dadosHospital }) => {
       const reservaRef = doc(db, 'artifacts/regulafacil/public/data/reservasExternas', reserva.id);
       batch.update(reservaRef, {
         leitoReservadoId: leito.id,
-        status: 'Reservado'
+        leitoCodigo: leito.codigoLeito || null,
+        status: 'Reservado',
+        atualizadoEm: serverTimestamp(),
+        userName: currentUser?.nomeCompleto || 'Usuário'
       });
 
       // Atualizar leito com informações da reserva

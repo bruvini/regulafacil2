@@ -27,16 +27,15 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { CalendarIcon, UserCheck, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { 
+import {
   addDoc,
-  updateDoc, 
-  doc, 
+  doc,
   db,
   writeBatch,
   serverTimestamp,
   deleteField
 } from '@/lib/firebase';
-import { getPacientesCollection, getLeitosCollection } from '@/lib/firebase';
+import { getPacientesCollection } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
 import { ESPECIALIDADES_MEDICAS } from '@/lib/constants';
@@ -106,6 +105,7 @@ const ConfirmarInternacaoModal = ({ isOpen, onClose, reserva }) => {
     setInternando(true);
     try {
       const batch = writeBatch(db);
+      const timestampAtualizacao = serverTimestamp();
 
       // Criar documento do paciente
       const novoPaciente = {
@@ -140,7 +140,9 @@ const ConfirmarInternacaoModal = ({ isOpen, onClose, reserva }) => {
       batch.update(reservaRef, {
         status: 'Internado',
         pacienteId: pacienteRef.id,
-        dataEfetivacaoInternacao: serverTimestamp()
+        dataEfetivacaoInternacao: timestampAtualizacao,
+        atualizadoEm: timestampAtualizacao,
+        userName: currentUser?.nomeCompleto || 'Usuário'
       });
 
       await batch.commit();

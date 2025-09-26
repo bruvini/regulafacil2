@@ -19,7 +19,8 @@ import {
   updateDoc,
   doc,
   db,
-  arrayUnion
+  arrayUnion,
+  serverTimestamp
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
@@ -59,9 +60,11 @@ const InformacoesReservaModal = ({ isOpen, onClose, reserva }) => {
       };
 
       await updateDoc(
-        doc(db, 'artifacts/regulafacil/public/data/reservasExternas', reserva.id), 
+        doc(db, 'artifacts/regulafacil/public/data/reservasExternas', reserva.id),
         {
-          observacoes: arrayUnion(observacao)
+          observacoes: arrayUnion(observacao),
+          atualizadoEm: serverTimestamp(),
+          userName: currentUser?.nomeCompleto || 'Usuário Desconhecido'
         }
       );
 
