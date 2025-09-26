@@ -19,6 +19,7 @@ import {
   arrayUnion
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 
 const calcularIdade = (dataNascimento) => {
   if (!dataNascimento) return 0;
@@ -223,6 +224,7 @@ const getLeitosCompatíveis = (paciente, todosOsDados, modo = 'enfermaria') => {
 };
 
 const SelecionarLeitoModal = ({ isOpen, onClose, reserva, dadosHospital }) => {
+  const { currentUser } = useAuth();
   const { toast } = useToast();
 
   const {
@@ -386,7 +388,8 @@ const SelecionarLeitoModal = ({ isOpen, onClose, reserva, dadosHospital }) => {
 
       await logAction(
         'Reservas de Leitos',
-        `Leito ${leito.codigoLeito} reservado para: ${reserva.nomeCompleto}`
+        `Leito ${leito.codigoLeito} reservado para: ${reserva.nomeCompleto}`,
+        currentUser
       );
 
       toast({

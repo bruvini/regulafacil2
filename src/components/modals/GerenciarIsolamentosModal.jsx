@@ -21,6 +21,7 @@ import {
 } from '@/lib/firebase';
 import { db } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
 
 const GerenciarIsolamentosModal = ({ isOpen, onClose, pacientes, infeccoes }) => {
@@ -33,6 +34,7 @@ const GerenciarIsolamentosModal = ({ isOpen, onClose, pacientes, infeccoes }) =>
   const [infeccoesSelecionadas, setInfeccoesSelecionadas] = useState([]);
   const [dadosIsolamentos, setDadosIsolamentos] = useState({});
   const [loading, setLoading] = useState(false);
+  const { currentUser } = useAuth();
 
   const resetForm = () => {
     setEtapa(1);
@@ -122,7 +124,8 @@ const GerenciarIsolamentosModal = ({ isOpen, onClose, pacientes, infeccoes }) =>
 
       await logAction(
         "Gestão de Isolamentos",
-        `Isolamentos adicionados para ${pacienteSelecionado.nomePaciente}: ${nomeInfeccoes}`
+        `Isolamentos adicionados para ${pacienteSelecionado.nomePaciente}: ${nomeInfeccoes}`,
+        currentUser
       );
 
       toast({

@@ -50,6 +50,7 @@ import {
 import { ESPECIALIDADES_MEDICAS } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 
 const internacaoSchema = z.object({
   nomeCompleto: z.string().min(3, 'Informe o nome completo do paciente.'),
@@ -194,6 +195,7 @@ const InternacaoManualModal = ({ isOpen, onClose, leito }) => {
   const [dobPopoverOpen, setDobPopoverOpen] = useState(false);
   const [internacaoPopoverOpen, setInternacaoPopoverOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { currentUser } = useAuth();
 
   const form = useForm({
     resolver: zodResolver(internacaoSchema),
@@ -351,7 +353,8 @@ const InternacaoManualModal = ({ isOpen, onClose, leito }) => {
 
       await logAction(
         'Mapa de Leitos',
-        `Internação Manual - Paciente ${nomePaciente} internado manualmente no leito ${leito.codigoLeito || leito.codigo}.`
+        `Internação Manual - Paciente ${nomePaciente} internado manualmente no leito ${leito.codigoLeito || leito.codigo}.`,
+        currentUser
       );
 
       toast({

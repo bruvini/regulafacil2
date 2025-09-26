@@ -49,6 +49,7 @@ import {
   deleteDoc
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import LiberarLeitoModal from './modals/LiberarLeitoModal';
 import ObservacoesModal from './modals/ObservacoesModal';
@@ -92,6 +93,7 @@ const LeitoCard = ({
   onInternarManual
 }) => {
   const { toast } = useToast();
+  const { currentUser } = useAuth();
 
   const formatRegulacaoTempo = (valor) => {
     if (!valor) return null;
@@ -687,6 +689,7 @@ const MapaLeitosPanel = () => {
   const [leitos, setLeitos] = useState([]);
   const [pacientes, setPacientes] = useState([]);
   const [infeccoes, setInfeccoes] = useState([]);
+  const { currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [expandedSections, setExpandedSections] = useState({});
   const [expandedSetores, setExpandedSetores] = useState({});
@@ -780,7 +783,7 @@ const MapaLeitosPanel = () => {
           timestamp: new Date()
         })
       });
-      await logAction('Mapa de Leitos', `Leito '${modalBloquear.leito.codigoLeito}' foi bloqueado. Motivo: '${motivoBloqueio.trim()}'.`);
+      await logAction('Mapa de Leitos', `Leito '${modalBloquear.leito.codigoLeito}' foi bloqueado. Motivo: '${motivoBloqueio.trim()}'.`, currentUser);
       
       toast({
         title: "Leito bloqueado",
@@ -810,7 +813,7 @@ const MapaLeitosPanel = () => {
           timestamp: new Date()
         })
       });
-      await logAction('Mapa de Leitos', `Solicitada higienização para o leito '${leito.codigoLeito}'.`);
+      await logAction('Mapa de Leitos', `Solicitada higienização para o leito '${leito.codigoLeito}'.`, currentUser);
       
       toast({
         title: "Higienização solicitada",
@@ -839,7 +842,7 @@ const MapaLeitosPanel = () => {
           timestamp: new Date()
         })
       });
-      await logAction('Mapa de Leitos', `Leito '${leito.codigoLeito}' foi desbloqueado.`);
+      await logAction('Mapa de Leitos', `Leito '${leito.codigoLeito}' foi desbloqueado.`, currentUser);
       
       toast({
         title: "Leito desbloqueado",
@@ -868,7 +871,7 @@ const MapaLeitosPanel = () => {
           timestamp: new Date()
         })
       });
-      await logAction('Mapa de Leitos', `Higienização do leito '${leito.codigoLeito}' foi finalizada.`);
+      await logAction('Mapa de Leitos', `Higienização do leito '${leito.codigoLeito}' foi finalizada.`, currentUser);
       
       toast({
         title: "Higienização finalizada",
@@ -894,7 +897,8 @@ const MapaLeitosPanel = () => {
       });
       await logAction('Mapa de Leitos', !leito.higienizacaoPrioritaria
         ? `Higienização do leito '${leito.codigoLeito}' foi marcada como prioritária.`
-        : `Prioridade de higienização do leito '${leito.codigoLeito}' foi removida.`
+        : `Prioridade de higienização do leito '${leito.codigoLeito}' foi removida.`,
+        currentUser
       );
       
       toast({
@@ -928,7 +932,7 @@ const MapaLeitosPanel = () => {
         })
       });
       
-      await logAction('Mapa de Leitos', `Leito '${leito.codigoLeito}' foi liberado. Paciente '${paciente.nomePaciente}' foi dado alta.`);
+      await logAction('Mapa de Leitos', `Leito '${leito.codigoLeito}' foi liberado. Paciente '${paciente.nomePaciente}' foi dado alta.`, currentUser);
       
       toast({
         title: "Leito liberado",
@@ -959,7 +963,7 @@ const MapaLeitosPanel = () => {
           description: "Pedido de UTI foi removido.",
         });
         
-        await logAction('Mapa de Leitos', `Pedido de UTI do paciente '${paciente.nomePaciente}' foi removido.`);
+        await logAction('Mapa de Leitos', `Pedido de UTI do paciente '${paciente.nomePaciente}' foi removido.`, currentUser);
       } else {
         // Adicionar pedido de UTI
         await updateDoc(pacienteRef, {
@@ -973,7 +977,7 @@ const MapaLeitosPanel = () => {
           description: "Pedido de UTI foi registrado.",
         });
         
-        await logAction('Mapa de Leitos', `UTI solicitada para o paciente '${paciente.nomePaciente}'.`);
+        await logAction('Mapa de Leitos', `UTI solicitada para o paciente '${paciente.nomePaciente}'.`, currentUser);
       }
     } catch (error) {
       console.error('Erro ao gerenciar pedido de UTI:', error);
@@ -1000,7 +1004,7 @@ const MapaLeitosPanel = () => {
           description: "Registro de provável alta foi removido.",
         });
         
-        await logAction('Mapa de Leitos', `Provável alta do paciente '${paciente.nomePaciente}' foi removida.`);
+        await logAction('Mapa de Leitos', `Provável alta do paciente '${paciente.nomePaciente}' foi removida.`, currentUser);
       } else {
         // Adicionar provável alta
         await updateDoc(pacienteRef, {
@@ -1014,7 +1018,7 @@ const MapaLeitosPanel = () => {
           description: "Provável alta foi sinalizada.",
         });
         
-        await logAction('Mapa de Leitos', `Provável alta sinalizada para o paciente '${paciente.nomePaciente}'.`);
+        await logAction('Mapa de Leitos', `Provável alta sinalizada para o paciente '${paciente.nomePaciente}'.`, currentUser);
       }
     } catch (error) {
       console.error('Erro ao gerenciar provável alta:', error);
@@ -1041,7 +1045,7 @@ const MapaLeitosPanel = () => {
           description: "Registro de alta no leito foi removido.",
         });
         
-        await logAction('Mapa de Leitos', `Alta no leito do paciente '${paciente.nomePaciente}' foi removida.`);
+        await logAction('Mapa de Leitos', `Alta no leito do paciente '${paciente.nomePaciente}' foi removida.`, currentUser);
       } else {
         // Abrir modal para coletar dados
         setModalAltaNoLeito({ open: true, paciente });
@@ -1073,7 +1077,7 @@ const MapaLeitosPanel = () => {
         description: "Nova observação foi registrada.",
       });
       
-      await logAction('Mapa de Leitos', `Nova observação adicionada para o paciente '${modalObservacoes.paciente.nomePaciente}'.`);
+      await logAction('Mapa de Leitos', `Nova observação adicionada para o paciente '${modalObservacoes.paciente.nomePaciente}'.`, currentUser);
       
       setModalObservacoes({ open: false, paciente: null });
     } catch (error) {
@@ -1133,8 +1137,9 @@ const MapaLeitosPanel = () => {
         description: `Paciente ${paciente.nomePaciente} foi movido para o leito ${leitoDestino.codigoLeito}.`,
       });
       
-      await logAction('Mapa de Leitos', 
-        `Paciente '${paciente.nomePaciente}' foi movido do leito '${leitoOrigem.codigoLeito}' para o leito '${leitoDestino.codigoLeito}'.`
+      await logAction('Mapa de Leitos',
+        `Paciente '${paciente.nomePaciente}' foi movido do leito '${leitoOrigem.codigoLeito}' para o leito '${leitoDestino.codigoLeito}'.`,
+        currentUser
       );
       
       setModalMoverPaciente({ open: false, leito: null, paciente: null });
@@ -1165,8 +1170,9 @@ const MapaLeitosPanel = () => {
         description: "Pedido de remanejamento foi registrado.",
       });
       
-      await logAction('Mapa de Leitos', 
-        `Remanejamento solicitado para o paciente '${modalRemanejamento.paciente.nomePaciente}'. Motivo: ${dados.tipo}`
+      await logAction('Mapa de Leitos',
+        `Remanejamento solicitado para o paciente '${modalRemanejamento.paciente.nomePaciente}'. Motivo: ${dados.tipo}`,
+        currentUser
       );
       
       setModalRemanejamento({ open: false, paciente: null });
@@ -1198,8 +1204,9 @@ const MapaLeitosPanel = () => {
         description: "Pedido de transferência externa foi registrado.",
       });
       
-      await logAction('Mapa de Leitos', 
-        `Transferência externa solicitada para o paciente '${modalTransferenciaExterna.paciente.nomePaciente}'. Motivo: ${dados.motivo}, Destino: ${dados.destino}`
+      await logAction('Mapa de Leitos',
+        `Transferência externa solicitada para o paciente '${modalTransferenciaExterna.paciente.nomePaciente}'. Motivo: ${dados.motivo}, Destino: ${dados.destino}`,
+        currentUser
       );
       
       setModalTransferenciaExterna({ open: false, paciente: null });
@@ -1230,8 +1237,9 @@ const MapaLeitosPanel = () => {
         description: "Alta no leito foi sinalizada.",
       });
       
-      await logAction('Mapa de Leitos', 
-        `Alta no leito sinalizada para o paciente '${modalAltaNoLeito.paciente.nomePaciente}'. Motivo: ${dados.motivo}`
+      await logAction('Mapa de Leitos',
+        `Alta no leito sinalizada para o paciente '${modalAltaNoLeito.paciente.nomePaciente}'. Motivo: ${dados.motivo}`,
+        currentUser
       );
       
       setModalAltaNoLeito({ open: false, paciente: null });

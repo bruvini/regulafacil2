@@ -55,6 +55,7 @@ import {
   deleteField
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 import { ESPECIALIDADES_MEDICAS, ESPECIALIDADES_ONCOLOGIA } from '@/lib/constants';
 
 // Sub-modais
@@ -73,6 +74,7 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
     quartos: [],
     loading: true
   });
+  const { currentUser } = useAuth();
 
   // Estados dos sub-modais
   const [subModals, setSubModals] = useState({
@@ -301,7 +303,8 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
       // Log de auditoria
       await logAction(
         'Reservas de Leitos',
-        `Nova reserva criada: ${novaReserva.nomeCompleto} (${novaReserva.origem})`
+        `Nova reserva criada: ${novaReserva.nomeCompleto} (${novaReserva.origem})`,
+        currentUser
       );
 
       toast({
@@ -787,7 +790,8 @@ const ReservaCard = ({ reserva, onOpenSubModal, leitos }) => {
 
       await logAction(
         'Reservas de Leitos',
-        `Pedido cancelado: ${reserva.nomeCompleto}`
+        `Pedido cancelado: ${reserva.nomeCompleto}`,
+        currentUser
       );
 
       toast({

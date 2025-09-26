@@ -15,6 +15,7 @@ import {
 } from '@/lib/firebase';
 import { db } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
 
 const GerenciarInfeccoesModal = ({ isOpen, onClose, infeccoes }) => {
@@ -24,6 +25,7 @@ const GerenciarInfeccoesModal = ({ isOpen, onClose, infeccoes }) => {
     siglaInfeccao: ''
   });
   const [loading, setLoading] = useState(false);
+  const { currentUser } = useAuth();
 
   const resetForm = () => {
     setNovaInfeccao({
@@ -57,7 +59,8 @@ const GerenciarInfeccoesModal = ({ isOpen, onClose, infeccoes }) => {
 
       await logAction(
         "Gestão de Isolamentos",
-        `Nova infecção cadastrada: ${novaInfeccao.nomeInfeccao} (${novaInfeccao.siglaInfeccao})`
+        `Nova infecção cadastrada: ${novaInfeccao.nomeInfeccao} (${novaInfeccao.siglaInfeccao})`,
+        currentUser
       );
 
       toast({
@@ -98,7 +101,8 @@ const GerenciarInfeccoesModal = ({ isOpen, onClose, infeccoes }) => {
 
       await logAction(
         "Gestão de Isolamentos",
-        `Infecção editada: ${novaInfeccao.nomeInfeccao} (${novaInfeccao.siglaInfeccao})`
+        `Infecção editada: ${novaInfeccao.nomeInfeccao} (${novaInfeccao.siglaInfeccao})`,
+        currentUser
       );
 
       toast({
@@ -127,7 +131,8 @@ const GerenciarInfeccoesModal = ({ isOpen, onClose, infeccoes }) => {
 
       await logAction(
         "Gestão de Isolamentos",
-        `Infecção excluída: ${infeccao.nomeInfeccao} (${infeccao.siglaInfeccao})`
+        `Infecção excluída: ${infeccao.nomeInfeccao} (${infeccao.siglaInfeccao})`,
+        currentUser
       );
 
       toast({

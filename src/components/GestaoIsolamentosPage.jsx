@@ -25,6 +25,7 @@ import {
   serverTimestamp
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import GerenciarInfeccoesModal from './modals/GerenciarInfeccoesModal';
@@ -50,6 +51,7 @@ const GestaoIsolamentosPage = () => {
   const [showDescartarIsolamento, setShowDescartarIsolamento] = useState(false);
   const [showFinalizarIsolamento, setShowFinalizarIsolamento] = useState(false);
   const [showAlterarData, setShowAlterarData] = useState(false);
+  const { currentUser } = useAuth();
   
   // Estados para ações específicas
   const [isolamentoSelecionado, setIsolamentoSelecionado] = useState(null);
@@ -340,7 +342,8 @@ const GestaoIsolamentosPage = () => {
 
           await logAction(
             'Gestão de Isolamentos',
-            `Pedido de remanejamento automático criado para o paciente '${paciente.nomePaciente}' devido a risco de contaminação.`
+            `Pedido de remanejamento automático criado para o paciente '${paciente.nomePaciente}' devido a risco de contaminação.`,
+            currentUser
           );
         } catch (error) {
           console.error('Erro ao criar pedido automático de remanejamento:', error);
@@ -365,7 +368,8 @@ const GestaoIsolamentosPage = () => {
 
           await logAction(
             'Gestão de Isolamentos',
-            `Pedido de remanejamento automático do paciente '${paciente.nomePaciente}' foi resolvido.`
+            `Pedido de remanejamento automático do paciente '${paciente.nomePaciente}' foi resolvido.`,
+            currentUser
           );
         } catch (error) {
           console.error('Erro ao resolver pedido automático de remanejamento:', error);

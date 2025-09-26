@@ -18,6 +18,7 @@ import {
 } from '@/lib/firebase';
 import { db, getLeitosCollection, getPacientesCollection } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 
 const ConfirmarRegulacaoModal = ({ 
   isOpen, 
@@ -31,6 +32,7 @@ const ConfirmarRegulacaoModal = ({
 }) => {
   const [observacoes, setObservacoes] = useState('');
   const [processando, setProcessando] = useState(false);
+  const { currentUser } = useAuth();
 
   // Gerar mensagem formatada para WhatsApp
   const mensagemWhatsApp = useMemo(() => {
@@ -167,7 +169,8 @@ const ConfirmarRegulacaoModal = ({
       // Log de auditoria
       await logAction(
         'Regulação de Leitos',
-        `Regulação iniciada para o paciente '${paciente.nomePaciente}' do leito '${leitoOrigem.codigoLeito}' para o leito '${leitoDestino.codigoLeito}'`
+        `Regulação iniciada para o paciente '${paciente.nomePaciente}' do leito '${leitoOrigem.codigoLeito}' para o leito '${leitoDestino.codigoLeito}'`,
+        currentUser
       );
 
       // Mostrar toast de sucesso

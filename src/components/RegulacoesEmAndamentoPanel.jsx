@@ -435,8 +435,9 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
       // Auditoria detalhada
       const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
       await logAction(
-        'Regulação de Leitos', 
-        `Regulação para o paciente '${paciente.nomePaciente}' (do leito ${leitoOrigem.siglaSetor} - ${leitoOrigem.codigo} para ${leitoDestino.siglaSetor} - ${leitoDestino.codigo}) foi concluída por ${nomeUsuario} em ${tempoRegulacao} minutos.`
+        'Regulação de Leitos',
+        `Regulação para o paciente '${paciente.nomePaciente}' (do leito ${leitoOrigem.siglaSetor} - ${leitoOrigem.codigo} para ${leitoDestino.siglaSetor} - ${leitoDestino.codigo}) foi concluída por ${nomeUsuario} em ${tempoRegulacao} minutos.`,
+        currentUser
       );
       
       // Log condicional de UTI
@@ -445,7 +446,8 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
         const tempoEspera = differenceInMinutes(new Date(), inicioUTI);
         await logAction(
           'Regulação de Leitos',
-          `Pedido de UTI do paciente '${paciente.nomePaciente}' foi atendido. Tempo de espera: ${tempoEspera} minutos.`
+          `Pedido de UTI do paciente '${paciente.nomePaciente}' foi atendido. Tempo de espera: ${tempoEspera} minutos.`,
+          currentUser
         );
       }
       
@@ -508,7 +510,8 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
       const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
       await logAction(
         'Regulação de Leitos',
-        `Regulação para o paciente '${paciente.nomePaciente}' (do leito ${leitoOrigem.siglaSetor} - ${leitoOrigem.codigo} para ${leitoDestino.siglaSetor} - ${leitoDestino.codigo}) foi CANCELADA por ${nomeUsuario}. Motivo: '${justificativa}'.`
+        `Regulação para o paciente '${paciente.nomePaciente}' (do leito ${leitoOrigem.siglaSetor} - ${leitoOrigem.codigo} para ${leitoDestino.siglaSetor} - ${leitoDestino.codigo}) foi CANCELADA por ${nomeUsuario}. Motivo: '${justificativa}'.`,
+        currentUser
       );
       
       toast({

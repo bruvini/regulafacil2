@@ -4,19 +4,21 @@ import { getAuditoriaCollection } from '@/lib/firebase';
 
 /**
  * Registra uma ação de auditoria no Firestore
- * @param {string} pagina - Nome da página onde ocorreu a ação (ex: "Gerenciamento de Leitos", "Mapa de Leitos")
- * @param {string} mensagemAcao - Descrição legível da ação realizada
+ * @param {string} action - Nome da ação ou contexto (ex: "Gerenciamento de Leitos", "Mapa de Leitos")
+ * @param {any} details - Informações adicionais sobre a ação realizada
+ * @param {object} user - Usuário autenticado responsável pela ação
  */
-export async function logAction(pagina, mensagemAcao) {
+export const logAction = async (action, details, user) => {
   try {
     await addDoc(getAuditoriaCollection(), {
       timestamp: serverTimestamp(),
-      usuario: 'Usuário do Sistema',
-      pagina,
-      acao: mensagemAcao,
+      action,
+      details,
+      userId: user?.uid || 'sistema',
+      userName: user?.nomeCompleto || 'Sistema',
     });
   } catch (err) {
     // Não bloquear o fluxo da aplicação por erro de auditoria
     console.error('Falha ao registrar auditoria:', err);
   }
-}
+};

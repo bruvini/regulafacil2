@@ -38,6 +38,7 @@ import {
 } from '@/lib/firebase';
 import { getPacientesCollection, getLeitosCollection } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 import { ESPECIALIDADES_MEDICAS } from '@/lib/constants';
 
 const ConfirmarInternacaoModal = ({ isOpen, onClose, reserva }) => {
@@ -45,6 +46,7 @@ const ConfirmarInternacaoModal = ({ isOpen, onClose, reserva }) => {
   const [showAlertDialog, setShowAlertDialog] = useState(false);
   const [showFormDialog, setShowFormDialog] = useState(false);
   const [internando, setInternando] = useState(false);
+  const { currentUser } = useAuth();
 
   // Dados da internação
   const [dadosInternacao, setDadosInternacao] = useState({
@@ -145,7 +147,8 @@ const ConfirmarInternacaoModal = ({ isOpen, onClose, reserva }) => {
 
       await logAction(
         'Reservas de Leitos',
-        `Internação confirmada: ${reserva.nomeCompleto} - Especialidade: ${dadosInternacao.especialidade}`
+        `Internação confirmada: ${reserva.nomeCompleto} - Especialidade: ${dadosInternacao.especialidade}`,
+        currentUser
       );
 
       toast({

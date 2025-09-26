@@ -37,10 +37,12 @@ import {
   db
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 import { ESPECIALIDADES_MEDICAS } from '@/lib/constants';
 
 const ConfirmarInternacaoExternaModal = ({ isOpen, onClose, reserva, leito }) => {
   const { toast } = useToast();
+  const { currentUser } = useAuth();
   const [alertaConfirmacaoAberto, setAlertaConfirmacaoAberto] = useState(false);
   const [formAberto, setFormAberto] = useState(false);
   const [processando, setProcessando] = useState(false);
@@ -213,7 +215,8 @@ const ConfirmarInternacaoExternaModal = ({ isOpen, onClose, reserva, leito }) =>
 
       await logAction(
         'Reservas de Leitos',
-        `Internação confirmada para reserva externa: ${reserva.nomeCompleto}`
+        `Internação confirmada para reserva externa: ${reserva.nomeCompleto}`,
+        currentUser
       );
 
       toast({

@@ -37,6 +37,7 @@ import {
   db
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Lista de páginas disponíveis para permissões
 const PAGINAS_DISPONIVEIS = [
@@ -76,6 +77,7 @@ const ModalUsuario = ({ isOpen, onClose, modo, usuario, onSave }) => {
   const [permissoesSelecionadas, setPermissoesSelecionadas] = useState([]);
   const [loading, setLoading] = useState(false);
   const tipoUsuarioSelecionado = watch('tipoUsuario');
+  const { currentUser } = useAuth();
 
   // Carregar dados do usuário quando for edição/visualização
   useEffect(() => {
@@ -178,7 +180,7 @@ const ModalUsuario = ({ isOpen, onClose, modo, usuario, onSave }) => {
         dadosUsuario.uid = userCredential.user.uid;
         await addDoc(getUsuariosCollection(), dadosUsuario);
 
-        await logAction('Gestão de Usuários', `Usuário criado: ${dadosUsuario.nomeCompleto} (${dadosUsuario.emailInstitucional})`);
+        await logAction('Gestão de Usuários', `Usuário criado: ${dadosUsuario.nomeCompleto} (${dadosUsuario.emailInstitucional})`, currentUser);
         
         toast({
           title: "Usuário criado",
@@ -189,7 +191,7 @@ const ModalUsuario = ({ isOpen, onClose, modo, usuario, onSave }) => {
         const docRef = doc(getUsuariosCollection(), usuario.id);
         await setDoc(docRef, dadosUsuario, { merge: true });
 
-        await logAction('Gestão de Usuários', `Usuário editado: ${dadosUsuario.nomeCompleto} (${dadosUsuario.emailInstitucional})`);
+        await logAction('Gestão de Usuários', `Usuário editado: ${dadosUsuario.nomeCompleto} (${dadosUsuario.emailInstitucional})`, currentUser);
         
         toast({
           title: "Usuário atualizado",
@@ -349,6 +351,7 @@ const GestaoUsuariosPage = () => {
   const [modoModal, setModoModal] = useState('criar');
   const [usuarioSelecionado, setUsuarioSelecionado] = useState(null);
   const [loading, setLoading] = useState(true);
+  const { currentUser } = useAuth();
 
   // Buscar usuários em tempo real
   useEffect(() => {
@@ -397,7 +400,7 @@ const GestaoUsuariosPage = () => {
       const docRef = doc(getUsuariosCollection(), usuario.id);
       await deleteDoc(docRef);
 
-      await logAction('Gestão de Usuários', `Usuário excluído: ${usuario.nomeCompleto} (${usuario.emailInstitucional})`);
+      await logAction('Gestão de Usuários', `Usuário excluído: ${usuario.nomeCompleto} (${usuario.emailInstitucional})`, currentUser);
 
       toast({
         title: "Usuário excluído",
