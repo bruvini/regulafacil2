@@ -172,7 +172,7 @@ const normalizarRestricaoIsolamentos = (lista) => {
   return Array.from(set);
 };
 
-const obterLeitosDoQuarto = (leito, { quartosPorId, leitosPorId, todosLeitos }) => {
+const obterLeitosDoQuarto = (leito, { quartosPorId, leitosPorId, todosOsLeitos }) => {
   if (!leito?.quartoId) return [];
 
   const quarto = quartosPorId.get(leito.quartoId);
@@ -182,7 +182,7 @@ const obterLeitosDoQuarto = (leito, { quartosPorId, leitosPorId, todosLeitos }) 
       .filter(Boolean);
   }
 
-  return todosLeitos.filter((item) => item.quartoId === leito.quartoId);
+  return todosOsLeitos.filter((item) => item.quartoId === leito.quartoId);
 };
 
 export const getIsolamentosAtivosDetalhados = (lista) =>
