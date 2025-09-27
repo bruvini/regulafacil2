@@ -13,6 +13,7 @@ export const USERS_COLLECTION_PATH = `${BASE_PATH}/usuarios`;
 export const RESERVAS_EXTERNAS_COLLECTION_PATH = `${BASE_PATH}/reservasExternas`;
 export const HISTORICO_OCUPACOES_COLLECTION_PATH = `${BASE_PATH}/historicoOcupacoes`;
 export const DEFINICOES_INDICADORES_COLLECTION_PATH = `${BASE_PATH}/definicoesIndicadores`;
+export const HISTORICO_REGULACOES_COLLECTION_PATH = `${BASE_PATH}/historicoRegulacoes`;
 
 // Export individual path components for flexibility
 export const APP_ID = 'regulafacil';
