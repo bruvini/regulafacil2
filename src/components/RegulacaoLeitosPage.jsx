@@ -11,6 +11,7 @@ import {
   PieChart
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getLeitosCompativeis, getChaveIsolamentosAtivos } from "@/lib/compatibilidadeLeitos";
 import {
   getPacientesCollection,
   getLeitosCollection,
@@ -111,44 +112,12 @@ const RegulacaoLeitosPage = () => {
       return [];
     }
 
-    // Utility functions
     const normalizarTexto = (valor) =>
       String(valor ?? '')
         .normalize('NFD')
         .replace(/\p{Diacritic}/gu, '')
         .trim()
         .toLowerCase();
-
-    const normalizarSexo = (valor) => {
-      const sexo = String(valor ?? '').trim().toUpperCase();
-      if (sexo.startsWith('M')) return 'M';
-      if (sexo.startsWith('F')) return 'F';
-      return '';
-    };
-
-    const normalizarIsolamentos = (lista) => {
-      if (!lista) return '';
-      const valores = (Array.isArray(lista) ? lista : [lista])
-        .map((item) => {
-          if (!item) return '';
-          if (typeof item === 'string' || typeof item === 'number') {
-            return String(item).trim().toLowerCase();
-          }
-          const identificador =
-            item.infecaoId ||
-            item.infeccaoId ||
-            item.id ||
-            item.siglaInfeccao ||
-            item.sigla ||
-            item.codigo ||
-            item.nome ||
-            '';
-          return String(identificador).trim().toLowerCase();
-        })
-        .filter(Boolean)
-        .sort();
-      return valores.join('|');
-    };
 
     const parseData = (valor) => {
       if (!valor) return null;
@@ -197,140 +166,14 @@ const RegulacaoLeitosPage = () => {
       return diff / (1000 * 60 * 60);
     };
 
-    // Define universes of analysis
-    const setoresOrigemElegiveis = new Set([
-      'PS DECISÃO CLINICA',
-      'PS DECISÃO CIRURGICA', 
-      'CC - RECUPERAÇÃO'
-    ]);
-
-    const setoresEnfermariaElegiveis = new Set([
-      'UNID. CIRURGICA',
-      'UNID. CLINICA MEDICA',
-      'UNID. JS ORTOPEDIA',
-      'UNID. INT. GERAL - UIG',
-      'UNID. ONCOLOGIA',
-      'UNID. NEFROLOGIA TRANSPLANTE'
-    ]);
-
-    // Filter relevant patients
-    const pacientesRelevantes = pacientes.filter((paciente) => {
-      if (paciente?.regulacaoAtiva) return false;
-      const setorOrigem = normalizarTexto(paciente?.setorOrigem || '');
-      return Array.from(setoresOrigemElegiveis).some(setor => 
-        normalizarTexto(setor) === setorOrigem
-      );
-    });
-
-    if (!pacientesRelevantes.length) {
-      return [];
-    }
-
-    // Maps for quick lookup
-    const setoresPorId = new Map(setores.map((setor) => [setor.id, setor]));
-    const leitosPorId = new Map(leitos.map((leito) => [leito.id, leito]));
-    const quartosPorId = new Map((quartos || []).map((quarto) => [quarto.id, quarto]));
-    const pacientesPorLeito = new Map();
-
-    pacientes.forEach((paciente) => {
-      if (paciente?.leitoId) {
-        pacientesPorLeito.set(paciente.leitoId, paciente);
-      }
-    });
-
-    // Filter available beds
-    const leitosDisponiveis = leitos.filter((leito) => {
-      const setor = setoresPorId.get(leito.setorId);
-      if (!setor) return false;
-      
-      // Check if it's a ward sector
-      const setorNome = normalizarTexto(setor.nomeSetor || setor.siglaSetor || '');
-      const isEnfermaria = Array.from(setoresEnfermariaElegiveis).some(enfermaria =>
-        normalizarTexto(enfermaria) === setorNome
-      );
-      if (!isEnfermaria) return false;
-
-      // Check bed status
-      const statusLeito = normalizarTexto(leito.status ?? leito.statusLeito);
-      if (!['vago', 'higienizacao'].includes(statusLeito)) return false;
-
-      // Check if bed has active regulations or reservations
-      if (leito.regulacaoEmAndamento || leito.reservaExterna || leito.regulacaoReserva) {
-        return false;
-      }
-
-      return true;
-    });
-
-    if (!leitosDisponiveis.length) {
-      return [];
-    }
-
-    // Helper functions for room analysis
-    const obterLeitosDoQuarto = (leito) => {
-      if (!leito?.quartoId) return [];
-      const quarto = quartosPorId.get(leito.quartoId);
-      if (quarto && Array.isArray(quarto.leitosIds) && quarto.leitosIds.length > 0) {
-        return quarto.leitosIds
-          .map((leitoId) => leitosPorId.get(leitoId))
-          .filter(Boolean);
-      }
-      return leitos.filter((item) => item.quartoId === leito.quartoId);
-    };
-
-    const obterOcupantesDoQuarto = (leito) =>
-      obterLeitosDoQuarto(leito)
-        .filter((outroLeito) => outroLeito.id !== leito.id)
-        .map((outroLeito) => pacientesPorLeito.get(outroLeito.id))
-        .filter(Boolean);
-
-    const determinarSexoCompativel = (leito) => {
-      const ocupantes = obterOcupantesDoQuarto(leito);
-      if (!ocupantes.length) return 'AMBOS';
-      
-      const sexos = new Set(
-        ocupantes
-          .map((ocupante) => normalizarSexo(ocupante?.sexo))
-          .filter(Boolean)
-      );
-      
-      if (sexos.size === 1) {
-        const [valor] = Array.from(sexos);
-        return valor; // 'M' or 'F'
-      }
-      
-      return 'AMBOS'; // Mixed room
-    };
-
-    const determinarIsolamentoExigido = (leito) => {
-      const ocupantes = obterOcupantesDoQuarto(leito);
-      if (!ocupantes.length) return '';
-
-      const chaves = new Set();
-      ocupantes.forEach((ocupante) => {
-        const chave = normalizarIsolamentos(ocupante?.isolamentos) || '';
-        chaves.add(chave);
-      });
-
-      if (chaves.size === 1) {
-        const [valor] = Array.from(chaves);
-        return valor || '';
-      }
-
-      return '__misto__'; // Mixed isolations - not eligible
-    };
-
-    // Priority ranking function
     const priorizarPacientes = (lista) => {
       return [...lista].sort((a, b) => {
-        // 1st: Isolation (with isolation comes first)
-        const aIsolamento = normalizarIsolamentos(a?.isolamentos) !== '';
-        const bIsolamento = normalizarIsolamentos(b?.isolamentos) !== '';
+        const aIsolamento = getChaveIsolamentosAtivos(a?.isolamentos) !== '';
+        const bIsolamento = getChaveIsolamentosAtivos(b?.isolamentos) !== '';
         if (aIsolamento !== bIsolamento) {
           return aIsolamento ? -1 : 1;
         }
 
-        // 2nd: Time hospitalized (longer time comes first)
         const tempoA = calcularTempoInternacaoHoras(a?.dataInternacao);
         const tempoB = calcularTempoInternacaoHoras(b?.dataInternacao);
         const tempoANum = Number.isFinite(tempoA) ? tempoA : -Infinity;
@@ -340,107 +183,127 @@ const RegulacaoLeitosPage = () => {
           return tempoBNum - tempoANum;
         }
 
-        // 3rd: Age (older comes first)
         const idadeA = calcularIdade(a?.dataNascimento);
         const idadeB = calcularIdade(b?.dataNascimento);
         return idadeB - idadeA;
       });
     };
 
-    // Main matchmaking algorithm
+    const setoresOrigemElegiveis = new Set(
+      ['PS DECISÃO CLINICA', 'PS DECISÃO CIRURGICA', 'CC - RECUPERAÇÃO']
+        .map((nome) => normalizarTexto(nome))
+    );
+
+    const setoresEnfermariaElegiveis = new Set(
+      [
+        'UNID. CIRURGICA',
+        'UNID. CLINICA MEDICA',
+        'UNID. JS ORTOPEDIA',
+        'UNID. INT. GERAL - UIG',
+        'UNID. ONCOLOGIA',
+        'UNID. NEFROLOGIA TRANSPLANTE'
+      ].map((nome) => normalizarTexto(nome))
+    );
+
+    const pacientesRelevantes = pacientes.filter((paciente) => {
+      if (paciente?.regulacaoAtiva) return false;
+      const setorOrigem = normalizarTexto(paciente?.setorOrigem || '');
+      return setoresOrigemElegiveis.has(setorOrigem);
+    });
+
+    if (!pacientesRelevantes.length) {
+      return [];
+    }
+
+    const setoresPorId = new Map(setores.map((setor) => [setor.id, setor]));
+    const setoresDestinoIds = new Set(
+      setores
+        .filter((setor) => {
+          const nomeNormalizado = normalizarTexto(setor.nomeSetor || setor.siglaSetor || '');
+          return setoresEnfermariaElegiveis.has(nomeNormalizado);
+        })
+        .map((setor) => String(setor.id))
+    );
+
+    if (!setoresDestinoIds.size) {
+      return [];
+    }
+
+    const opcoesCompatibilidade = {
+      setores,
+      quartos,
+      tiposSetorPermitidos: ['enfermaria'],
+      setoresPermitidos: setoresDestinoIds,
+    };
+
+    const sugestoesPorLeito = new Map();
+
+    pacientesRelevantes.forEach((pacienteAtual) => {
+      const leitosCompativeis = getLeitosCompativeis(
+        pacienteAtual,
+        leitos,
+        pacientes,
+        opcoesCompatibilidade
+      );
+
+      leitosCompativeis.forEach((leitoAtual) => {
+        if (!leitoAtual?.id) return;
+        if (!sugestoesPorLeito.has(leitoAtual.id)) {
+          sugestoesPorLeito.set(leitoAtual.id, {
+            leito: leitoAtual,
+            pacientes: [],
+          });
+        }
+        sugestoesPorLeito.get(leitoAtual.id).pacientes.push(pacienteAtual);
+      });
+    });
+
+    if (!sugestoesPorLeito.size) {
+      return [];
+    }
+
     const sugestoesPorSetor = new Map();
 
-    leitosDisponiveis.forEach((leito) => {
-      const setor = setoresPorId.get(leito.setorId);
+    sugestoesPorLeito.forEach(({ leito: leitoAtual, pacientes: pacientesElegiveis }) => {
+      if (!pacientesElegiveis.length) return;
+
+      const setor = setoresPorId.get(leitoAtual.setorId);
       if (!setor) return;
 
-      // Analyze room cohort
-      const sexoCompativel = determinarSexoCompativel(leito);
-      const isolamentoExigido = determinarIsolamentoExigido(leito);
-
-      // Skip beds with mixed isolations
-      if (isolamentoExigido === '__misto__') {
-        return;
-      }
-
-      // Filter eligible patients
-      const pacientesElegiveis = pacientesRelevantes.filter((paciente) => {
-        // PCP rules (origin sector)
-        if (leito.isPCP) {
-          const setorOrigem = normalizarTexto(paciente?.setorOrigem || '');
-          if (normalizarTexto('CC - RECUPERAÇÃO') === setorOrigem) {
-            return false;
-          }
-        }
-
-        // PCP rules (profile)
-        if (leito.isPCP) {
-          const idade = calcularIdade(paciente?.dataNascimento);
-          if (idade < 18 || idade > 60) {
-            return false;
-          }
-          const chaveIsolamento = normalizarIsolamentos(paciente?.isolamentos);
-          if (chaveIsolamento !== '') {
-            return false;
-          }
-        }
-
-        // Gender rule
-        if (sexoCompativel !== 'AMBOS') {
-          const sexoPaciente = normalizarSexo(paciente?.sexo);
-          if (!sexoPaciente || sexoPaciente !== sexoCompativel) {
-            return false;
-          }
-        }
-
-        // Isolation rule
-        const chaveIsolamentoPaciente = normalizarIsolamentos(paciente?.isolamentos);
-        if (chaveIsolamentoPaciente !== isolamentoExigido) {
-          return false;
-        }
-
-        return true;
-      });
-
-      if (!pacientesElegiveis.length) {
-        return;
-      }
-
-      // Rank patients by priority
-      const pacientesOrdenados = priorizarPacientes(pacientesElegiveis);
-
-      // Create suggestion
       if (!sugestoesPorSetor.has(setor.id)) {
         sugestoesPorSetor.set(setor.id, {
           setorId: setor.id,
           setorNome: setor.nomeSetor || setor.siglaSetor || 'Setor sem nome',
           setorSigla: setor.siglaSetor || '',
-          sugestoes: []
+          sugestoes: [],
         });
       }
 
       const grupo = sugestoesPorSetor.get(setor.id);
       grupo.sugestoes.push({
         leito: {
-          ...leito,
+          ...leitoAtual,
           siglaSetor: setor.siglaSetor || '',
-          nomeSetor: setor.nomeSetor || ''
+          nomeSetor: setor.nomeSetor || '',
         },
-        pacientesElegiveis: pacientesOrdenados
+        pacientesElegiveis: priorizarPacientes(pacientesElegiveis),
       });
     });
 
-    // Return grouped suggestions sorted by sector name
+    if (!sugestoesPorSetor.size) {
+      return [];
+    }
+
     return Array.from(sugestoesPorSetor.values())
       .map((grupo) => ({
         ...grupo,
         sugestoes: grupo.sugestoes.sort((a, b) => {
           const codigoA = String(a.leito.codigoLeito || '');
           const codigoB = String(b.leito.codigoLeito || '');
-          return codigoA.localeCompare(codigoB, 'pt-BR', { numeric: true });
-        })
+          return codigoA.localeCompare(codigoB, 'pt-BR', { numeric: true, sensitivity: 'base' });
+        }),
       }))
-      .sort((a, b) => a.setorNome.localeCompare(b.setorNome, 'pt-BR'));
+      .sort((a, b) => a.setorNome.localeCompare(b.setorNome, 'pt-BR', { sensitivity: 'base' }));
   }, [leitos, setores, pacientes, quartos]);
 
   const temSugestoes = sugestoes.length > 0;
