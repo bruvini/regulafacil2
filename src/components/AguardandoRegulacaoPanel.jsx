@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowRightCircle, LogOut, Users } from "lucide-react";
+import { ArrowRightCircle, LogOut, Users, Shield } from "lucide-react";
 import { intervalToDuration } from 'date-fns';
 import { 
   getSetoresCollection, 
@@ -12,6 +12,7 @@ import {
   onSnapshot
 } from '@/lib/firebase';
 import RegularPacienteModal from '@/components/modals/RegularPacienteModal';
+import { getIsolamentosAtivosDetalhados } from "@/lib/compatibilidadeLeitos";
 
 const normalizarTexto = (texto) =>
   String(texto || '')
@@ -312,6 +313,7 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
     const sexoSigla = sexoNormalizado === 'M' || sexoNormalizado === 'MASCULINO' ? 'M' : 'F';
     const tempoInternacao = calcularTempoInternacao(paciente.dataInternacao);
     const mostrarTempo = setor === "PS DECISÃO CLINICA" || setor === "PS DECISÃO CIRURGICA";
+    const isolamentosAtivos = getIsolamentosAtivosDetalhados(paciente.isolamentos);
 
     return (
       <Card className="p-4 hover:shadow-md transition-shadow border border-muted">
@@ -338,6 +340,21 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
             <div className="text-xs text-muted-foreground">
               <span className="font-medium">Tempo: </span>
               {tempoInternacao}
+            </div>
+          )}
+
+          {isolamentosAtivos.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {isolamentosAtivos.map((iso, index) => (
+                <Badge
+                  key={`${paciente.id || paciente.nomePaciente || 'paciente'}-${iso.sigla || iso.nome || 'iso'}-${index}`}
+                  variant="destructive"
+                  className="text-xs flex items-center gap-1"
+                >
+                  <Shield className="h-3 w-3" />
+                  {iso.sigla || iso.nome}
+                </Badge>
+              ))}
             </div>
           )}
 
