@@ -290,7 +290,7 @@ export const getLeitosCompativeis = (
     }
 
     if (leito.quartoId) {
-      const leitosDoQuarto = obterLeitosDoQuarto(leito, { quartosPorId, leitosPorId, todosLeitos });
+      const leitosDoQuarto = obterLeitosDoQuarto(leito, { quartosPorId, leitosPorId, todosOsLeitos });
       const ocupantes = leitosDoQuarto
         .filter((outroLeito) => outroLeito.id !== leito.id)
         .map((outroLeito) => pacientesPorLeito.get(outroLeito.id))
