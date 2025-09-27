@@ -435,6 +435,7 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
       batch.set(
         historicoRef,
         {
+          status: 'Concluída',
           dataConclusao: serverTimestamp(),
           userNameConclusao: nomeUsuario,
           statusFinal: 'Concluída',
@@ -522,6 +523,7 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
       batch.set(
         historicoRef,
         {
+          status: 'Cancelada',
           dataCancelamento: serverTimestamp(),
           userNameCancelamento: nomeUsuario,
           statusFinal: 'Cancelada',
