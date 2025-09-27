@@ -57,7 +57,8 @@ import {
   USERS_COLLECTION_PATH,
   RESERVAS_EXTERNAS_COLLECTION_PATH,
   HISTORICO_OCUPACOES_COLLECTION_PATH,
-  DEFINICOES_INDICADORES_COLLECTION_PATH
+  DEFINICOES_INDICADORES_COLLECTION_PATH,
+  HISTORICO_REGULACOES_COLLECTION_PATH
 } from './firebase-constants';
 
 // Collection references using centralized constants
@@ -71,6 +72,7 @@ export const getUsuariosCollection = () => collection(db, USERS_COLLECTION_PATH)
 export const getReservasExternasCollection = () => collection(db, RESERVAS_EXTERNAS_COLLECTION_PATH);
 export const getHistoricoOcupacoesCollection = () => collection(db, HISTORICO_OCUPACOES_COLLECTION_PATH);
 export const getDefinicoesIndicadoresCollection = () => collection(db, DEFINICOES_INDICADORES_COLLECTION_PATH);
+export const getHistoricoRegulacoesCollection = () => collection(db, HISTORICO_REGULACOES_COLLECTION_PATH);
 
 // Export Firebase utilities
 export { 

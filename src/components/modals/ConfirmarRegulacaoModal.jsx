@@ -16,7 +16,7 @@ import {
   doc,
   serverTimestamp
 } from '@/lib/firebase';
-import { db, getLeitosCollection, getPacientesCollection } from '@/lib/firebase';
+import { db, getLeitosCollection, getPacientesCollection, getHistoricoRegulacoesCollection } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -120,6 +120,7 @@ const ConfirmarRegulacaoModal = ({
     try {
       const batch = writeBatch(db);
       const agora = serverTimestamp();
+      const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
 
       // Dados da regulação
       const dadosRegulacao = {
@@ -128,6 +129,27 @@ const ConfirmarRegulacaoModal = ({
         setorDestinoId: leitoDestino.setorId,
         iniciadoEm: agora
       };
+      const historicoRef = doc(getHistoricoRegulacoesCollection(), paciente.id);
+      const setorOrigemId = leitoOrigem.setorId ?? paciente.setorId ?? null;
+      const setorDestinoId = leitoDestino.setorId ?? null;
+
+      batch.set(
+        historicoRef,
+        {
+          pacienteId: paciente.id,
+          pacienteNome: paciente.nomePaciente,
+          dataInicio: agora,
+          leitoOrigemId: leitoOrigem.id,
+          setorOrigemId,
+          leitoDestinoId: leitoDestino.id,
+          setorDestinoId,
+          userNameInicio: nomeUsuario,
+          status: 'Em andamento',
+          modo
+        },
+        { merge: true }
+      );
+
       // 1. Atualizar paciente - adicionar regulacaoAtiva
       const pacienteRef = doc(getPacientesCollection(), paciente.id);
       batch.update(pacienteRef, {

@@ -24,7 +24,8 @@ import {
   writeBatch,
   arrayUnion,
   serverTimestamp,
-  db
+  db,
+  getHistoricoRegulacoesCollection
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
 import { useToast } from '@/hooks/use-toast';
@@ -377,21 +378,27 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
     const { regulacaoAtiva } = paciente;
     const leitoOrigem = obterInfoLeito(regulacaoAtiva.leitoOrigemId);
     const leitoDestino = obterInfoLeito(regulacaoAtiva.leitoDestinoId);
-    
+
     try {
       const batch = writeBatch(db);
-      
+      const destinoSetorId = regulacaoAtiva.setorDestinoId || leitos.find(l => l.id === regulacaoAtiva.leitoDestinoId)?.setorId;
+      const setorDestino = setores.find(s => s.id === destinoSetorId);
+      const historicoRef = doc(getHistoricoRegulacoesCollection(), paciente.id);
+      const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
+      const inicioRegulacaoDate = regulacaoAtiva.iniciadoEm?.toDate?.() || new Date(regulacaoAtiva.iniciadoEm);
+      const tempoRegulacao = Number.isNaN(inicioRegulacaoDate?.getTime?.())
+        ? null
+        : differenceInMinutes(new Date(), inicioRegulacaoDate);
+
       // 1. Atualizar documento do paciente
       const pacienteRef = doc(getPacientesCollection(), paciente.id);
-      const destinoSetorId = regulacaoAtiva.setorDestinoId || leitos.find(l => l.id === regulacaoAtiva.leitoDestinoId)?.setorId;
       const updatesPaciente = {
         regulacaoAtiva: deleteField(),
         leitoId: regulacaoAtiva.leitoDestinoId,
         setorId: destinoSetorId
       };
-      
+
       // Verificar se é UTI e remover pedidoUTI se necessário
-      const setorDestino = setores.find(s => s.id === destinoSetorId);
       if (setorDestino?.tipoSetor === 'UTI' && paciente.pedidoUTI) {
         updatesPaciente.pedidoUTI = deleteField();
       }
@@ -424,22 +431,30 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
           timestamp: new Date()
         })
       });
-      
+
+      batch.set(
+        historicoRef,
+        {
+          dataConclusao: serverTimestamp(),
+          userNameConclusao: nomeUsuario,
+          statusFinal: 'Concluída',
+          tempoRegulacaoMinutos: tempoRegulacao,
+          leitoDestinoFinalId: regulacaoAtiva.leitoDestinoId,
+          setorDestinoFinalId: destinoSetorId
+        },
+        { merge: true }
+      );
+
       // Executar transação
       await batch.commit();
-      
-      // Calcular tempo de regulação
-      const inicioRegulacao = regulacaoAtiva.iniciadoEm?.toDate?.() || new Date(regulacaoAtiva.iniciadoEm);
-      const tempoRegulacao = differenceInMinutes(new Date(), inicioRegulacao);
-      
+
       // Auditoria detalhada
-      const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
       await logAction(
         'Regulação de Leitos',
-        `Regulação para o paciente '${paciente.nomePaciente}' (do leito ${leitoOrigem.siglaSetor} - ${leitoOrigem.codigo} para ${leitoDestino.siglaSetor} - ${leitoDestino.codigo}) foi concluída por ${nomeUsuario} em ${tempoRegulacao} minutos.`,
+        `Regulação para o paciente '${paciente.nomePaciente}' (do leito ${leitoOrigem.siglaSetor} - ${leitoOrigem.codigo} para ${leitoDestino.siglaSetor} - ${leitoDestino.codigo}) foi concluída por ${nomeUsuario} em ${tempoRegulacao ?? 0} minutos.`,
         currentUser
       );
-      
+
       // Log condicional de UTI
       if (setorDestino?.tipoSetor === 'UTI' && paciente.pedidoUTI) {
         const inicioUTI = paciente.pedidoUTI.solicitadoEm?.toDate?.() || new Date(paciente.pedidoUTI.solicitadoEm);
@@ -473,10 +488,14 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
     const { regulacaoAtiva } = paciente;
     const leitoOrigem = obterInfoLeito(regulacaoAtiva.leitoOrigemId);
     const leitoDestino = obterInfoLeito(regulacaoAtiva.leitoDestinoId);
-    
+
     try {
       const batch = writeBatch(db);
-      
+      const destinoSetorId = regulacaoAtiva.setorDestinoId || leitos.find(l => l.id === regulacaoAtiva.leitoDestinoId)?.setorId;
+      const historicoRef = doc(getHistoricoRegulacoesCollection(), paciente.id);
+      const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
+      const justificativaTexto = justificativa?.trim?.() || justificativa;
+
       // 1. Atualizar documento do paciente
       const pacienteRef = doc(getPacientesCollection(), paciente.id);
       batch.update(pacienteRef, {
@@ -499,18 +518,31 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
           timestamp: new Date()
         })
       });
-      
+
+      batch.set(
+        historicoRef,
+        {
+          dataCancelamento: serverTimestamp(),
+          userNameCancelamento: nomeUsuario,
+          statusFinal: 'Cancelada',
+          motivoCancelamento: justificativaTexto,
+          mensagemCancelamento,
+          leitoDestinoCanceladoId: regulacaoAtiva.leitoDestinoId,
+          setorDestinoCanceladoId: destinoSetorId
+        },
+        { merge: true }
+      );
+
       // Executar transação
       await batch.commit();
-      
+
       // Copiar mensagem para área de transferência
       await navigator.clipboard.writeText(mensagemCancelamento);
-      
+
       // Auditoria
-      const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
       await logAction(
         'Regulação de Leitos',
-        `Regulação para o paciente '${paciente.nomePaciente}' (do leito ${leitoOrigem.siglaSetor} - ${leitoOrigem.codigo} para ${leitoDestino.siglaSetor} - ${leitoDestino.codigo}) foi CANCELADA por ${nomeUsuario}. Motivo: '${justificativa}'.`,
+        `Regulação para o paciente '${paciente.nomePaciente}' (do leito ${leitoOrigem.siglaSetor} - ${leitoOrigem.codigo} para ${leitoDestino.siglaSetor} - ${leitoDestino.codigo}) foi CANCELADA por ${nomeUsuario}. Motivo: '${justificativaTexto}'.`,
         currentUser
       );
       

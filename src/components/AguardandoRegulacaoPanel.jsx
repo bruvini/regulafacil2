@@ -2,17 +2,35 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog";
 import { ArrowRightCircle, LogOut, Users, Shield } from "lucide-react";
 import { intervalToDuration } from 'date-fns';
-import { 
-  getSetoresCollection, 
+import {
+  getSetoresCollection,
   getLeitosCollection,
   getPacientesCollection,
   getInfeccoesCollection,
-  onSnapshot
+  onSnapshot,
+  writeBatch,
+  doc,
+  deleteField,
+  arrayUnion,
+  db
 } from '@/lib/firebase';
 import RegularPacienteModal from '@/components/modals/RegularPacienteModal';
 import { getIsolamentosAtivosDetalhados } from "@/lib/compatibilidadeLeitos";
+import { useToast } from '@/hooks/use-toast';
+import { logAction } from '@/lib/auditoria';
+import { useAuth } from '@/contexts/AuthContext';
 
 const normalizarTexto = (texto) =>
   String(texto || '')
@@ -34,6 +52,11 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
   const [infeccoes, setInfeccoes] = useState([]);
   const [modalRegularAberto, setModalRegularAberto] = useState(false);
   const [pacienteSelecionado, setPacienteSelecionado] = useState(null);
+  const [pacienteAlta, setPacienteAlta] = useState(null);
+  const [altaDialogOpen, setAltaDialogOpen] = useState(false);
+  const [processandoAlta, setProcessandoAlta] = useState(false);
+  const { toast } = useToast();
+  const { currentUser } = useAuth();
 
   useEffect(() => {
     const unsubscribeSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
@@ -302,6 +325,80 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
     setModalRegularAberto(true);
   };
 
+  const handleSolicitarAlta = (paciente) => {
+    setPacienteAlta(paciente);
+    setAltaDialogOpen(true);
+  };
+
+  const fecharDialogAlta = () => {
+    setAltaDialogOpen(false);
+    setPacienteAlta(null);
+    setProcessandoAlta(false);
+  };
+
+  const handleConfirmarAlta = async () => {
+    if (!pacienteAlta) return;
+
+    setProcessandoAlta(true);
+
+    try {
+      const batch = writeBatch(db);
+      const pacienteRef = doc(getPacientesCollection(), pacienteAlta.id);
+      batch.delete(pacienteRef);
+
+      let descricaoLeito = 'leito atual';
+
+      if (pacienteAlta.leitoId) {
+        const leitoAtual = leitos.find((leito) => leito.id === pacienteAlta.leitoId);
+        const setorAtual = leitoAtual ? setores.find((setor) => setor.id === leitoAtual.setorId) : null;
+        const leitoRef = doc(getLeitosCollection(), pacienteAlta.leitoId);
+
+        descricaoLeito = [
+          setorAtual?.siglaSetor || setorAtual?.nomeSetor,
+          leitoAtual?.codigoLeito || leitoAtual?.codigo || pacienteAlta.codigoLeito || pacienteAlta.leitoId
+        ]
+          .filter(Boolean)
+          .join(' - ') || 'leito atual';
+
+        batch.update(leitoRef, {
+          status: 'Higienização',
+          statusLeito: 'Higienização',
+          pacienteId: deleteField(),
+          pacienteNome: deleteField(),
+          historico: arrayUnion({
+            status: 'Higienização',
+            timestamp: new Date(),
+            origem: 'Alta Direta'
+          })
+        });
+      }
+
+      await batch.commit();
+
+      const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
+      await logAction(
+        'Alta Direta',
+        `Alta direta registrada para o paciente '${pacienteAlta.nomePaciente}'. Leito ${descricaoLeito} encaminhado para higienização por ${nomeUsuario}.`,
+        currentUser
+      );
+
+      toast({
+        title: 'Alta registrada',
+        description: `Paciente ${pacienteAlta.nomePaciente} removido e leito encaminhado para higienização.`,
+      });
+
+      fecharDialogAlta();
+    } catch (error) {
+      console.error('Erro ao registrar alta direta:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível registrar a alta direta. Tente novamente.',
+        variant: 'destructive',
+      });
+      setProcessandoAlta(false);
+    }
+  };
+
   const fecharModais = () => {
     setModalRegularAberto(false);
     setPacienteSelecionado(null);
@@ -379,7 +476,10 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button className="p-1.5 hover:bg-muted rounded-md transition-colors">
+                  <button
+                    className="p-1.5 hover:bg-muted rounded-md transition-colors"
+                    onClick={() => handleSolicitarAlta(paciente)}
+                  >
                     <LogOut className="h-4 w-4 text-destructive" />
                   </button>
                 </TooltipTrigger>
@@ -437,6 +537,36 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
           ))}
         </div>
       </CardContent>
+
+      <AlertDialog
+        open={altaDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            if (processandoAlta) return;
+            fecharDialogAlta();
+          } else {
+            setAltaDialogOpen(true);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Alta Direta</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pacienteAlta
+                ? `Deseja realmente registrar a alta direta para ${pacienteAlta.nomePaciente}?`
+                : 'Deseja registrar a alta direta para o paciente selecionado?'}
+              {' '}O leito será liberado para higienização.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={processandoAlta}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmarAlta} disabled={processandoAlta}>
+              {processandoAlta ? 'Processando...' : 'Confirmar Alta'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Modais */}
       <RegularPacienteModal

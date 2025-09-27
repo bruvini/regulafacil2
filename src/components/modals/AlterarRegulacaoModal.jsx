@@ -15,7 +15,8 @@ import {
   arrayUnion,
   deleteField,
   serverTimestamp,
-  db
+  db,
+  getHistoricoRegulacoesCollection
 } from '@/lib/firebase';
 import LeitoSelectionStep from './steps/LeitoSelectionStep';
 import { logAction } from '@/lib/auditoria';
@@ -106,10 +107,13 @@ const AlterarRegulacaoModal = ({ isOpen, onClose, regulacao }) => {
     try {
       const batch = writeBatch(db);
       const ts = serverTimestamp();
+      const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
+      const justificativaTexto = justificativa.trim();
 
       const pacienteRef = doc(getPacientesCollection(), paciente.id);
       const origemId = paciente.regulacaoAtiva.leitoOrigemId;
       const destinoAnteriorId = paciente.regulacaoAtiva.leitoDestinoId;
+      const historicoRef = doc(getHistoricoRegulacoesCollection(), paciente.id);
 
       // 1) Atualiza paciente.regulacaoAtiva
       batch.update(pacienteRef, {
@@ -156,12 +160,31 @@ const AlterarRegulacaoModal = ({ isOpen, onClose, regulacao }) => {
         }
       });
 
+      batch.set(
+        historicoRef,
+        {
+          leitoDestinoId: novoLeito.id,
+          setorDestinoId: novoLeito.setorId,
+          ultimaAlteracaoEm: ts,
+          userNameUltimaAlteracao: nomeUsuario,
+          justificativaUltimaAlteracao: justificativaTexto,
+          alteracoes: arrayUnion({
+            data: new Date(),
+            justificativa: justificativaTexto,
+            novoLeitoDestinoId: novoLeito.id,
+            novoSetorDestinoId: novoLeito.setorId,
+            userName: nomeUsuario
+          })
+        },
+        { merge: true }
+      );
+
       await batch.commit();
 
-      const usuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
+      const usuario = nomeUsuario;
       const destAnteriorStr = `${destinoAtualInfo?.siglaSetor} - ${destinoAtualInfo?.codigo}`;
       const novoDestinoStr = `${dados.setores.find(s => s.id === novoLeito.setorId)?.siglaSetor || 'N/A'} - ${novoLeito.codigoLeito}`;
-      await logAction('Regulação de Leitos', `Regulação do paciente '${paciente.nomePaciente}' foi ALTERADA por ${usuario} do leito '${destAnteriorStr}' para '${novoDestinoStr}'. Motivo: '${justificativa}'.`, currentUser);
+      await logAction('Regulação de Leitos', `Regulação do paciente '${paciente.nomePaciente}' foi ALTERADA por ${usuario} do leito '${destAnteriorStr}' para '${novoDestinoStr}'. Motivo: '${justificativaTexto}'.`, currentUser);
 
       toast({ title: 'Regulação alterada', description: 'A alteração foi aplicada com sucesso.' });
       fechar();

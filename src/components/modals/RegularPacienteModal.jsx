@@ -120,19 +120,20 @@ const RegularPacienteModal = ({
 
   const getLeitoOrigem = () => {
     if (!paciente || !dados.leitos || !dados.setores) return null;
-    
+
     // Buscar o leito atual do paciente
     const leitoAtual = dados.leitos.find(l => l.id === paciente.leitoId);
     if (!leitoAtual) return null;
-    
+
     // Buscar o setor do leito atual
     const setorAtual = dados.setores.find(s => s.id === leitoAtual.setorId);
-    
+
     return {
       id: leitoAtual.id,
       codigoLeito: leitoAtual.codigoLeito || paciente.codigoLeito || 'N/A',
       siglaSetor: setorAtual?.siglaSetor || paciente.siglaSetor || 'N/A',
-      nomeSetor: setorAtual?.nomeSetor || 'N/A'
+      nomeSetor: setorAtual?.nomeSetor || 'N/A',
+      setorId: setorAtual?.id || leitoAtual.setorId || paciente.setorId || null
     };
   };
 
