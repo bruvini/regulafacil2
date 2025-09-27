@@ -1,6 +1,18 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
+} from "@/components/ui/alert-dialog";
 import { ClipboardList, CheckCircle, XCircle } from "lucide-react";
 import { intervalToDuration } from 'date-fns';
 import {
@@ -10,9 +22,14 @@ import {
   onSnapshot,
   doc,
   updateDoc,
-  serverTimestamp
+  serverTimestamp,
+  arrayUnion,
+  deleteField,
+  writeBatch,
+  db
 } from '@/lib/firebase';
 import TransferenciaExternaModal from '@/components/modals/TransferenciaExternaModal';
+import GerenciarStatusTransferenciaModal from '@/components/modals/GerenciarStatusTransferenciaModal';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { logAction } from '@/lib/auditoria';
@@ -51,6 +68,9 @@ const TransferenciaExternaPanel = ({ filtros, sortConfig }) => {
   const [setores, setSetores] = useState([]);
   const [leitos, setLeitos] = useState([]);
   const [modalTransferencia, setModalTransferencia] = useState({ isOpen: false, paciente: null });
+  const [modalStatusTransferencia, setModalStatusTransferencia] = useState({ isOpen: false, paciente: null });
+  const [processingAction, setProcessingAction] = useState(null);
+  const [salvandoStatus, setSalvandoStatus] = useState(false);
 
   const { toast } = useToast();
   const { currentUser } = useAuth();
@@ -88,6 +108,28 @@ const TransferenciaExternaPanel = ({ filtros, sortConfig }) => {
     if (code) return code;
     const found = leitos.find((l) => l?.id === p?.leitoId || l?.codigoLeito === p?.codigoLeito);
     return found?.codigoLeito || '—';
+  };
+
+  const encontrarLeitoPaciente = (paciente) => {
+    if (!paciente) return null;
+
+    const possiveisIds = [
+      paciente.leitoId,
+      paciente?.leito?.id,
+      paciente?.leito?.leitoId,
+      paciente?.leito?.idLeito
+    ].filter(Boolean);
+
+    for (const id of possiveisIds) {
+      const encontrado = leitos.find((leito) => leito.id === id);
+      if (encontrado) return encontrado;
+    }
+
+    if (paciente.codigoLeito) {
+      return leitos.find((leito) => leito.codigoLeito === paciente.codigoLeito);
+    }
+
+    return null;
   };
 
   const calcularIdade = (dataNascimento) => {
@@ -274,6 +316,14 @@ const TransferenciaExternaPanel = ({ filtros, sortConfig }) => {
     setModalTransferencia({ isOpen: false, paciente: null });
   };
 
+  const handleAbrirGerenciarStatus = (paciente) => {
+    setModalStatusTransferencia({ isOpen: true, paciente });
+  };
+
+  const handleFecharGerenciarStatus = () => {
+    setModalStatusTransferencia({ isOpen: false, paciente: null });
+  };
+
   const handleSalvarTransferencia = async (dados) => {
     if (!modalTransferencia.paciente) return;
 
@@ -289,7 +339,8 @@ const TransferenciaExternaPanel = ({ filtros, sortConfig }) => {
           motivo: dados.motivo,
           outroMotivo: dados.outroMotivo,
           destino: dados.destino,
-          solicitadoEm
+          solicitadoEm,
+          historicoStatus: pedidoAtual?.historicoStatus || []
         }
       });
 
@@ -317,6 +368,147 @@ const TransferenciaExternaPanel = ({ filtros, sortConfig }) => {
       });
     }
   };
+
+  const handleSalvarAtualizacaoStatus = async (texto) => {
+    const paciente = modalStatusTransferencia.paciente;
+    if (!paciente) return false;
+
+    setSalvandoStatus(true);
+    try {
+      const pacienteRef = doc(getPacientesCollection(), paciente.id);
+      const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
+      const novaAtualizacao = {
+        texto,
+        userName: nomeUsuario,
+        timestamp: new Date()
+      };
+
+      await updateDoc(pacienteRef, {
+        'pedidoTransferenciaExterna.historicoStatus': arrayUnion(novaAtualizacao)
+      });
+
+      await logAction(
+        'Status Transferência Atualizado',
+        `Status da transferência externa do paciente '${paciente.nomePaciente}' atualizado por ${nomeUsuario}: ${texto}`,
+        currentUser
+      );
+
+      toast({
+        title: 'Status atualizado',
+        description: `Nova atualização registrada para ${paciente.nomePaciente}.`
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Erro ao salvar atualização de status da transferência:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível salvar a atualização de status. Tente novamente.',
+        variant: 'destructive'
+      });
+      return false;
+    } finally {
+      setSalvandoStatus(false);
+    }
+  };
+
+  const handleConcluirTransferencia = async (paciente) => {
+    if (!paciente) return;
+
+    setProcessingAction({ type: 'concluir', pacienteId: paciente.id });
+    try {
+      const leitoAtual = encontrarLeitoPaciente(paciente);
+      if (!leitoAtual) {
+        throw new Error('Leito do paciente não encontrado para atualização.');
+      }
+
+      const batch = writeBatch(db);
+      const pacienteRef = doc(getPacientesCollection(), paciente.id);
+      const leitoRef = doc(getLeitosCollection(), leitoAtual.id);
+      const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
+
+      batch.delete(pacienteRef);
+      batch.update(leitoRef, {
+        status: 'Higienização',
+        statusLeito: 'Higienização',
+        pacienteId: deleteField(),
+        pacienteNome: deleteField(),
+        historico: arrayUnion({
+          status: 'Higienização',
+          timestamp: new Date(),
+          origem: 'Transferência Externa Concluída'
+        })
+      });
+
+      await batch.commit();
+
+      await logAction(
+        'Transferência Concluída',
+        `Transferência externa do paciente '${paciente.nomePaciente}' concluída por ${nomeUsuario}. Leito ${leitoAtual.codigoLeito} atualizado para higienização.`,
+        currentUser
+      );
+
+      toast({
+        title: 'Transferência concluída',
+        description: `Paciente ${paciente.nomePaciente} removido da lista e leito enviado para higienização.`
+      });
+    } catch (error) {
+      console.error('Erro ao concluir transferência externa:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível concluir a transferência externa. Tente novamente.',
+        variant: 'destructive'
+      });
+    } finally {
+      setProcessingAction(null);
+    }
+  };
+
+  const handleCancelarTransferencia = async (paciente) => {
+    if (!paciente) return;
+
+    setProcessingAction({ type: 'cancelar', pacienteId: paciente.id });
+    try {
+      const pacienteRef = doc(getPacientesCollection(), paciente.id);
+      const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
+
+      await updateDoc(pacienteRef, {
+        pedidoTransferenciaExterna: deleteField()
+      });
+
+      await logAction(
+        'Transferência Cancelada',
+        `Transferência externa do paciente '${paciente.nomePaciente}' cancelada por ${nomeUsuario}.`,
+        currentUser
+      );
+
+      toast({
+        title: 'Transferência cancelada',
+        description: `Pedido de transferência externa de ${paciente.nomePaciente} foi cancelado.`,
+      });
+    } catch (error) {
+      console.error('Erro ao cancelar transferência externa:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível cancelar a transferência externa. Tente novamente.',
+        variant: 'destructive'
+      });
+    } finally {
+      setProcessingAction(null);
+    }
+  };
+
+  const pacienteStatusId = modalStatusTransferencia.paciente?.id;
+  useEffect(() => {
+    if (!modalStatusTransferencia.isOpen || !pacienteStatusId) return;
+
+    const atualizado = pacientes.find((p) => p.id === pacienteStatusId);
+    if (atualizado) {
+      setModalStatusTransferencia((prev) => ({ ...prev, paciente: atualizado }));
+    } else {
+      setModalStatusTransferencia({ isOpen: false, paciente: null });
+    }
+  }, [pacientes, modalStatusTransferencia.isOpen, pacienteStatusId]);
 
   return (
     <Card className="shadow-card card-interactive">
@@ -348,37 +540,101 @@ const TransferenciaExternaPanel = ({ filtros, sortConfig }) => {
                       Aguardando há {formatDurationShort(p?.pedidoTransferenciaExterna?.solicitadoEm)}
                     </div>
                   </div>
-                  <div className="flex gap-1 shrink-0">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            className="p-1.5 hover:bg-muted rounded-md"
-                            onClick={() => handleAbrirTransferencia(p)}
-                          >
-                            <ClipboardList className="h-4 w-4 text-primary" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent><p>Editar Transferência</p></TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button className="p-1.5 hover:bg-muted rounded-md"><CheckCircle className="h-4 w-4 text-green-600" /></button>
-                        </TooltipTrigger>
-                        <TooltipContent><p>Concluir Transferência</p></TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button className="p-1.5 hover:bg-muted rounded-md"><XCircle className="h-4 w-4 text-destructive" /></button>
-                        </TooltipTrigger>
-                        <TooltipContent><p>Cancelar Transferência</p></TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                  <div className="flex flex-col items-end gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleAbrirGerenciarStatus(p)}
+                    >
+                      Gerenciar Status
+                    </Button>
+                    <div className="flex gap-1">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="p-1.5 hover:bg-muted rounded-md"
+                              onClick={() => handleAbrirTransferencia(p)}
+                            >
+                              <ClipboardList className="h-4 w-4 text-primary" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent><p>Editar Transferência</p></TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <AlertDialog>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <AlertDialogTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="p-1.5 hover:bg-muted rounded-md"
+                                  disabled={processingAction?.type === 'concluir' && processingAction?.pacienteId === p.id}
+                                >
+                                  <CheckCircle className="h-4 w-4 text-green-600" />
+                                </button>
+                              </AlertDialogTrigger>
+                            </TooltipTrigger>
+                            <TooltipContent><p>Concluir Transferência</p></TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Concluir transferência externa</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Confirma a conclusão da transferência do paciente "{p.nomePaciente}"? Esta ação irá remover o paciente da lista e liberar o leito para higienização.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => handleConcluirTransferencia(p)}
+                              disabled={processingAction?.type === 'concluir' && processingAction?.pacienteId === p.id}
+                            >
+                              Confirmar
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                      <AlertDialog>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <AlertDialogTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="p-1.5 hover:bg-muted rounded-md"
+                                  disabled={processingAction?.type === 'cancelar' && processingAction?.pacienteId === p.id}
+                                >
+                                  <XCircle className="h-4 w-4 text-destructive" />
+                                </button>
+                              </AlertDialogTrigger>
+                            </TooltipTrigger>
+                            <TooltipContent><p>Cancelar Transferência</p></TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Cancelar transferência externa</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Deseja cancelar o pedido de transferência externa para "{p.nomePaciente}"? O histórico permanecerá salvo para consulta.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Voltar</AlertDialogCancel>
+                            <AlertDialogAction
+                              className="bg-destructive text-destructive-foreground"
+                              onClick={() => handleCancelarTransferencia(p)}
+                              disabled={processingAction?.type === 'cancelar' && processingAction?.pacienteId === p.id}
+                            >
+                              Cancelar transferência
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -392,6 +648,13 @@ const TransferenciaExternaPanel = ({ filtros, sortConfig }) => {
         onClose={handleFecharTransferenciaModal}
         onSave={handleSalvarTransferencia}
         paciente={modalTransferencia.paciente}
+      />
+      <GerenciarStatusTransferenciaModal
+        isOpen={modalStatusTransferencia.isOpen}
+        onClose={handleFecharGerenciarStatus}
+        paciente={modalStatusTransferencia.paciente}
+        onSalvarAtualizacao={handleSalvarAtualizacaoStatus}
+        salvando={salvandoStatus}
       />
     </Card>
   );
