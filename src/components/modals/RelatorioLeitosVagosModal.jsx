@@ -25,36 +25,17 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
   });
   const [infeccoes, setInfeccoes] = useState([]);
 
-  const formatarMensagemCompatibilidade = (restricao) => {
+  const formatarMensagemRestricaoCoorte = (restricao) => {
     if (!restricao) {
-      return 'Livre';
+      return '';
     }
 
-    const sexoNormalizado = (restricao.sexo || '').trim();
-    const isolamentos = (restricao.isolamentos || [])
-      .map((iso) => String(iso || '').trim().toUpperCase())
-      .filter(Boolean);
-
-    const sexoValido = sexoNormalizado && sexoNormalizado.toLowerCase() !== 'não informado';
-    const possuiIsolamentos = isolamentos.length > 0;
-
-    if (sexoValido && !possuiIsolamentos) {
-      return `Apenas sexo ${sexoNormalizado}`;
+    const isolamentos = restricao.isolamentos || [];
+    if (isolamentos.length > 0) {
+      return `Permitido apenas pacientes do sexo ${restricao.sexo} com isolamento de ${isolamentos.join(', ')}`;
     }
 
-    const partes = [];
-    if (sexoValido) {
-      partes.push(`Sexo ${sexoNormalizado}`);
-    }
-    if (possuiIsolamentos) {
-      partes.push(...isolamentos);
-    }
-
-    if (partes.length > 0) {
-      return `Coorte: ${partes.join(', ')}`;
-    }
-
-    return 'Livre';
+    return `Permitido apenas pacientes do sexo ${restricao.sexo}`;
   };
 
   // Buscar dados do Firestore
@@ -314,8 +295,9 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
     
     leitosVagos.forEach(leito => {
       const statusDetalhado = leito.status;
-      const mensagemCompatibilidade = formatarMensagemCompatibilidade(leito.restricaoCoorte);
-      const restricaoInfo = leito.restricaoCoorte ? ` | ${mensagemCompatibilidade}` : '';
+      const restricaoInfo = leito.restricaoCoorte
+        ? ` | Coorte: ${formatarMensagemRestricaoCoorte(leito.restricaoCoorte)}`
+        : '';
 
       mensagem += `_${leito.codigoLeito} - Status: ${statusDetalhado}${restricaoInfo}_\n`;
     });
@@ -411,11 +393,13 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
                               </Badge>
                             </td>
                             <td className="px-4 py-3">
-                              <span
-                                className={`text-xs ${leito.restricaoCoorte ? 'font-semibold text-blue-700' : 'text-muted-foreground'}`}
-                              >
-                                {formatarMensagemCompatibilidade(leito.restricaoCoorte)}
-                              </span>
+                              {leito.restricaoCoorte ? (
+                                <span className="text-xs font-semibold text-blue-700">
+                                  {formatarMensagemRestricaoCoorte(leito.restricaoCoorte)}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Sem restrição de coorte</span>
+                              )}
                             </td>
                           </tr>
                         ))}
