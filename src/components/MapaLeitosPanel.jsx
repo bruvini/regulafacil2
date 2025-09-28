@@ -498,7 +498,7 @@ const LeitoCard = ({
 
   return (
     <Card className={getCardStyle()}>
-      <CardContent className="p-4 relative">
+      <CardContent className="p-4 relative flex flex-col min-h-[150px]">
 
         {/* Cabeçalho com layout corrigido */}
         <div className="flex justify-between items-start mb-3">
@@ -539,22 +539,30 @@ const LeitoCard = ({
         </div>
 
         {/* Conteúdo do card */}
-        <div className="space-y-3">
+        <div className="flex-1 flex flex-col space-y-3">
 
           {/* Leito em regulação (origem) */}
           {leito.status === 'Regulado' && leito.paciente && regulacaoOrigemInfo && (
             <div className="space-y-3">
-              <div>
-                <p className="font-medium text-sm text-gray-900">
+              <div className="min-w-0 space-y-1">
+                <p
+                  className="font-medium text-sm text-gray-900 truncate"
+                  title={leito.paciente.nomePaciente}
+                >
                   {leito.paciente.nomePaciente}
                 </p>
-                <div className="flex items-center gap-2 text-xs text-gray-600">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
                   <span>{calcularIdade(leito.paciente.dataNascimento)} anos</span>
                   {leito.paciente.especialidade && (
-                    <>
+                    <span className="flex items-center gap-2 min-w-0">
                       <span>•</span>
-                      <span>{leito.paciente.especialidade}</span>
-                    </>
+                      <span
+                        className="truncate"
+                        title={leito.paciente.especialidade}
+                      >
+                        {leito.paciente.especialidade}
+                      </span>
+                    </span>
                   )}
                 </div>
               </div>
@@ -577,19 +585,24 @@ const LeitoCard = ({
           {/* Leito reservado para paciente externo */}
           {isReservaExterna && (
             <div className="space-y-3">
-              <div>
-                <p className="font-medium text-sm text-gray-900">
+              <div className="min-w-0 space-y-1">
+                <p
+                  className="font-medium text-sm text-gray-900 truncate"
+                  title={reservaExterna.pacienteNome || 'Paciente externo'}
+                >
                   {reservaExterna.pacienteNome || 'Paciente externo'}
                 </p>
-                <div className="flex items-center gap-2 text-xs text-gray-600">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
                   {idadeReservaExterna && idadeReservaExterna !== 'N/A' && (
                     <span>{idadeReservaExterna} anos</span>
                   )}
                   {reservaExterna.pacienteSexo && (
-                    <>
+                    <span className="flex items-center gap-2 min-w-0">
                       <span>•</span>
-                      <span>{reservaExterna.pacienteSexo}</span>
-                    </>
+                      <span className="truncate" title={reservaExterna.pacienteSexo}>
+                        {reservaExterna.pacienteSexo}
+                      </span>
+                    </span>
                   )}
                 </div>
               </div>
@@ -640,13 +653,19 @@ const LeitoCard = ({
           {/* Leito de DESTINO em regulação (Reservado) */}
           {leito.status === 'Reservado' && regulacaoDestinoInfo && !isReservaExterna && (
             <div className="space-y-2">
-              <div>
-                <p className="font-medium text-sm text-gray-900">
+              <div className="min-w-0 space-y-1">
+                <p
+                  className="font-medium text-sm text-gray-900 truncate"
+                  title={reservaPacienteNome || 'Paciente em regulação'}
+                >
                   {reservaPacienteNome || 'Paciente em regulação'}
                 </p>
                 <div className="text-xs text-gray-600">
                   <span className="font-medium">Vindo de: </span>
-                  <span>
+                  <span
+                    className="truncate"
+                    title={`${reservaOrigemSetor ? `${reservaOrigemSetor} - ` : ''}${reservaOrigemCodigo}`}
+                  >
                     {reservaOrigemSetor ? `${reservaOrigemSetor} - ` : ''}
                     {reservaOrigemCodigo}
                   </span>
@@ -664,17 +683,25 @@ const LeitoCard = ({
           {/* Informações do paciente para leitos ocupados normais */}
           {leito.status === 'Ocupado' && leito.paciente && !leito.regulacaoEmAndamento && (
             <div className="space-y-2">
-              <div>
-                <p className="font-medium text-sm text-gray-900">
+              <div className="min-w-0 space-y-1">
+                <p
+                  className="font-medium text-sm text-gray-900 truncate"
+                  title={leito.paciente.nomePaciente}
+                >
                   {leito.paciente.nomePaciente}
                 </p>
-                <div className="flex items-center gap-2 text-xs text-gray-600">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
                   <span>{calcularIdade(leito.paciente.dataNascimento)} anos</span>
                   {leito.paciente.especialidade && (
-                    <>
+                    <span className="flex items-center gap-2 min-w-0">
                       <span>•</span>
-                      <span>{leito.paciente.especialidade}</span>
-                    </>
+                      <span
+                        className="truncate"
+                        title={leito.paciente.especialidade}
+                      >
+                        {leito.paciente.especialidade}
+                      </span>
+                    </span>
                   )}
                 </div>
               </div>
@@ -699,7 +726,7 @@ const LeitoCard = ({
 
           {/* Tempo no status apenas para leitos não em regulação */}
           {!leito.regulacaoEmAndamento && (
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-muted-foreground mt-auto">
               {getTempoNoStatus()}
             </div>
           )}
