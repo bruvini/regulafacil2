@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -37,13 +37,9 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { 
-  getSetoresCollection, 
-  getLeitosCollection, 
-  getQuartosCollection,
+import {
+  getLeitosCollection,
   getPacientesCollection,
-  getInfeccoesCollection,
-  onSnapshot,
   doc,
   updateDoc,
   arrayUnion,
@@ -54,6 +50,7 @@ import {
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { useDadosHospitalares } from '@/hooks/useDadosHospitalares';
 import LiberarLeitoModal from './modals/LiberarLeitoModal';
 import ObservacoesModal from './modals/ObservacoesModal';
 import MoverPacienteModal from './modals/MoverPacienteModal';
@@ -490,7 +487,7 @@ const LeitoCard = ({
       return '';
     }
 
-    const isolamentos = restricao.isolamentos || [];
+    const isolamentos = (restricao.isolamentos || []).map(sigla => sigla.toUpperCase());
     if (isolamentos.length > 0) {
       return `Permitido apenas pacientes do sexo ${restricao.sexo} com isolamento de ${isolamentos.join(', ')}`;
     }
@@ -740,13 +737,13 @@ const LeitoCard = ({
 
 // Componente principal MapaLeitosPanel
 const MapaLeitosPanel = () => {
-  const [setores, setSetores] = useState([]);
-  const [quartos, setQuartos] = useState([]);
-  const [leitos, setLeitos] = useState([]);
-  const [pacientes, setPacientes] = useState([]);
-  const [infeccoes, setInfeccoes] = useState([]);
+  const {
+    estrutura,
+    pacientesEnriquecidos,
+    infeccoes,
+    loading: loadingDados,
+  } = useDadosHospitalares();
   const { currentUser } = useAuth();
-  const [loading, setLoading] = useState(true);
   const [expandedSections, setExpandedSections] = useState({});
   const [expandedSetores, setExpandedSetores] = useState({});
   // Estados dos filtros
@@ -1311,60 +1308,8 @@ const MapaLeitosPanel = () => {
     }
   };
 
-  // Buscar dados do Firestore em tempo real
-  useEffect(() => {
-    const unsubscribeSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
-      const setoresData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setSetores(setoresData);
-    });
-
-    const unsubscribeQuartos = onSnapshot(getQuartosCollection(), (snapshot) => {
-      const quartosData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setQuartos(quartosData);
-    });
-
-    const unsubscribeLeitos = onSnapshot(getLeitosCollection(), (snapshot) => {
-      const leitosData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setLeitos(leitosData);
-    });
-
-    const unsubscribePacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
-      const pacientesData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setPacientes(pacientesData);
-      setLoading(false);
-    });
-
-    const unsubscribeInfeccoes = onSnapshot(getInfeccoesCollection(), (snapshot) => {
-      const infeccoesData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setInfeccoes(infeccoesData);
-    });
-
-    return () => {
-      unsubscribeSetores();
-      unsubscribeQuartos();
-      unsubscribeLeitos();
-      unsubscribePacientes();
-      unsubscribeInfeccoes();
-    };
-  }, []);
-
   const infeccoesPorId = useMemo(() => {
-    return infeccoes.reduce((acc, infeccaoAtual) => {
+    return (infeccoes || []).reduce((acc, infeccaoAtual) => {
       acc[infeccaoAtual.id] = infeccaoAtual;
       return acc;
     }, {});
@@ -1373,13 +1318,13 @@ const MapaLeitosPanel = () => {
   // Obter especialidades únicas para o filtro
   const especialidadesUnicas = useMemo(() => {
     const especialidades = new Set();
-    pacientes.forEach(paciente => {
+    pacientesEnriquecidos.forEach(paciente => {
       if (paciente.especialidade) {
         especialidades.add(paciente.especialidade);
       }
     });
     return Array.from(especialidades).sort();
-  }, [pacientes]);
+  }, [pacientesEnriquecidos]);
 
   const isolamentosSelecionadosLabel = useMemo(() => {
     if (!filtros.isolamentosSelecionados || filtros.isolamentosSelecionados.length === 0) {
@@ -1423,267 +1368,7 @@ const MapaLeitosPanel = () => {
   };
 
   // Processar dados em estrutura hierárquica
-  const dadosEstruturados = useMemo(() => {
-    if (!setores.length || !leitos.length) return {};
-
-    const estrutura = {};
-
-    const leitosPorId = leitos.reduce((acc, leito) => {
-      acc[leito.id] = leito;
-      return acc;
-    }, {});
-
-    const setoresPorId = setores.reduce((acc, setor) => {
-      acc[setor.id] = setor;
-      return acc;
-    }, {});
-
-    const pacientesPorLeito = {};
-    const regulacoesOrigemPorLeito = {};
-    const regulacoesDestinoPorLeito = {};
-
-    pacientes.forEach(paciente => {
-      if (paciente.leitoId) {
-        pacientesPorLeito[paciente.leitoId] = paciente;
-      }
-
-      const regulacao = paciente.regulacaoAtiva;
-      if (regulacao?.leitoOrigemId && regulacao?.leitoDestinoId) {
-        const leitoOrigem = leitosPorId[regulacao.leitoOrigemId];
-        const leitoDestino = leitosPorId[regulacao.leitoDestinoId];
-        const setorOrigem = leitoOrigem ? setoresPorId[leitoOrigem.setorId] : null;
-        const setorDestino = setoresPorId[regulacao.setorDestinoId || leitoDestino?.setorId];
-        const timestamp = regulacao.timestamp || regulacao.iniciadoEm || null;
-
-        regulacoesOrigemPorLeito[regulacao.leitoOrigemId] = {
-          destinoCodigo: regulacao.leitoDestinoCodigo || leitoDestino?.codigoLeito || 'N/A',
-          destinoSetorNome: regulacao.leitoDestinoSetorNome
-            || setorDestino?.nomeSetor
-            || setorDestino?.siglaSetor
-            || 'Setor não informado',
-          timestamp,
-          pacienteNome: paciente.nomePaciente
-        };
-
-        regulacoesDestinoPorLeito[regulacao.leitoDestinoId] = {
-          pacienteNome: paciente.nomePaciente,
-          origemCodigo: regulacao.leitoOrigemCodigo || leitoOrigem?.codigoLeito || 'N/A',
-          origemSetorNome: regulacao.leitoOrigemSetorNome
-            || setorOrigem?.nomeSetor
-            || setorOrigem?.siglaSetor
-            || 'Setor não informado',
-          timestamp
-        };
-      }
-    });
-
-    const normalizarSexo = (valor) => {
-      if (!valor) return 'Não informado';
-      const texto = String(valor).trim().toUpperCase();
-      if (texto.startsWith('M')) return 'Masculino';
-      if (texto.startsWith('F')) return 'Feminino';
-      return 'Não informado';
-    };
-
-    const aplicarRestricoesCoorte = (quartosAlvo = []) => {
-      quartosAlvo.forEach(quartoAtual => {
-        const pacientesOcupantes = quartoAtual.leitos
-          .map(leitoQuarto => pacientesPorLeito[leitoQuarto.id])
-          .filter(paciente => paciente);
-
-        const possuiOcupantes = pacientesOcupantes.length > 0;
-        let restricao = null;
-
-        if (possuiOcupantes) {
-          restricao = {
-            sexo: normalizarSexo(pacientesOcupantes[0]?.sexo),
-            isolamentos: []
-          };
-
-          const isolamentosSet = new Set();
-          pacientesOcupantes.forEach(pacienteOcupante => {
-            (pacienteOcupante.isolamentos || []).forEach(isolamento => {
-              let siglaNormalizada = '';
-              const infeccaoRef = isolamento?.infeccaoId;
-              if (infeccaoRef?.id) {
-                const infeccaoCompleta = infeccoesPorId[infeccaoRef.id];
-                if (infeccaoCompleta) {
-                  siglaNormalizada = (infeccaoCompleta.siglaInfeccao || infeccaoCompleta.sigla || '').trim();
-                }
-              }
-
-              if (!siglaNormalizada) {
-                siglaNormalizada = (isolamento?.siglaInfeccao || isolamento?.sigla || isolamento?.nomeInfeccao || '').trim();
-              }
-
-              if (siglaNormalizada) {
-                isolamentosSet.add(siglaNormalizada);
-              }
-            });
-          });
-
-          if (isolamentosSet.size > 0) {
-            restricao.isolamentos = Array.from(isolamentosSet).sort((a, b) => a.localeCompare(b));
-          }
-        }
-
-        quartoAtual.leitos.forEach(leitoQuarto => {
-          const possuiPaciente = Boolean(pacientesPorLeito[leitoQuarto.id]);
-          const statusElegivel = leitoQuarto.status === 'Vago' || leitoQuarto.status === 'Higienização';
-          if (restricao && !possuiPaciente && statusElegivel) {
-            leitoQuarto.restricaoCoorte = restricao;
-            leitoQuarto.contextoQuarto = {
-              sexo: restricao.sexo,
-              isolamentos: restricao.isolamentos.map(sigla => ({ sigla, nome: sigla }))
-            };
-          } else {
-            leitoQuarto.restricaoCoorte = null;
-            leitoQuarto.contextoQuarto = null;
-          }
-        });
-      });
-    };
-
-    // Agrupar por tipo de setor
-    setores.forEach(setor => {
-      const tipoSetor = setor.tipoSetor || 'Outros';
-
-      if (!estrutura[tipoSetor]) {
-        estrutura[tipoSetor] = [];
-      }
-
-      // Buscar leitos deste setor e vincular pacientes
-      const leitosDoSetor = leitos
-        .filter(leito => leito.setorId === setor.id)
-        .map(leito => {
-          const pacienteDoLeito = pacientesPorLeito[leito.id] || null;
-          const regulacaoOrigem = regulacoesOrigemPorLeito[leito.id]
-            || (leito.regulacaoEmAndamento?.tipo === 'ORIGEM'
-              ? {
-                  destinoCodigo: leito.regulacaoEmAndamento.leitoParceiroCodigo || 'N/A',
-                  destinoSetorNome: leito.regulacaoEmAndamento.leitoParceiroSetorNome || 'Setor não informado',
-                  timestamp: leito.regulacaoEmAndamento.iniciadoEm,
-                  pacienteNome: leito.regulacaoEmAndamento.pacienteNome
-                }
-              : null);
-
-          const regulacaoDestino = regulacoesDestinoPorLeito[leito.id]
-            || (leito.regulacaoEmAndamento?.tipo === 'DESTINO'
-              ? {
-                  pacienteNome: leito.regulacaoEmAndamento.pacienteNome,
-                  origemCodigo: leito.regulacaoEmAndamento.leitoParceiroCodigo || 'N/A',
-                  origemSetorNome: leito.regulacaoEmAndamento.leitoParceiroSetorNome || null,
-                  timestamp: leito.regulacaoEmAndamento.iniciadoEm
-                }
-              : null);
-
-          let statusAjustado = leito.status;
-
-          if (regulacaoOrigem) {
-            statusAjustado = 'Regulado';
-          } else if (regulacaoDestino) {
-            statusAjustado = 'Reservado';
-          } else if (pacienteDoLeito) {
-            statusAjustado = 'Ocupado';
-          }
-
-          return {
-            ...leito,
-            paciente: pacienteDoLeito,
-            status: statusAjustado,
-            contextoQuarto: null,
-            restricaoCoorte: null,
-            regulacaoOrigem,
-            regulacaoReserva: regulacaoDestino
-          };
-        })
-        .sort((a, b) => {
-          const codeA = a.codigoLeito || '';
-          const codeB = b.codigoLeito || '';
-          return codeA.localeCompare(codeB);
-        });
-
-      let quartosComLeitos = [];
-      let leitosSemQuarto = [];
-
-      if (tipoSetor === 'Enfermaria') {
-        const gruposQuarto = leitosDoSetor.reduce((acc, leitoAtual) => {
-          const codigo = leitoAtual.codigoLeito || '';
-          const codigoNormalizado = String(codigo).trim();
-          const chave = (codigoNormalizado.substring(0, 3) || '---').toUpperCase();
-          if (!acc[chave]) {
-            acc[chave] = {
-              id: `din-${setor.id}-${chave}`,
-              nomeQuarto: `Quarto ${chave}`,
-              leitos: []
-            };
-          }
-          acc[chave].leitos.push(leitoAtual);
-          return acc;
-        }, {});
-
-        quartosComLeitos = Object.values(gruposQuarto)
-          .map(quarto => ({
-            ...quarto,
-            leitos: quarto.leitos.sort((a, b) => {
-              const codeA = a.codigoLeito || '';
-              const codeB = b.codigoLeito || '';
-              return codeA.localeCompare(codeB);
-            })
-          }))
-          .sort((a, b) => {
-            const nomeA = a.nomeQuarto || '';
-            const nomeB = b.nomeQuarto || '';
-            return nomeA.localeCompare(nomeB);
-          });
-
-        aplicarRestricoesCoorte(quartosComLeitos);
-        leitosSemQuarto = [];
-      } else {
-        const quartosDoSetor = quartos
-          .filter(quarto => quarto.setorId === setor.id)
-          .sort((a, b) => {
-            const nameA = a.nomeQuarto || '';
-            const nameB = b.nomeQuarto || '';
-            return nameA.localeCompare(nameB);
-          });
-
-        leitosSemQuarto = [...leitosDoSetor];
-
-        quartosComLeitos = quartosDoSetor.map(quarto => {
-          const leitosDoQuarto = leitosDoSetor
-            .filter(leito => quarto.leitosIds && quarto.leitosIds.includes(leito.id))
-            .sort((a, b) => {
-              const codeA = a.codigoLeito || '';
-              const codeB = b.codigoLeito || '';
-              return codeA.localeCompare(codeB);
-            });
-
-          leitosDoQuarto.forEach(leito => {
-            const index = leitosSemQuarto.findIndex(l => l.id === leito.id);
-            if (index > -1) {
-              leitosSemQuarto.splice(index, 1);
-            }
-          });
-
-          return {
-            ...quarto,
-            leitos: leitosDoQuarto
-          };
-        });
-
-        aplicarRestricoesCoorte(quartosComLeitos);
-      }
-
-      estrutura[tipoSetor].push({
-        ...setor,
-        quartos: quartosComLeitos,
-        leitosSemQuarto
-      });
-    });
-
-    return estrutura;
-  }, [setores, quartos, leitos, pacientes, infeccoesPorId]);
+  const dadosEstruturados = useMemo(() => estrutura || {}, [estrutura]);
 
   // Aplicar filtros aos dados estruturados
   const dadosFiltrados = useMemo(() => {
@@ -1810,7 +1495,7 @@ const MapaLeitosPanel = () => {
   };
 
 
-  if (loading) {
+  if (loadingDados) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="flex items-center space-x-2">
@@ -2320,7 +2005,7 @@ const MapaLeitosPanel = () => {
       <DiagnosticoIsolamentosModal
         isOpen={diagIsoModalOpen}
         onClose={() => setDiagIsoModalOpen(false)}
-        pacientes={pacientes}
+        pacientes={pacientesEnriquecidos}
       />
     </div>
   );
