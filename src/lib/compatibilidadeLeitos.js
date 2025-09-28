@@ -136,9 +136,12 @@ const extrairIsolamentosAtivosInterno = (lista) => {
   const detalhes = [];
   const chavesSet = new Set();
 
+  console.log('[Compatibilidade] Lista de isolamentos recebida:', lista);
+
   valores.forEach((item) => {
     if (!isIsolamentoAtivo(item)) return;
     const info = extrairInformacoesIsolamento(item);
+    console.log('[Compatibilidade] Isolamento extraído:', info);
     if (!info || !info.chave) return;
     if (chavesSet.has(info.chave)) return;
     chavesSet.add(info.chave);

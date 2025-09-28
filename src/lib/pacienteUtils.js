@@ -29,10 +29,17 @@ export const normalizarEstruturaPaciente = (paciente) => {
 
   pacienteNormalizado.sexo = normalizarSexo(pacienteNormalizado.sexo);
 
+  console.log(
+    '[PacienteUtils] Isolamentos brutos do paciente',
+    pacienteNormalizado?.nomePaciente,
+    pacienteNormalizado?.isolamentos
+  );
+
   if (Array.isArray(pacienteNormalizado.isolamentos)) {
     pacienteNormalizado.isolamentos = pacienteNormalizado.isolamentos
       .filter(Boolean)
       .map((isolamentoOriginal) => {
+        console.log('[PacienteUtils] Processando isolamento:', isolamentoOriginal);
         if (!isolamentoOriginal || typeof isolamentoOriginal !== 'object') {
           return isolamentoOriginal;
         }
