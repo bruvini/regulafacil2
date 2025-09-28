@@ -1,186 +1,119 @@
+// src/lib/pacienteUtils.js
+
 import { getInfeccoesCollection, getDoc, doc } from '@/lib/firebase';
 
 /**
  * Normaliza o campo 'sexo' para 'M' ou 'F'.
- * Assume 'F' como padrão se o valor não for 'M'.
+ * Se vier qualquer outra coisa, retorna null (indefinido) para forçar a compatibilidade a ser conservadora.
  */
 const normalizarSexo = (valor) => {
-  if (typeof valor === 'string' && valor.trim().toUpperCase() === 'M') {
-    return 'M';
-  }
-  return 'F';
+  const v = (typeof valor === 'string' ? valor.trim().toUpperCase() : '');
+  if (v === 'M') return 'M';
+  if (v === 'F') return 'F';
+  return null;
 };
 
 /**
- * Realiza uma normalização básica no objeto do paciente,
- * garantindo que leitoId seja uma string e o sexo seja padronizado.
+ * Normaliza APENAS a ESTRUTURA do paciente.
+ * NÃO altera o CONTEÚDO de cada item de `isolamentos`.
  */
 export const normalizarEstruturaPaciente = (paciente) => {
   if (!paciente) return null;
+  const out = { ...paciente };
 
-  const pacienteNormalizado = { ...paciente };
+  // leitoId como string
+  if (out.leitoId && typeof out.leitoId === 'object') out.leitoId = out.leitoId.id;
+  if (out.leitoId) out.leitoId = String(out.leitoId);
 
-  if (pacienteNormalizado.leitoId && typeof pacienteNormalizado.leitoId === 'object') {
-    pacienteNormalizado.leitoId = pacienteNormalizado.leitoId.id;
-  }
-  if (pacienteNormalizado.leitoId) {
-    pacienteNormalizado.leitoId = String(pacienteNormalizado.leitoId);
-  }
+  // sexo
+  out.sexo = normalizarSexo(out.sexo);
 
-  pacienteNormalizado.sexo = normalizarSexo(pacienteNormalizado.sexo);
+  // isolamentos sempre array
+  if (!Array.isArray(out.isolamentos)) out.isolamentos = [];
 
-  console.log(
-    '[PacienteUtils] Isolamentos brutos do paciente',
-    pacienteNormalizado?.nomePaciente,
-    pacienteNormalizado?.isolamentos
-  );
+  console.log('[PacienteUtils] (estrutura) paciente:', {
+    nome: out?.nomePaciente, sexo: out?.sexo, leitoId: out?.leitoId, isolamentos: out?.isolamentos
+  });
 
-  if (Array.isArray(pacienteNormalizado.isolamentos)) {
-    pacienteNormalizado.isolamentos = pacienteNormalizado.isolamentos
-      .filter(Boolean)
-      .map((isolamentoOriginal) => {
-        console.log('[PacienteUtils] Processando isolamento:', isolamentoOriginal);
-        if (!isolamentoOriginal || typeof isolamentoOriginal !== 'object') {
-          return isolamentoOriginal;
-        }
-
-        const isolamento = { ...isolamentoOriginal };
-        const infeccaoRef = isolamento.infeccaoId ?? isolamento.infecaoId;
-
-        let infeccaoId = null;
-        if (typeof infeccaoRef === 'string') {
-          infeccaoId = infeccaoRef;
-        } else if (typeof infeccaoRef === 'object' && infeccaoRef) {
-          infeccaoId = infeccaoRef.id || null;
-        }
-
-        const siglaBase =
-          isolamento.sigla ||
-          isolamento.siglaInfeccao ||
-          (infeccaoId ? String(infeccaoId) : '');
-
-        const nomeBase = isolamento.nome || isolamento.nomeInfeccao || siglaBase || '';
-
-        return {
-          ...isolamento,
-          infeccaoId: infeccaoId || isolamento.infeccaoId || isolamento.infecaoId || null,
-          sigla: siglaBase || '',
-          nome: nomeBase || '',
-        };
-      });
-  } else {
-    pacienteNormalizado.isolamentos = [];
-  }
-
-  console.log('[PacienteUtils] Paciente normalizado:', pacienteNormalizado);
-
-  return pacienteNormalizado;
+  return out;
 };
 
 /**
- * Enriquece o array de isolamentos de um paciente, buscando os detalhes
- * da infecção (sigla, nome) a partir do infeccaoId.
- * Utiliza um mapa de cache para evitar buscas repetidas ao Firestore.
+ * Enriquecimento dos isolamentos usando a coleção de infecções.
+ * - Usa cache (infeccoesMap) quando disponível
+ * - Nunca descarta isolamentos válidos por falha de fetch
+ * - Prioriza sigla/nome da infecção; NÃO usa infeccaoId como sigla/nome
  */
 const enriquecerIsolamentos = async (isolamentos, infeccoesMap) => {
   if (!Array.isArray(isolamentos) || !infeccoesMap) return [];
 
-  const construirIsolamentoBase = (isoOriginal) => {
-    if (!isoOriginal) return null;
+  const result = await Promise.all(
+    isolamentos.map(async (iso) => {
+      if (!iso || typeof iso !== 'object') return null;
 
-    const isolamento = { ...isoOriginal };
-    const infeccaoRef = isolamento.infeccaoId ?? isolamento.infecaoId;
+      const infeccaoRef = iso.infeccaoId ?? iso.infecaoId;
+      const infeccaoId =
+        typeof infeccaoRef === 'object' && infeccaoRef ? (infeccaoRef.id || null)
+        : (typeof infeccaoRef === 'string' ? infeccaoRef : null);
 
-    let infeccaoId = null;
-    if (typeof infeccaoRef === 'string') {
-      infeccaoId = infeccaoRef;
-    } else if (typeof infeccaoRef === 'object' && infeccaoRef) {
-      infeccaoId = infeccaoRef.id || null;
-    }
+      // base sem poluição
+      const base = {
+        ...iso,
+        infeccaoId: infeccaoId || null,
+        // NÃO colocar sigla/nome a partir de infeccaoId!
+      };
 
-    const siglaBase =
-      isolamento.sigla ||
-      isolamento.siglaInfeccao ||
-      (infeccaoId ? String(infeccaoId) : '') ||
-      '';
-
-    const nomeBase =
-      isolamento.nome ||
-      isolamento.nomeInfeccao ||
-      isolamento.sigla ||
-      isolamento.siglaInfeccao ||
-      (infeccaoId ? String(infeccaoId) : '') ||
-      '';
-
-    return {
-      ...isolamento,
-      infeccaoId: infeccaoId || isolamento.infeccaoId || isolamento.infecaoId || null,
-      sigla: siglaBase,
-      nome: nomeBase,
-    };
-  };
-
-  const isolamentosEnriquecidos = await Promise.all(
-    isolamentos.map(async (isoOriginal) => {
-      const isolamentoBase = construirIsolamentoBase(isoOriginal);
-      if (!isolamentoBase) return null;
-
-      const { infeccaoId } = isolamentoBase;
       if (!infeccaoId) {
-        return isolamentoBase;
+        // Sem referência de infecção — mantém o que tiver (se vier com sigla/nome já preenchidos)
+        return {
+          ...base,
+          sigla: base.sigla || base.siglaInfeccao || base.nome || base.nomeInfeccao || '', // última chance
+          nome: base.nome || base.nomeInfeccao || base.sigla || '',
+        };
       }
 
-      let infeccaoData = infeccoesMap.get(infeccaoId);
-
-      if (!infeccaoData) {
+      let inf = infeccoesMap.get(infeccaoId);
+      if (!inf) {
         try {
-          const docRef = doc(getInfeccoesCollection(), infeccaoId);
-          const snapshot = await getDoc(docRef);
-          if (snapshot.exists()) {
-            infeccaoData = { id: snapshot.id, ...snapshot.data() };
-            infeccoesMap.set(infeccaoId, infeccaoData);
+          const snap = await getDoc(doc(getInfeccoesCollection(), infeccaoId));
+          if (snap.exists()) {
+            inf = { id: snap.id, ...snap.data() };
+            infeccoesMap.set(infeccaoId, inf);
           }
-        } catch (error) {
-          console.error(`Erro ao buscar infecção ${infeccaoId}:`, error);
-          return isolamentoBase;
+        } catch (e) {
+          console.error('[PacienteUtils] erro ao buscar infeccao', infeccaoId, e);
         }
       }
 
-      if (!infeccaoData) {
-        return isolamentoBase;
-      }
+      // Mescla, priorizando dados do cadastro de infecção
+      const merged = { ...base, ...(inf || {}) };
+      const siglaFinal = merged.siglaInfeccao || merged.sigla || base.sigla || base.nome || '';
+      const nomeFinal  = merged.nomeInfeccao  || merged.nome  || base.nome  || siglaFinal || '';
 
-      const isolamentoComDados = { ...isolamentoBase, ...infeccaoData };
-
-      return {
-        ...isolamentoComDados,
-        sigla: isolamentoComDados.sigla || isolamentoBase.sigla,
-        nome: isolamentoComDados.nome || isolamentoBase.nome,
-      };
+      return { ...merged, sigla: siglaFinal, nome: nomeFinal };
     })
   );
 
-  return isolamentosEnriquecidos.filter((item) => item && item.sigla);
+  // Mantém isolamentos com alguma identificação (sigla ou nome)
+  const limpos = result.filter(i => i && (i.sigla || i.nome));
+
+  console.log('[PacienteUtils] (enriquecidos) isolamentos:', limpos);
+  return limpos;
 };
 
 /**
- * Função principal que orquestra a normalização e o enriquecimento de um paciente.
+ * Pipeline completo do paciente: estrutura + enriquecimento de isolamentos.
  */
 export const processarPaciente = async (paciente, infeccoesMap = new Map()) => {
-  const pacienteNormalizado = normalizarEstruturaPaciente(paciente);
-  if (!pacienteNormalizado) return null;
+  const p = normalizarEstruturaPaciente(paciente);
+  if (!p) return null;
 
-  const isolamentosDetalhados = await enriquecerIsolamentos(
-    pacienteNormalizado.isolamentos,
-    infeccoesMap
-  );
+  const isolamentos = await enriquecerIsolamentos(p.isolamentos, infeccoesMap);
+  const final = { ...p, isolamentos };
 
-  console.log('[PacienteUtils] Paciente enriquecido:', {
-    nome: pacienteNormalizado?.nomePaciente,
-    sexo: pacienteNormalizado?.sexo,
-    leitoId: pacienteNormalizado?.leitoId,
-    isolamentos: isolamentosDetalhados,
+  console.log('[PacienteUtils] (final) paciente:', {
+    nome: final?.nomePaciente, sexo: final?.sexo, leitoId: final?.leitoId, isolamentos: final?.isolamentos
   });
 
-  return { ...pacienteNormalizado, isolamentos: isolamentosDetalhados };
+  return final;
 };
