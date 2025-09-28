@@ -69,63 +69,39 @@ const isIsolamentoAtivo = (isolamento) => {
 };
 
 const extrairInformacoesIsolamento = (isolamento) => {
-  if (isolamento === null || isolamento === undefined) return null;
+  if (isolamento == null) return null;
 
   if (typeof isolamento === 'string' || typeof isolamento === 'number') {
     const valor = String(isolamento).trim();
     if (!valor) return null;
     const chave = normalizarTexto(valor);
-    return {
-      sigla: valor,
-      nome: valor,
-      chave,
-    };
+    return { sigla: valor, nome: valor, chave };
   }
 
   if (typeof isolamento === 'object') {
     const sigla =
-      isolamento.sigla ||
       isolamento.siglaInfeccao ||
+      isolamento.sigla ||
       isolamento.codigo ||
       isolamento.tipo ||
       isolamento.nome ||
       '';
 
     const nome =
-      isolamento.nome ||
       isolamento.nomeInfeccao ||
+      isolamento.nome ||
       isolamento.descricao ||
       sigla ||
       'Isolamento';
 
-    const infeccaoRef = isolamento.infeccaoId ?? isolamento.infecaoId;
-    const infeccaoId =
-      typeof infeccaoRef === 'string'
-        ? infeccaoRef
-        : typeof infeccaoRef === 'object' && infeccaoRef
-          ? infeccaoRef.id || infeccaoRef?.path?.split?.('/')?.pop?.()
-          : '';
+    // **NÃO** use infeccaoId/id como fonte de chave preferencial;
+    // construa a chave a partir de sigla/nome (dados clínicos)
+    const baseParaChave = sigla || nome;
+    const chaveBase = normalizarTexto(baseParaChave);
 
-    const identificador =
-      sigla ||
-      isolamento.siglaInfeccao ||
-      isolamento.codigo ||
-      isolamento.tipo ||
-      isolamento.id ||
-      infeccaoId ||
-      nome ||
-      '';
+    if (!chaveBase) return null;
 
-    const chaveBase = normalizarTexto(identificador || sigla || nome);
-    if (!chaveBase && !sigla && !nome) {
-      return null;
-    }
-
-    return {
-      sigla: sigla || nome || 'N/A',
-      nome: nome || sigla || 'Isolamento',
-      chave: chaveBase,
-    };
+    return { sigla: sigla || nome || 'N/A', nome: nome || sigla || 'Isolamento', chave: chaveBase };
   }
 
   return null;
@@ -324,69 +300,70 @@ export const getLeitosCompativeis = (
 
       if (ocupantes.length > 0) {
         const sexos = new Set(
-          ocupantes
-            .map((ocupante) => normalizarSexo(ocupante?.sexo))
-            .filter(Boolean)
+          ocupantes.map((o) => normalizarSexo(o?.sexo)).filter(Boolean)
         );
 
+        // sexo inconsistente no quarto
         if (sexos.size > 1) {
-          console.log('[Compatibilidade] REJEITADO por sexo inconsistente entre ocupantes:', {
-            sexosOcupantes: Array.from(sexos),
-          });
+          console.log('[Compatibilidade] REJEITADO por sexo inconsistente entre ocupantes:', Array.from(sexos));
           return;
         }
 
+        // se quarto tem sexo definido, paciente com sexo diferente (ou indefinido) é rejeitado
         if (sexos.size === 1) {
           const [sexoQuarto] = Array.from(sexos);
-          if (sexoQuarto && sexoPaciente && sexoQuarto !== sexoPaciente) {
-            console.log('[Compatibilidade] REJEITADO por sexo:', {
-              sexoPaciente,
-              sexoQuarto,
-            });
+          const sexoPacienteNormalizado = normalizarSexo(paciente?.sexo);
+          if (sexoQuarto && sexoPacienteNormalizado && sexoQuarto !== sexoPacienteNormalizado) {
+            console.log('[Compatibilidade] REJEITADO por sexo:', { sexoQuarto, sexoPaciente: sexoPacienteNormalizado });
             return;
           }
-          if (sexoQuarto && !sexoPaciente) {
-            console.log('[Compatibilidade] REJEITADO por sexo indefinido do paciente.', {
-              sexoQuarto,
-            });
+          if (sexoQuarto && !sexoPacienteNormalizado) {
+            console.log('[Compatibilidade] REJEITADO por sexo indefinido do paciente:', { sexoQuarto });
             return;
           }
         }
 
+        // -------- ISOLAMENTO (REGRA CLÍNICA BLINDADA) --------
         const chavesOcupantes = new Set();
-        let chaveReferencia = null;
-
-        for (const ocupante of ocupantes) {
-          const { chave } = extrairIsolamentosAtivosInterno(ocupante?.isolamentos);
-          chavesOcupantes.add(chave);
-          if (chaveReferencia === null) {
-            chaveReferencia = chave;
-          }
+        for (const oc of ocupantes) {
+          const { chave } = extrairIsolamentosAtivosInterno(oc?.isolamentos);
+          chavesOcupantes.add(chave || '');
         }
 
-        if (chavesOcupantes.size > 1) {
-          console.log('[Compatibilidade] REJEITADO por múltiplos isolamentos entre ocupantes:', {
-            chavesOcupantes: Array.from(chavesOcupantes),
-          });
-          return;
-        }
+        // normaliza conjuntos
+        const chavesOc = Array.from(chavesOcupantes).filter(Boolean);
+        const { chave: chavePaciente } = extrairIsolamentosAtivosInterno(paciente?.isolamentos);
+        const chavePac = chavePaciente || '';
 
-        const [chaveOcupantes] = Array.from(chavesOcupantes);
-        console.log('[Compatibilidade] Isolamento paciente:', chaveIsolamentoPaciente, 'Isolamento ocupantes:', chaveOcupantes);
-        if (chaveOcupantes) {
-          if (chaveOcupantes !== chaveIsolamentoPaciente) {
-            console.log('[Compatibilidade] REJEITADO por isolamento incompatível:', {
-              chavePaciente: chaveIsolamentoPaciente,
-              chaveOcupantes,
-            });
+        console.log('[Compatibilidade] Isolamento (quarto vs paciente):', { chavesOc, chavePac });
+
+        // Se há pelo menos UM isolamento entre ocupantes
+        if (chavesOc.length > 0) {
+          // se ocupantes têm múltiplas chaves diferentes, já rejeita (não misturar coortes)
+          if (new Set(chavesOc).size > 1) {
+            console.log('[Compatibilidade] REJEITADO por múltiplos isolamentos entre ocupantes:', chavesOc);
             return;
           }
-        } else if (chaveIsolamentoPaciente) {
-          console.log('[Compatibilidade] REJEITADO por isolamento do paciente sem correspondência no quarto:', {
-            chavePaciente: chaveIsolamentoPaciente,
-          });
-          return;
+          const [chaveQuarto] = chavesOc;
+
+          // paciente sem isolamento tentando entrar em quarto isolado
+          if (!chavePac) {
+            console.log('[Compatibilidade] REJEITADO: paciente sem isolamento tentando dividir quarto com paciente isolado:', { chaveQuarto });
+            return;
+          }
+          // paciente com isolamento diferente do quarto
+          if (chavePac !== chaveQuarto) {
+            console.log('[Compatibilidade] REJEITADO: isolamentos incompatíveis', { chaveQuarto, chavePac });
+            return;
+          }
+        } else {
+          // Quarto sem isolamento: paciente com isolamento não pode entrar
+          if (chavePac) {
+            console.log('[Compatibilidade] REJEITADO: paciente com isolamento tentando dividir quarto sem isolamento:', { chavePac });
+            return;
+          }
         }
+        // -------- FIM ISOLAMENTO --------
       }
     }
 
