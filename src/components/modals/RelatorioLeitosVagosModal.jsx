@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Copy, Loader2 } from 'lucide-react';
-import {
+import { 
   getSetoresCollection,
   getLeitosCollection,
   getQuartosCollection,
@@ -13,7 +13,6 @@ import {
   onSnapshot
 } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { cn } from '@/lib/utils';
 
 const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
   const { toast } = useToast();
@@ -26,52 +25,17 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
   });
   const [infeccoes, setInfeccoes] = useState([]);
 
-  const obterCompatibilidadeLeito = (restricao) => {
+  const formatarMensagemRestricaoCoorte = (restricao) => {
     if (!restricao) {
-      return { livre: true };
+      return '';
     }
 
-    const sexoNormalizado = restricao.sexo && restricao.sexo !== 'Não informado'
-      ? restricao.sexo
-      : null;
-    const isolamentos = Array.isArray(restricao.isolamentos)
-      ? restricao.isolamentos.filter(Boolean)
-      : [];
-
+    const isolamentos = restricao.isolamentos || [];
     if (isolamentos.length > 0) {
-      const detalhes = sexoNormalizado ? [sexoNormalizado, ...isolamentos] : isolamentos;
-      return {
-        livre: false,
-        badges: [
-          {
-            key: 'coorte',
-            type: 'isolamento',
-            label: `Coorte: ${detalhes.join(', ')}`
-          }
-        ]
-      };
+      return `Permitido apenas pacientes do sexo ${restricao.sexo} com isolamento de ${isolamentos.join(', ')}`;
     }
 
-    if (sexoNormalizado) {
-      return {
-        livre: false,
-        badges: [
-          {
-            key: 'sexo',
-            type: 'sexo',
-            label: `Apenas ${sexoNormalizado}`
-          }
-        ]
-      };
-    }
-
-    return { livre: true };
-  };
-
-  const badgeCompatibilidadeClasses = {
-    sexo: 'bg-blue-100 text-blue-800 border-blue-200',
-    isolamento: 'bg-amber-100 text-amber-800 border-amber-200',
-    livre: 'bg-emerald-100 text-emerald-900 border-emerald-200'
+    return `Permitido apenas pacientes do sexo ${restricao.sexo}`;
   };
 
   // Buscar dados do Firestore
@@ -429,32 +393,13 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
                               </Badge>
                             </td>
                             <td className="px-4 py-3">
-                              {(() => {
-                                const compatibilidade = obterCompatibilidadeLeito(leito.restricaoCoorte);
-                                if (compatibilidade.livre) {
-                                  return (
-                                    <Badge className={cn('text-xs font-semibold px-2.5 py-0.5 border', badgeCompatibilidadeClasses.livre)}>
-                                      Livre
-                                    </Badge>
-                                  );
-                                }
-
-                                return (
-                                  <div className="flex flex-wrap gap-2">
-                                    {compatibilidade.badges?.map((badgeInfo) => (
-                                      <Badge
-                                        key={badgeInfo.key}
-                                        className={cn(
-                                          'text-xs font-semibold px-2.5 py-0.5 border',
-                                          badgeCompatibilidadeClasses[badgeInfo.type] || badgeCompatibilidadeClasses.isolamento
-                                        )}
-                                      >
-                                        {badgeInfo.label}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                );
-                              })()}
+                              {leito.restricaoCoorte ? (
+                                <span className="text-xs font-semibold text-blue-700">
+                                  {formatarMensagemRestricaoCoorte(leito.restricaoCoorte)}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Sem restrição de coorte</span>
+                              )}
                             </td>
                           </tr>
                         ))}
