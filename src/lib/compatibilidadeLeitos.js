@@ -26,7 +26,11 @@ const atendeRestricaoDePCP = (paciente, leito) => {
     return true; // Se o leito não é PCP, a regra não se aplica.
   }
   const idade = paciente.idade || 0; // Supondo que a idade seja pré-calculada.
-  const temIsolamentoAtivo = paciente.isolamentos.some(iso => iso.statusConsideradoAtivo);
+  
+  // Verificar se isolamentos existe e é um array antes de usar .some()
+  const isolamentos = paciente.isolamentos || [];
+  const temIsolamentoAtivo = Array.isArray(isolamentos) ? 
+    isolamentos.some(iso => iso.statusConsideradoAtivo) : false;
   
   return idade >= 18 && idade <= 60 && !temIsolamentoAtivo;
 };
