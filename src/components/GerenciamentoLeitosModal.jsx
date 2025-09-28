@@ -149,10 +149,9 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
   // Funções CRUD para Setores
   const handleSetorSubmit = async (e) => {
     e.preventDefault();
-    const nomeSetorTrim = setorForm.nomeSetor.trim();
-    const siglaSetorTrim = setorForm.siglaSetor.trim();
-    const tipoSetorTrim = setorForm.tipoSetor.trim();
-
+    const nomeSetorTrim = (setorForm.nomeSetor || '').trim();
+    const siglaSetorTrim = (setorForm.siglaSetor || '').trim();
+    const tipoSetorTrim = (setorForm.tipoSetor || '').trim();
     const errors = {
       nomeSetor: nomeSetorTrim === '',
       siglaSetor: siglaSetorTrim === '',
