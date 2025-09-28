@@ -65,7 +65,7 @@ const processarPaciente = (paciente, infeccoesMap) => {
 };
 
 export const getHospitalData = async () => {
-  console.log('[HospitalData] Iniciando busca, enriquecimento e ESTRUTURAÇÃO de dados...');
+  console.log('[HospitalData] Iniciando pipeline completo: Busca > Enriquecimento > Estruturação de Coorte');
 
   const [pacientesCrus, leitos, setores, quartos, infeccoes] = await Promise.all([
     fetchCollection(getPacientesCollection),
@@ -96,76 +96,48 @@ export const getHospitalData = async () => {
       const gruposQuarto = leitosDoSetor.reduce((acc, leito) => {
         const chave = (leito.codigoLeito || 'SEM-CODIGO').substring(0, 3);
         if (!acc[chave]) {
-          acc[chave] = {
-            id: `quarto-dinamico-${setor.id}-${chave}`,
-            nomeQuarto: `Quarto ${chave}`,
-            setorId: setor.id,
-            leitos: [],
-          };
+          acc[chave] = { id: `quarto-dinamico-${chave}`, nomeQuarto: `Quarto ${chave}`, leitos: [] };
         }
-        const leitoAssociado = leito;
-        leitoAssociado.quartoId = acc[chave].id;
-        acc[chave].leitos.push(leitoAssociado);
+        acc[chave].leitos.push(leito);
         return acc;
       }, {});
       quartosDoSetor = Object.values(gruposQuarto);
     } else {
       quartosDoSetor = quartos
         .filter(q => q.setorId === setor.id)
-        .map(quarto => {
-          const idsPermitidos = new Set(quarto.leitosIds || []);
-          const leitosDoQuarto = leitosDoSetor.filter(l => idsPermitidos.has(l.id));
-          leitosDoQuarto.forEach(leito => {
-            leito.quartoId = quarto.id;
-          });
-          return {
-            ...quarto,
-            leitos: leitosDoQuarto,
-          };
-        });
+        .map(quarto => ({
+          ...quarto,
+          leitos: leitosDoSetor.filter(l => (quarto.leitosIds || []).includes(l.id)),
+        }));
     }
 
-    const leitosSemQuarto = leitosDoSetor.filter(leito => !quartosDoSetor.some(quarto => quarto.leitos.includes(leito)));
-    if (leitosSemQuarto.length > 0) {
-      leitosSemQuarto.forEach(leito => {
-        leito.quartoId = null;
-      });
-    }
+    quartosDoSetor.forEach(quarto => {
+      const ocupantes = quarto.leitos.map(l => l.paciente).filter(Boolean);
+      let restricao = null;
 
-    const aplicarCoorte = (leitosQuarto) => {
-      const ocupantes = leitosQuarto.map(l => l.paciente).filter(Boolean);
-      if (ocupantes.length === 0) {
-        return null;
-      }
-
-      const sexosOcupantes = new Set(ocupantes.map(o => o.sexo).filter(Boolean));
-      const chavesIsolamento = new Set();
-      ocupantes.forEach(o => {
-        (o.isolamentos || [])
-          .filter(iso => iso.statusConsideradoAtivo)
-          .forEach(iso => {
+      if (ocupantes.length > 0) {
+        const sexosOcupantes = new Set(ocupantes.map(o => o.sexo).filter(Boolean));
+        const chavesIsolamento = new Set();
+        ocupantes.forEach(o => {
+          (o.isolamentos || []).filter(iso => iso.statusConsideradoAtivo).forEach(iso => {
             const chave = (iso.siglaInfeccao || iso.sigla || '').toLowerCase();
             if (chave) {
               chavesIsolamento.add(chave);
             }
           });
-      });
+        });
 
-      if (sexosOcupantes.size === 1) {
-        return {
-          sexo: [...sexosOcupantes][0],
-          isolamentos: [...chavesIsolamento].filter(Boolean),
-        };
+        if (sexosOcupantes.size === 1) {
+          restricao = {
+            sexo: [...sexosOcupantes][0],
+            isolamentos: [...chavesIsolamento].filter(Boolean),
+          };
+        }
       }
 
-      return null;
-    };
-
-    quartosDoSetor.forEach(quarto => {
-      const restricao = aplicarCoorte(quarto.leitos);
       quarto.leitos.forEach(leito => {
         const status = (leito.status || '').toUpperCase();
-        if (restricao && (status === 'VAGO' || status === 'HIGIENIZAÇÃO')) {
+        if ((status === 'VAGO' || status === 'HIGIENIZAÇÃO') && restricao) {
           leito.restricaoCoorte = restricao;
         } else {
           delete leito.restricaoCoorte;
@@ -173,13 +145,14 @@ export const getHospitalData = async () => {
       });
     });
 
-    return { ...setor, quartos: quartosDoSetor, leitosSemQuarto };
+    return { ...setor, quartos: quartosDoSetor };
   });
 
-  console.log('[HospitalData] Pipeline com ESTRUTURA HIERÁRQUICA concluído.');
+  console.log('[HospitalData] Pipeline com ESTRUTURA HIERÁRQUICA e COORTES concluído.');
   return {
     estrutura: estruturaFinal,
     pacientes: pacientesProcessados,
-    leitos: leitosComPacientes,
   };
 };
+
+export { fetchCollection, processarPaciente };

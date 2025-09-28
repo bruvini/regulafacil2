@@ -17,42 +17,23 @@ export const getChavesIsolamentoAtivo = (paciente) => {
   return new Set(chaves);
 };
 
-const coletarLeitosDisponiveis = (estrutura, tipoSetorAlvo) => {
-  if (!Array.isArray(estrutura)) {
-    return [];
-  }
-
+export const getRelatorioCompatibilidade = (pacienteAlvo, hospitalData, modo = 'enfermaria') => {
+  const { estrutura = [] } = hospitalData || {};
+  const tipoSetorAlvo = (modo === 'uti' ? 'UTI' : 'ENFERMARIA');
   const leitosDisponiveis = [];
 
   estrutura
     .filter(setor => (setor.tipoSetor || '').toUpperCase() === tipoSetorAlvo)
     .forEach(setor => {
-      const adicionarLeitos = (colecao = []) => {
-        colecao.forEach(leito => {
+      (setor.quartos || []).forEach(quarto => {
+        (quarto.leitos || []).forEach(leito => {
           const status = (leito.status || '').trim().toUpperCase();
           if (status === 'VAGO' || status === 'HIGIENIZAÇÃO') {
             leitosDisponiveis.push(leito);
           }
         });
-      };
-
-      if (Array.isArray(setor.quartos)) {
-        setor.quartos.forEach(quarto => adicionarLeitos(quarto.leitos));
-      }
-
-      if (Array.isArray(setor.leitosSemQuarto)) {
-        adicionarLeitos(setor.leitosSemQuarto);
-      }
+      });
     });
-
-  return leitosDisponiveis;
-};
-
-export const getRelatorioCompatibilidade = (pacienteAlvo, hospitalData, modo = 'enfermaria') => {
-  const estrutura = hospitalData?.estrutura || [];
-  const tipoSetorAlvo = (modo === 'uti' ? 'UTI' : 'ENFERMARIA');
-
-  const leitosDisponiveis = coletarLeitosDisponiveis(estrutura, tipoSetorAlvo);
 
   if (modo === 'uti') {
     return {
@@ -107,10 +88,10 @@ export const getRelatorioCompatibilidade = (pacienteAlvo, hospitalData, modo = '
       leitosPorSexo.push(leito);
     }
 
-    const isolamentosCoorte = Array.isArray(coorte.isolamentos) ? coorte.isolamentos : [];
+    const isolamentosCoorte = new Set(Array.isArray(coorte.isolamentos) ? coorte.isolamentos : []);
     if (
-      chavesPaciente.size === isolamentosCoorte.length &&
-      [...chavesPaciente].every(chave => isolamentosCoorte.includes(chave))
+      chavesPaciente.size === isolamentosCoorte.size &&
+      [...chavesPaciente].every(chave => isolamentosCoorte.has(chave))
     ) {
       leitosPorIsolamento.push(leito);
     }
