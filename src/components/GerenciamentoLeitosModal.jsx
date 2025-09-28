@@ -152,7 +152,6 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
     const nomeSetorTrim = (setorForm.nomeSetor || '').trim();
     const siglaSetorTrim = (setorForm.siglaSetor || '').trim();
     const tipoSetorTrim = (setorForm.tipoSetor || '').trim();
-
     const errors = {
       nomeSetor: nomeSetorTrim === '',
       siglaSetor: siglaSetorTrim === '',
