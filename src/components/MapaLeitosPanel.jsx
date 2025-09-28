@@ -32,8 +32,7 @@ import {
   LogOut,
   Search,
   Filter,
-  X,
-  Wrench
+  X
 } from 'lucide-react';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -60,7 +59,6 @@ import AltaNoLeitoModal from './modals/AltaNoLeitoModal';
 import CancelarReservaExternaModal from './modals/CancelarReservaExternaModal';
 import ConfirmarInternacaoExternaModal from './modals/ConfirmarInternacaoExternaModal';
 import InternacaoManualModal from './modals/InternacaoManualModal';
-import DiagnosticoIsolamentosModal from './modals/DiagnosticoIsolamentosModal';
 
 // Color mapping for sector types
 const getSectorTypeColor = (tipoSetor) => {
@@ -776,7 +774,6 @@ const MapaLeitosPanel = () => {
   const [modalCancelarReservaExterna, setModalCancelarReservaExterna] = useState({ open: false, reserva: null, leito: null });
   const [modalConfirmarInternacaoExterna, setModalConfirmarInternacaoExterna] = useState({ open: false, reserva: null, leito: null });
   const [modalInternacaoManual, setModalInternacaoManual] = useState({ open: false, leito: null });
-  const [diagIsoModalOpen, setDiagIsoModalOpen] = useState(false);
 
   const construirContextoReservaExterna = (leitoAtual) => {
     const dadosReserva = leitoAtual?.reservaExterna || {};
@@ -1518,22 +1515,6 @@ const MapaLeitosPanel = () => {
 
   return (
     <div className="space-y-4">
-      <Card className="bg-white border border-gray-200 rounded-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Wrench className="h-4 w-4 text-primary" />
-            Caixa de Ferramentas
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            <Button variant="outline" onClick={() => setDiagIsoModalOpen(true)}>
-              Diagnóstico de Isolamentos
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Painel de Filtros */}
       <div className="bg-white border border-gray-200 rounded-lg p-4">
         {/* Busca Rápida */}
@@ -2002,11 +1983,6 @@ const MapaLeitosPanel = () => {
         leito={modalInternacaoManual.leito}
       />
 
-      <DiagnosticoIsolamentosModal
-        isOpen={diagIsoModalOpen}
-        onClose={() => setDiagIsoModalOpen(false)}
-        pacientes={pacientesEnriquecidos}
-      />
     </div>
   );
 };
