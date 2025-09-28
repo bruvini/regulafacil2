@@ -226,10 +226,24 @@ export const getLeitosCompativeis = (
     ? new Set(Array.from(setoresPermitidos).map((id) => String(id)))
     : null;
 
+  const normalizarChaveLeito = (valor) => {
+    if (valor == null) return '';
+    if (typeof valor === 'string') return valor;
+    if (typeof valor === 'object') {
+      if (typeof valor.id === 'string') return valor.id;
+      if (typeof valor.id === 'number') return String(valor.id);
+      if (typeof valor.path === 'string') return valor.path;
+    }
+    const valorConvertido = String(valor);
+    if (valorConvertido === '[object Object]') return '';
+    return valorConvertido;
+  };
+
   const pacientesPorLeito = new Map();
   (todosOsPacientes || []).forEach((pacienteExistente) => {
-    if (pacienteExistente?.leitoId) {
-      pacientesPorLeito.set(pacienteExistente.leitoId, pacienteExistente);
+    const chaveLeito = normalizarChaveLeito(pacienteExistente?.leitoId);
+    if (chaveLeito) {
+      pacientesPorLeito.set(chaveLeito, pacienteExistente);
     }
   });
 
@@ -286,10 +300,34 @@ export const getLeitosCompativeis = (
 
     if (leito.quartoId) {
       const leitosDoQuarto = obterLeitosDoQuarto(leito, { quartosPorId, leitosPorId, todosOsLeitos });
-      const ocupantes = leitosDoQuarto
-        .filter((outroLeito) => outroLeito.id !== leito.id)
-        .map((outroLeito) => pacientesPorLeito.get(outroLeito.id))
-        .filter(Boolean);
+      const outrosLeitos = leitosDoQuarto.filter((outroLeito) => outroLeito.id !== leito.id);
+      const ocupantesComLeitos = outrosLeitos.map((outroLeito) => ({
+        leito: outroLeito,
+        paciente: pacientesPorLeito.get(normalizarChaveLeito(outroLeito.id)),
+      }));
+      const ocupantes = ocupantesComLeitos.map((item) => item.paciente).filter(Boolean);
+
+      const leitosOcupadosNoQuarto = outrosLeitos.filter(
+        (outroLeito) => obterStatusNormalizado(outroLeito) === 'ocupado'
+      );
+
+      if (leitosOcupadosNoQuarto.length > ocupantes.length) {
+        const contextoInconsistencia = {
+          quartoId: leito.quartoId,
+          leitosOcupados: leitosOcupadosNoQuarto.map((l) => ({
+            id: l.id,
+            codigo: l.codigoLeito,
+          })),
+          pacientesMapeados: ocupantesComLeitos.map((item) => ({
+            leitoId: item.leito.id,
+            paciente: item.paciente?.nomePaciente || null,
+          })),
+        };
+
+        console.warn('[Compatibilidade] Inconsistência entre leitos ocupados e pacientes mapeados:', contextoInconsistencia);
+        console.log('[Compatibilidade] REJEITADO por isolamento (ocupante não identificado no quarto):', contextoInconsistencia);
+        return;
+      }
 
       console.log('[Compatibilidade] Avaliando leito:', leito.codigoLeito, 'Quarto:', leito.quartoId);
       console.log('[Compatibilidade] Ocupantes do quarto:', ocupantes.map((o) => ({
