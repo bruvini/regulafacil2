@@ -1,7 +1,5 @@
 // src/lib/compatibilidadeLeitos.js
 
-// === FUNÇÕES AUXILIARES DE LÓGICA PURA ===
-
 /**
  * Extrai um conjunto de chaves de isolamento ativas de um paciente.
  * Ex: ['kpc', 'mrsa']
@@ -19,37 +17,51 @@ export const getChavesIsolamentoAtivo = (paciente) => {
   return new Set(chaves);
 };
 
-// === FUNÇÃO PRINCIPAL ORQUESTRADORA ===
+const coletarLeitosDisponiveis = (estrutura, tipoSetorAlvo) => {
+  if (!Array.isArray(estrutura)) {
+    return [];
+  }
 
-/**
- * Gera um relatório detalhado de compatibilidade de leitos para um paciente,
- * consumindo a estrutura hierárquica pré-processada pelo pipeline.
- * @param {Object} pacienteAlvo - O paciente enriquecido (com idade).
- * @param {Object} hospitalData - O objeto de dados completo do pipeline.
- * @param {string} modo - 'enfermaria' ou 'uti'.
- * @returns {Object} Um relatório estruturado com os resultados de cada regra.
- */
+  const leitosDisponiveis = [];
+
+  estrutura
+    .filter(setor => (setor.tipoSetor || '').toUpperCase() === tipoSetorAlvo)
+    .forEach(setor => {
+      const adicionarLeitos = (colecao = []) => {
+        colecao.forEach(leito => {
+          const status = (leito.status || '').trim().toUpperCase();
+          if (status === 'VAGO' || status === 'HIGIENIZAÇÃO') {
+            leitosDisponiveis.push(leito);
+          }
+        });
+      };
+
+      if (Array.isArray(setor.quartos)) {
+        setor.quartos.forEach(quarto => adicionarLeitos(quarto.leitos));
+      }
+
+      if (Array.isArray(setor.leitosSemQuarto)) {
+        adicionarLeitos(setor.leitosSemQuarto);
+      }
+    });
+
+  return leitosDisponiveis;
+};
+
 export const getRelatorioCompatibilidade = (pacienteAlvo, hospitalData, modo = 'enfermaria') => {
-  const { leitos, setores = [] } = hospitalData;
+  const estrutura = hospitalData?.estrutura || [];
+  const tipoSetorAlvo = (modo === 'uti' ? 'UTI' : 'ENFERMARIA');
 
-  const leitosDisponiveis = leitos.filter(leito => {
-    const status = (leito.status || '').trim().toUpperCase();
-    return status === 'VAGO' || status === 'HIGIENIZAÇÃO';
-  });
+  const leitosDisponiveis = coletarLeitosDisponiveis(estrutura, tipoSetorAlvo);
 
   if (modo === 'uti') {
-    const setoresPorId = new Map(setores.map(setor => [setor.id, setor]));
-    const leitosDeUTI = leitosDisponiveis.filter(leito => {
-      const setor = setoresPorId.get(leito.setorId);
-      return (setor?.tipoSetor || '').toUpperCase() === 'UTI';
-    });
     return {
       modo,
-      compativeisFinais: leitosDeUTI,
+      compativeisFinais: leitosDisponiveis,
       regras: {
         porTipoSetor: {
           mensagem: 'Modo UTI: Exibindo apenas leitos de setores do tipo UTI.',
-          leitos: leitosDeUTI,
+          leitos: leitosDisponiveis,
         },
       },
     };
@@ -58,17 +70,20 @@ export const getRelatorioCompatibilidade = (pacienteAlvo, hospitalData, modo = '
   const relatorio = {};
   const chavesPaciente = getChavesIsolamentoAtivo(pacienteAlvo);
 
+  const idadePaciente = pacienteAlvo?.idade ?? 0;
+  const origemPaciente = (pacienteAlvo?.setorOrigem || '').toUpperCase();
   const elegivelPCP = (
-    (pacienteAlvo.idade ?? 0) >= 18 &&
-    (pacienteAlvo.idade ?? 0) <= 60 &&
+    idadePaciente >= 18 &&
+    idadePaciente <= 60 &&
     chavesPaciente.size === 0 &&
-    (pacienteAlvo.setorOrigem || '').toUpperCase() !== 'CC - RECUPERAÇÃO'
+    origemPaciente !== 'CC - RECUPERAÇÃO'
   );
+
   relatorio.porPCP = {
     elegivel: elegivelPCP,
     mensagem: elegivelPCP
-      ? `Elegível para leitos PCP (idade ${pacienteAlvo.idade}, sem isolamento).`
-      : `NÃO elegível para leitos PCP (idade ${pacienteAlvo.idade}, isolamento ou origem CC).`,
+      ? `Elegível para leitos PCP (idade ${idadePaciente}, sem isolamento).`
+      : `NÃO elegível para leitos PCP (idade ${idadePaciente}, isolamento ou origem CC).`,
     leitos: elegivelPCP ? leitosDisponiveis.filter(l => l.isPCP) : [],
   };
 
