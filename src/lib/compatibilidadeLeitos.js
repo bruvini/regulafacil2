@@ -256,6 +256,12 @@ export const getLeitosCompativeis = (
 
   const sexoPaciente = normalizarSexo(paciente?.sexo);
   const { chave: chaveIsolamentoPaciente } = extrairIsolamentosAtivosInterno(paciente?.isolamentos);
+  console.log('[Compatibilidade] Iniciando cálculo para paciente:', paciente?.nomePaciente, {
+    sexo: paciente?.sexo,
+    leitoId: paciente?.leitoId,
+    isolamentos: paciente?.isolamentos,
+  });
+  console.log('[Compatibilidade] Isolamento paciente:', chaveIsolamentoPaciente);
   const idadePaciente = calcularIdade(paciente?.dataNascimento);
   const setorOrigemNormalizado = normalizarTexto(paciente?.setorOrigem);
 
@@ -306,6 +312,13 @@ export const getLeitosCompativeis = (
         .map((outroLeito) => pacientesPorLeito.get(outroLeito.id))
         .filter(Boolean);
 
+      console.log('[Compatibilidade] Avaliando leito:', leito.codigoLeito, 'Quarto:', leito.quartoId);
+      console.log('[Compatibilidade] Ocupantes do quarto:', ocupantes.map((o) => ({
+        nome: o?.nomePaciente,
+        sexo: o?.sexo,
+        isolamentos: o?.isolamentos,
+      })));
+
       if (ocupantes.length > 0) {
         const sexos = new Set(
           ocupantes
@@ -314,13 +327,27 @@ export const getLeitosCompativeis = (
         );
 
         if (sexos.size > 1) {
+          console.log('[Compatibilidade] REJEITADO por sexo inconsistente entre ocupantes:', {
+            sexosOcupantes: Array.from(sexos),
+          });
           return;
         }
 
         if (sexos.size === 1) {
           const [sexoQuarto] = Array.from(sexos);
-          if (sexoQuarto && sexoPaciente && sexoQuarto !== sexoPaciente) return;
-          if (sexoQuarto && !sexoPaciente) return;
+          if (sexoQuarto && sexoPaciente && sexoQuarto !== sexoPaciente) {
+            console.log('[Compatibilidade] REJEITADO por sexo:', {
+              sexoPaciente,
+              sexoQuarto,
+            });
+            return;
+          }
+          if (sexoQuarto && !sexoPaciente) {
+            console.log('[Compatibilidade] REJEITADO por sexo indefinido do paciente.', {
+              sexoQuarto,
+            });
+            return;
+          }
         }
 
         const chavesOcupantes = new Set();
@@ -335,18 +362,32 @@ export const getLeitosCompativeis = (
         }
 
         if (chavesOcupantes.size > 1) {
+          console.log('[Compatibilidade] REJEITADO por múltiplos isolamentos entre ocupantes:', {
+            chavesOcupantes: Array.from(chavesOcupantes),
+          });
           return;
         }
 
         const [chaveOcupantes] = Array.from(chavesOcupantes);
+        console.log('[Compatibilidade] Isolamento paciente:', chaveIsolamentoPaciente, 'Isolamento ocupantes:', chaveOcupantes);
         if (chaveOcupantes) {
-          if (chaveOcupantes !== chaveIsolamentoPaciente) return;
+          if (chaveOcupantes !== chaveIsolamentoPaciente) {
+            console.log('[Compatibilidade] REJEITADO por isolamento incompatível:', {
+              chavePaciente: chaveIsolamentoPaciente,
+              chaveOcupantes,
+            });
+            return;
+          }
         } else if (chaveIsolamentoPaciente) {
+          console.log('[Compatibilidade] REJEITADO por isolamento do paciente sem correspondência no quarto:', {
+            chavePaciente: chaveIsolamentoPaciente,
+          });
           return;
         }
       }
     }
 
+    console.log('[Compatibilidade] ACEITO leito:', leito.codigoLeito, 'para paciente:', paciente?.nomePaciente);
     leitosCompativeis.push(leito);
   });
 
