@@ -17,8 +17,11 @@ import {
   getLeitosCollection,
   getSetoresCollection,
   getQuartosCollection,
-  onSnapshot
+  getInfeccoesCollection,
+  onSnapshot,
+  getDocs
 } from '@/lib/firebase';
+import { processarPaciente } from '@/lib/pacienteUtils';
 import ImportarPacientesMVModal from './ImportarPacientesMVModal';
 import AguardandoRegulacaoPanel from './AguardandoRegulacaoPanel';
 import FilaEsperaUTIPanel from './FilaEsperaUTIPanel';
@@ -63,44 +66,76 @@ const RegulacaoLeitosPage = () => {
 
   useEffect(() => {
     const unsubscribes = [];
+    const infeccoesMap = new Map();
+    let ativo = true;
 
-    const unsubSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
-      const setoresData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setSetores(setoresData);
-    });
-    unsubscribes.push(unsubSetores);
+    const buscarInfeccoes = async () => {
+      try {
+        const snapshot = await getDocs(getInfeccoesCollection());
+        snapshot.forEach((docSnapshot) => {
+          infeccoesMap.set(docSnapshot.id, { id: docSnapshot.id, ...docSnapshot.data() });
+        });
+      } catch (error) {
+        console.error("Erro ao carregar o cache de infecções:", error);
+      }
+    };
 
-    const unsubLeitos = onSnapshot(getLeitosCollection(), (snapshot) => {
-      const leitosData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setLeitos(leitosData);
-    });
-    unsubscribes.push(unsubLeitos);
+    const carregarDados = async () => {
+      await buscarInfeccoes();
 
-    const unsubPacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
-      const pacientesData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setPacientes(pacientesData);
-    });
-    unsubscribes.push(unsubPacientes);
+      const unsubSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
+        const setoresData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setSetores(setoresData);
+      });
+      unsubscribes.push(unsubSetores);
 
-    const unsubQuartos = onSnapshot(getQuartosCollection(), (snapshot) => {
-      const quartosData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setQuartos(quartosData);
-    });
-    unsubscribes.push(unsubQuartos);
+      const unsubLeitos = onSnapshot(getLeitosCollection(), (snapshot) => {
+        const leitosData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setLeitos(leitosData);
+      });
+      unsubscribes.push(unsubLeitos);
+
+      const unsubPacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
+        (async () => {
+          const pacientesData = await Promise.all(
+            snapshot.docs.map(doc =>
+              processarPaciente(
+                {
+                  id: doc.id,
+                  ...doc.data()
+                },
+                infeccoesMap
+              )
+            )
+          );
+
+          if (!ativo) return;
+
+          setPacientes(pacientesData.filter(Boolean));
+        })();
+      });
+      unsubscribes.push(unsubPacientes);
+
+      const unsubQuartos = onSnapshot(getQuartosCollection(), (snapshot) => {
+        const quartosData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setQuartos(quartosData);
+      });
+      unsubscribes.push(unsubQuartos);
+    };
+
+    carregarDados();
 
     return () => {
+      ativo = false;
       unsubscribes.forEach(unsub => unsub && unsub());
     };
   }, []);
