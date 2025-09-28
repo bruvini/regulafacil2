@@ -19,7 +19,7 @@ import {
   BedDouble,
   Bed,
   ShieldAlert,
-  Broom,
+  Sparkles,
   Lock
 } from 'lucide-react';
 import { 
@@ -763,7 +763,7 @@ const MapaLeitosDashboard = () => {
                 <CardContent className="p-5 flex flex-col gap-2">
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-muted-foreground">Higienização</p>
-                    <Broom className="h-5 w-5 text-purple-500" />
+                    <Sparkles className="h-5 w-5 text-purple-500" />
                   </div>
                   <p className="text-2xl font-bold text-foreground">{higienizacaoTotal}</p>
                   <p className="text-xs text-muted-foreground">CC, Emergência, Enfermaria e UTI</p>
