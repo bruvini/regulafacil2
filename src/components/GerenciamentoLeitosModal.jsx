@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { 
+import {
   Select, 
   SelectContent, 
   SelectItem, 
@@ -20,6 +20,7 @@ import {
   AccordionTrigger
 } from '@/components/ui/accordion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import {
   getSetoresCollection,
@@ -34,6 +35,7 @@ import {
   getDocs,
   serverTimestamp
 } from '@/lib/firebase';
+import { cn } from '@/lib/utils';
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -54,6 +56,12 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
     nomeSetor: '',
     siglaSetor: '',
     tipoSetor: ''
+  });
+
+  const [setorErrors, setSetorErrors] = useState({
+    nomeSetor: false,
+    siglaSetor: false,
+    tipoSetor: false
   });
 
   const [leitoForm, setLeitoForm] = useState({
@@ -120,19 +128,42 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
       setLeitoForm({ setorId: '', codigosLeitos: '', isPCP: false });
       setQuartoForm({ id: '', nomeQuarto: '', setorId: '', leitosIds: [] });
       setLeitoSearch('');
+      setSetorForm({ id: '', nomeSetor: '', siglaSetor: '', tipoSetor: '' });
+      setSetorErrors({ nomeSetor: false, siglaSetor: false, tipoSetor: false });
     }
   }, [isOpen]);
 
   // Funções CRUD para Setores
   const handleSetorSubmit = async (e) => {
     e.preventDefault();
+
+    const nomeSetorTrim = setorForm.nomeSetor.trim();
+    const siglaSetorTrim = setorForm.siglaSetor.trim();
+    const tipoSetorTrim = setorForm.tipoSetor.trim();
+
+    const novosErros = {
+      nomeSetor: nomeSetorTrim === '',
+      siglaSetor: siglaSetorTrim === '',
+      tipoSetor: tipoSetorTrim === ''
+    };
+
+    if (Object.values(novosErros).some(Boolean)) {
+      setSetorErrors(novosErros);
+      toast({
+        title: 'Campos obrigatórios',
+        description: 'Por favor, preencha todos os campos para cadastrar o setor.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     setLoading(prev => ({ ...prev, setores: true }));
 
     try {
       const setorData = {
-        nomeSetor: setorForm.nomeSetor,
-        siglaSetor: setorForm.siglaSetor,
-        tipoSetor: setorForm.tipoSetor
+        nomeSetor: nomeSetorTrim,
+        siglaSetor: siglaSetorTrim,
+        tipoSetor: tipoSetorTrim
       };
 
       if (editingSetor) {
@@ -147,11 +178,12 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
       }
 
       setSetorForm({ id: '', nomeSetor: '', siglaSetor: '', tipoSetor: '' });
+      setSetorErrors({ nomeSetor: false, siglaSetor: false, tipoSetor: false });
     } catch (error) {
-      toast({ 
-        title: "Erro ao salvar setor", 
+      toast({
+        title: "Erro ao salvar setor",
         description: error.message,
-        variant: "destructive" 
+        variant: "destructive"
       });
     } finally {
       setLoading(prev => ({ ...prev, setores: false }));
@@ -166,6 +198,7 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
       tipoSetor: setor.tipoSetor
     });
     setEditingSetor(setor.id);
+    setSetorErrors({ nomeSetor: false, siglaSetor: false, tipoSetor: false });
   };
 
   const handleDeleteSetor = async (setorId) => {
@@ -434,328 +467,351 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
               </TabsList>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 pb-6">
+            <div className="flex-1 px-6 pb-6">
               {/* Aba Setores */}
-              <TabsContent value="setores" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>
-                    {editingSetor ? 'Editar Setor' : 'Novo Setor'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={handleSetorSubmit} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <Label htmlFor="nomeSetor">Nome do Setor</Label>
-                        <Input
-                          id="nomeSetor"
-                          value={setorForm.nomeSetor}
-                          onChange={(e) => setSetorForm({...setorForm, nomeSetor: e.target.value})}
-                          required
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="siglaSetor">Sigla do Setor</Label>
-                        <Input
-                          id="siglaSetor"
-                          value={setorForm.siglaSetor}
-                          onChange={(e) => setSetorForm({...setorForm, siglaSetor: e.target.value})}
-                          required
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="tipoSetor">Tipo de Setor</Label>
-                        <Select 
-                          value={setorForm.tipoSetor} 
-                          onValueChange={(value) => setSetorForm({...setorForm, tipoSetor: value})}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione o tipo" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Enfermaria">Enfermaria</SelectItem>
-                            <SelectItem value="UTI">UTI</SelectItem>
-                            <SelectItem value="Emergência">Emergência</SelectItem>
-                            <SelectItem value="Centro Cirúrgico">Centro Cirúrgico</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button type="submit" disabled={loading.setores}>
-                        {loading.setores && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        <Save className="mr-2 h-4 w-4" />
-                        Salvar
-                      </Button>
-                      {editingSetor && (
-                        <Button 
-                          type="button" 
-                          variant="outline"
-                          onClick={() => {
-                            setEditingSetor(null);
-                            setSetorForm({ id: '', nomeSetor: '', siglaSetor: '', tipoSetor: '' });
-                          }}
-                        >
-                          Cancelar
-                        </Button>
-                      )}
-                    </div>
-                  </form>
-                </CardContent>
-              </Card>
+              <TabsContent value="setores" className="h-full">
+                <ScrollArea className="h-full max-h-[60vh] pr-4">
+                  <div className="space-y-6">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>
+                          {editingSetor ? 'Editar Setor' : 'Novo Setor'}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <form onSubmit={handleSetorSubmit} className="space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                              <Label htmlFor="nomeSetor">Nome do Setor</Label>
+                              <Input
+                                id="nomeSetor"
+                                value={setorForm.nomeSetor}
+                                onChange={(e) => {
+                                  const valor = e.target.value;
+                                  setSetorForm({ ...setorForm, nomeSetor: valor });
+                                  if (valor.trim()) {
+                                    setSetorErrors(prev => ({ ...prev, nomeSetor: false }));
+                                  }
+                                }}
+                                className={cn(setorErrors.nomeSetor && 'border-red-500 focus-visible:ring-red-500')}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="siglaSetor">Sigla do Setor</Label>
+                              <Input
+                                id="siglaSetor"
+                                value={setorForm.siglaSetor}
+                                onChange={(e) => {
+                                  const valor = e.target.value;
+                                  setSetorForm({ ...setorForm, siglaSetor: valor });
+                                  if (valor.trim()) {
+                                    setSetorErrors(prev => ({ ...prev, siglaSetor: false }));
+                                  }
+                                }}
+                                className={cn(setorErrors.siglaSetor && 'border-red-500 focus-visible:ring-red-500')}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="tipoSetor">Tipo de Setor</Label>
+                              <Select
+                                value={setorForm.tipoSetor}
+                                onValueChange={(value) => {
+                                  setSetorForm({ ...setorForm, tipoSetor: value });
+                                  setSetorErrors(prev => ({ ...prev, tipoSetor: false }));
+                                }}
+                              >
+                                <SelectTrigger className={cn(setorErrors.tipoSetor && 'border-red-500 focus:ring-red-500 focus-visible:ring-red-500')}>
+                                  <SelectValue placeholder="Selecione o tipo" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Enfermaria">Enfermaria</SelectItem>
+                                  <SelectItem value="UTI">UTI</SelectItem>
+                                  <SelectItem value="Emergência">Emergência</SelectItem>
+                                  <SelectItem value="Centro Cirúrgico">Centro Cirúrgico</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button type="submit" disabled={loading.setores}>
+                              {loading.setores && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                              <Save className="mr-2 h-4 w-4" />
+                              Salvar
+                            </Button>
+                            {editingSetor && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => {
+                                setEditingSetor(null);
+                                setSetorForm({ id: '', nomeSetor: '', siglaSetor: '', tipoSetor: '' });
+                                setSetorErrors({ nomeSetor: false, siglaSetor: false, tipoSetor: false });
+                              }}
+                            >
+                              Cancelar
+                            </Button>
+                          )}
+                          </div>
+                        </form>
+                      </CardContent>
+                    </Card>
 
-              {/* Lista de Setores */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Setores Cadastrados</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {setores.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-4">
-                      Nenhum setor cadastrado ainda.
-                    </p>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left p-2">Nome</th>
-                            <th className="text-left p-2">Sigla</th>
-                            <th className="text-left p-2">Tipo</th>
-                            <th className="text-left p-2">Ações</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {setores.map((setor) => (
-                            <tr key={setor.id} className="border-b">
-                              <td className="p-2">{setor.nomeSetor}</td>
-                              <td className="p-2">{setor.siglaSetor}</td>
-                              <td className="p-2">{setor.tipoSetor}</td>
-                              <td className="p-2">
-                                <div className="flex gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleEditSetor(setor)}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={() => handleDeleteSetor(setor.id)}
-                                    disabled={loading.setores}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Aba Leitos */}
-            <TabsContent value="leitos" className="space-y-6">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="w-full sm:max-w-xs">
-                  <Input
-                    placeholder="Buscar leito pelo código"
-                    value={leitoSearch}
-                    onChange={(event) => setLeitoSearch(event.target.value)}
-                  />
-                </div>
-              </div>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>{isEditandoLeito ? 'Editar Leito' : 'Novo(s) Leito(s)'}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={handleLeitoSubmit} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="setorLeito">Setor</Label>
-                        <Select 
-                          value={leitoForm.setorId} 
-                          onValueChange={(value) => setLeitoForm({...leitoForm, setorId: value})}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione o setor" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {setores.map((setor) => (
-                              <SelectItem key={setor.id} value={setor.id}>
-                                {setor.nomeSetor} ({setor.siglaSetor})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox 
-                          id="isPCP"
-                          checked={leitoForm.isPCP}
-                          onCheckedChange={(checked) => setLeitoForm({...leitoForm, isPCP: checked})}
-                          disabled={!isPCPEnabled()}
-                        />
-                        <Label htmlFor="isPCP">Leito PCP</Label>
-                      </div>
-                    </div>
-                    <div>
-                      <Label htmlFor="codigosLeitos">Códigos dos Leitos</Label>
-                      <Textarea
-                        id="codigosLeitos"
-                        placeholder="Digite os códigos separados por vírgula (ex: L001, L002, L003)"
-                        value={leitoForm.codigosLeitos}
-                        onChange={(e) => setLeitoForm({...leitoForm, codigosLeitos: e.target.value})}
-                        required
-                      />
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {isPCPEnabled() ? 
-                          "Um único código: Checkbox PCP disponível" : 
-                          "Múltiplos códigos: Checkbox PCP desabilitado"
-                        }
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button type="submit" disabled={loading.leitos}>
-                        {loading.leitos && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {isEditandoLeito ? (
-                          <Save className="mr-2 h-4 w-4" />
+                    {/* Lista de Setores */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Setores Cadastrados</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {setores.length === 0 ? (
+                          <p className="text-muted-foreground text-center py-4">
+                            Nenhum setor cadastrado ainda.
+                          </p>
                         ) : (
-                          <Plus className="mr-2 h-4 w-4" />
-                        )}
-                        {isEditandoLeito ? 'Salvar Leito' : 'Adicionar Leito(s)'}
-                      </Button>
-                      {isEditandoLeito && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={handleCancelarEdicaoLeito}
-                        >
-                          Cancelar
-                        </Button>
-                      )}
-                    </div>
-                  </form>
-                </CardContent>
-              </Card>
-
-              {/* Lista de Leitos */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Leitos Cadastrados</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {leitos.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-4">
-                      Nenhum leito cadastrado ainda.
-                    </p>
-                  ) : (
-                    <Accordion type="multiple" className="space-y-4">
-                      {Object.entries(
-                        leitos.reduce((acc, leito) => {
-                          if (!leito.setorId) {
-                            return acc;
-                          }
-
-                          if (!acc[leito.setorId]) {
-                            acc[leito.setorId] = [];
-                          }
-
-                          acc[leito.setorId].push(leito);
-                          return acc;
-                        }, {})
-                      ).map(([setorId, grupoLeitos]) => {
-                        const setor = setores.find((s) => s.id === setorId) || {};
-                        const sortedLeitos = [...grupoLeitos].sort((a, b) =>
-                          (a.codigoLeito || '').localeCompare(b.codigoLeito || '')
-                        );
-                        const termoBusca = leitoSearch.trim().toLowerCase();
-                        const leitosFiltrados = termoBusca
-                          ? sortedLeitos.filter((leito) =>
-                              (leito.codigoLeito || '').toLowerCase().includes(termoBusca)
-                            )
-                          : sortedLeitos;
-
-                        return (
-                          <AccordionItem key={setorId} value={`setor-${setorId}`}>
-                            <AccordionTrigger className="flex justify-between gap-4 text-left">
-                              <div className="flex flex-1 items-center justify-between gap-4">
-                                <div className="flex flex-col text-sm font-semibold">
-                                  <span>
-                                    {setor.nomeSetor || 'Setor não identificado'}
-                                    {setor.siglaSetor ? ` (${setor.siglaSetor})` : ''}
-                                  </span>
-                                </div>
-                                <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
-                                  {leitosFiltrados.length} {leitosFiltrados.length === 1 ? 'leito' : 'leitos'}
-                                </span>
-                              </div>
-                            </AccordionTrigger>
-                            <AccordionContent>
-                              {sortedLeitos.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">
-                                  Nenhum leito cadastrado neste setor.
-                                </p>
-                              ) : leitosFiltrados.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">
-                                  Nenhum leito encontrado para a busca.
-                                </p>
-                              ) : (
-                                <div className="space-y-3">
-                                  {leitosFiltrados.map((leito) => (
-                                    <div
-                                      key={leito.id}
-                                      className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
-                                    >
-                                      <div className="space-y-1">
-                                        <p className="font-medium">
-                                          {leito.codigoLeito || 'Código não informado'}
-                                        </p>
-                                        <div className="text-sm text-muted-foreground">
-                                          <span className="mr-3">
-                                            Status: {leito.status || 'Não informado'}
-                                          </span>
-                                          <span>PCP: {leito.isPCP ? 'Sim' : 'Não'}</span>
-                                        </div>
-                                      </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full border-collapse">
+                              <thead>
+                                <tr className="border-b">
+                                  <th className="text-left p-2">Nome</th>
+                                  <th className="text-left p-2">Sigla</th>
+                                  <th className="text-left p-2">Tipo</th>
+                                  <th className="text-left p-2">Ações</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {setores.map((setor) => (
+                                  <tr key={setor.id} className="border-b">
+                                    <td className="p-2">{setor.nomeSetor}</td>
+                                    <td className="p-2">{setor.siglaSetor}</td>
+                                    <td className="p-2">{setor.tipoSetor}</td>
+                                    <td className="p-2">
                                       <div className="flex gap-2">
                                         <Button
                                           size="sm"
                                           variant="outline"
-                                          onClick={() => handleEditLeito(leito)}
+                                          onClick={() => handleEditSetor(setor)}
                                         >
                                           <Edit className="h-4 w-4" />
                                         </Button>
                                         <Button
                                           size="sm"
                                           variant="destructive"
-                                          onClick={() => handleDeleteLeito(leito.id)}
-                                          disabled={loading.leitos}
+                                          onClick={() => handleDeleteSetor(setor.id)}
+                                          disabled={loading.setores}
                                         >
                                           <Trash2 className="h-4 w-4" />
                                         </Button>
                                       </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                </ScrollArea>
+              </TabsContent>
+
+              {/* Aba Leitos */}
+            <TabsContent value="leitos" className="h-full">
+              <ScrollArea className="h-full max-h-[60vh] pr-4">
+                <div className="space-y-6">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="w-full sm:max-w-xs">
+                      <Input
+                        placeholder="Buscar leito pelo código"
+                        value={leitoSearch}
+                        onChange={(event) => setLeitoSearch(event.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>{isEditandoLeito ? 'Editar Leito' : 'Novo(s) Leito(s)'}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <form onSubmit={handleLeitoSubmit} className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <Label htmlFor="setorLeito">Setor</Label>
+                            <Select
+                              value={leitoForm.setorId}
+                              onValueChange={(value) => setLeitoForm({ ...leitoForm, setorId: value })}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecione o setor" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {setores.map((setor) => (
+                                  <SelectItem key={setor.id} value={setor.id}>
+                                    {setor.nomeSetor} ({setor.siglaSetor})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="isPCP"
+                              checked={leitoForm.isPCP}
+                              onCheckedChange={(checked) => setLeitoForm({ ...leitoForm, isPCP: checked })}
+                              disabled={!isPCPEnabled()}
+                            />
+                            <Label htmlFor="isPCP">Leito PCP</Label>
+                          </div>
+                        </div>
+                        <div>
+                          <Label htmlFor="codigosLeitos">Códigos dos Leitos</Label>
+                          <Textarea
+                            id="codigosLeitos"
+                            placeholder="Digite os códigos separados por vírgula (ex: L001, L002, L003)"
+                            value={leitoForm.codigosLeitos}
+                            onChange={(e) => setLeitoForm({ ...leitoForm, codigosLeitos: e.target.value })}
+                            required
+                          />
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {isPCPEnabled()
+                              ? 'Um único código: Checkbox PCP disponível'
+                              : 'Múltiplos códigos: Checkbox PCP desabilitado'}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button type="submit" disabled={loading.leitos}>
+                            {loading.leitos && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {isEditandoLeito ? (
+                              <Save className="mr-2 h-4 w-4" />
+                            ) : (
+                              <Plus className="mr-2 h-4 w-4" />
+                            )}
+                            {isEditandoLeito ? 'Salvar Leito' : 'Adicionar Leito(s)'}
+                          </Button>
+                          {isEditandoLeito && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={handleCancelarEdicaoLeito}
+                            >
+                              Cancelar
+                            </Button>
+                          )}
+                        </div>
+                      </form>
+                    </CardContent>
+                  </Card>
+
+                  {/* Lista de Leitos */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Leitos Cadastrados</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {leitos.length === 0 ? (
+                        <p className="text-muted-foreground text-center py-4">
+                          Nenhum leito cadastrado ainda.
+                        </p>
+                      ) : (
+                        <Accordion type="multiple" className="space-y-4">
+                          {Object.entries(
+                            leitos.reduce((acc, leito) => {
+                              if (!leito.setorId) {
+                                return acc;
+                              }
+
+                              if (!acc[leito.setorId]) {
+                                acc[leito.setorId] = [];
+                              }
+
+                              acc[leito.setorId].push(leito);
+                              return acc;
+                            }, {})
+                          ).map(([setorId, grupoLeitos]) => {
+                            const setor = setores.find((s) => s.id === setorId) || {};
+                            const sortedLeitos = [...grupoLeitos].sort((a, b) =>
+                              (a.codigoLeito || '').localeCompare(b.codigoLeito || '')
+                            );
+                            const termoBusca = leitoSearch.trim().toLowerCase();
+                            const leitosFiltrados = termoBusca
+                              ? sortedLeitos.filter((leito) =>
+                                  (leito.codigoLeito || '').toLowerCase().includes(termoBusca)
+                                )
+                              : sortedLeitos;
+
+                            return (
+                              <AccordionItem key={setorId} value={`setor-${setorId}`}>
+                                <AccordionTrigger className="flex justify-between gap-4 text-left">
+                                  <div className="flex flex-1 items-center justify-between gap-4">
+                                    <div className="flex flex-col text-sm font-semibold">
+                                      <span>
+                                        {setor.nomeSetor || 'Setor não identificado'}
+                                        {setor.siglaSetor ? ` (${setor.siglaSetor})` : ''}
+                                      </span>
                                     </div>
-                                  ))}
-                                </div>
-                              )}
-                            </AccordionContent>
-                          </AccordionItem>
-                        );
-                      })}
-                    </Accordion>
-                  )}
-                </CardContent>
-              </Card>
+                                    <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+                                      {leitosFiltrados.length} {leitosFiltrados.length === 1 ? 'leito' : 'leitos'}
+                                    </span>
+                                  </div>
+                                </AccordionTrigger>
+                                <AccordionContent>
+                                  {sortedLeitos.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground">
+                                      Nenhum leito cadastrado neste setor.
+                                    </p>
+                                  ) : leitosFiltrados.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground">
+                                      Nenhum leito encontrado para a busca.
+                                    </p>
+                                  ) : (
+                                    <div className="space-y-3">
+                                      {leitosFiltrados.map((leito) => (
+                                        <div
+                                          key={leito.id}
+                                          className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
+                                        >
+                                          <div className="space-y-1">
+                                            <p className="font-medium">
+                                              {leito.codigoLeito || 'Código não informado'}
+                                            </p>
+                                            <div className="text-sm text-muted-foreground">
+                                              <span className="mr-3">
+                                                Status: {leito.status || 'Não informado'}
+                                              </span>
+                                              <span>PCP: {leito.isPCP ? 'Sim' : 'Não'}</span>
+                                            </div>
+                                          </div>
+                                          <div className="flex gap-2">
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => handleEditLeito(leito)}
+                                            >
+                                              <Edit className="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="destructive"
+                                              onClick={() => handleDeleteLeito(leito.id)}
+                                              disabled={loading.leitos}
+                                            >
+                                              <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </AccordionContent>
+                              </AccordionItem>
+                            );
+                          })}
+                        </Accordion>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </ScrollArea>
             </TabsContent>
             </div>
 

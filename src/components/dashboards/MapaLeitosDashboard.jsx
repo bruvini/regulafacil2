@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Copy, Users, Target, TrendingUp, Info, Activity, Calendar, Clock, Building } from 'lucide-react';
+import { Progress } from "@/components/ui/progress";
+import { Copy, Info, Activity, Calendar, Clock } from 'lucide-react';
 import { 
   ResponsiveContainer, 
   PieChart, 
@@ -26,6 +27,7 @@ import { format, getDay, getHours, startOfYear, endOfYear, eachMonthOfInterval }
 import { ptBR } from 'date-fns/locale';
 import { calcularPermanenciaAtual, calcularPermanenciaEmDias } from '@/lib/historicoOcupacoes';
 import IndicadorInfoModal from '@/components/modals/IndicadorInfoModal';
+import { cn } from '@/lib/utils';
 
 // Mapeamento de especialidades para agregação
 const mapeamentoEspecialidades = {
@@ -52,6 +54,16 @@ const MapaLeitosDashboard = () => {
   const [modalIndicador, setModalIndicador] = useState({ open: false, indicadorId: null });
   
   const { toast } = useToast();
+
+  const normalizarTexto = (valor) => {
+    if (!valor) return '';
+    return valor
+      .toString()
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase()
+      .trim();
+  };
 
   // Buscar dados em tempo real
   useEffect(() => {
@@ -113,6 +125,65 @@ const MapaLeitosDashboard = () => {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
   }, [pacientes]);
+
+  const indicadoresPrincipais = useMemo(() => {
+    if (!leitos?.length || !setores?.length) {
+      return {
+        taxaOcupacao: 0,
+        ocupados: 0,
+        totalOperacional: 0,
+        nivelPCP: { label: 'Rotina Diária', cor: 'blue', ocupados: 0, total: 0 }
+      };
+    }
+
+    const tiposAssistenciais = new Set(['UTI', 'Enfermaria', 'Emergência']);
+    const setoresAssistenciais = setores.filter((setor) => tiposAssistenciais.has(setor.tipoSetor));
+    const idsAssistenciais = new Set(setoresAssistenciais.map((setor) => setor.id));
+
+    const normalizarStatus = (status) => normalizarTexto(status || '').replace(/ç/g, 'c');
+
+    const leitosAssistenciais = leitos.filter((leito) => idsAssistenciais.has(leito.setorId));
+    const elegiveis = leitosAssistenciais.filter((leito) => {
+      const status = normalizarStatus(leito.status || leito.statusLeito);
+      return status === 'ocupado' || status === 'vago' || status === 'higienizacao';
+    });
+    const ocupados = leitosAssistenciais.filter(
+      (leito) => normalizarStatus(leito.status || leito.statusLeito) === 'ocupado'
+    ).length;
+
+    const taxa = elegiveis.length > 0 ? (ocupados / elegiveis.length) * 100 : 0;
+
+    const setoresPCPAlvo = new Set(['ps decisao cirurgica', 'ps decisao clinica']);
+    const setoresPCP = setores.filter((setor) => setoresPCPAlvo.has(normalizarTexto(setor.nomeSetor)));
+    const idsPCP = new Set(setoresPCP.map((setor) => setor.id));
+    const leitosPCP = leitos.filter((leito) => idsPCP.has(leito.setorId));
+    const ocupadosPCP = leitosPCP.filter(
+      (leito) => normalizarStatus(leito.status || leito.statusLeito) === 'ocupado'
+    ).length;
+
+    let nivelPCP = { label: 'Rotina Diária', cor: 'blue', ocupados: ocupadosPCP, total: leitosPCP.length };
+    if (ocupadosPCP >= 23 && ocupadosPCP <= 28) {
+      nivelPCP = { label: 'Nível 1', cor: 'green', ocupados: ocupadosPCP, total: leitosPCP.length };
+    } else if (ocupadosPCP >= 29 && ocupadosPCP <= 32) {
+      nivelPCP = { label: 'Nível 2', cor: 'yellow', ocupados: ocupadosPCP, total: leitosPCP.length };
+    } else if (ocupadosPCP > 32) {
+      nivelPCP = { label: 'Nível 3', cor: 'red', ocupados: ocupadosPCP, total: leitosPCP.length };
+    }
+
+    return {
+      taxaOcupacao: taxa,
+      ocupados,
+      totalOperacional: elegiveis.length,
+      nivelPCP
+    };
+  }, [leitos, setores]);
+
+  const nivelPcpBadgeClasses = {
+    blue: 'bg-blue-100 text-blue-800 border-blue-200',
+    green: 'bg-green-100 text-green-800 border-green-200',
+    yellow: 'bg-yellow-100 text-yellow-900 border-yellow-300',
+    red: 'bg-red-100 text-red-800 border-red-200'
+  };
 
   // Dados para Média de Permanência e Giro de Leitos por Mês
   const dadosGiroPermanencia = useMemo(() => {
@@ -339,10 +410,6 @@ const MapaLeitosDashboard = () => {
     );
   }
 
-  const totalInternacoes = dadosEspecialidades.reduce((sum, item) => sum + item.value, 0);
-  const especialidadesUnicas = dadosEspecialidades.length;
-  const topEspecialidade = dadosEspecialidades[0];
-
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -362,58 +429,50 @@ const MapaLeitosDashboard = () => {
         </Button>
       </div>
 
-      {/* Cards de Resumo */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Indicadores Principais */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-6 space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Internações Ativas</p>
-                <p className="text-2xl font-bold text-foreground">{totalInternacoes}</p>
-              </div>
-              <Users className="h-8 w-8 text-blue-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Especialidades Ativas</p>
-                <p className="text-2xl font-bold text-foreground">{especialidadesUnicas}</p>
-              </div>
-              <Target className="h-8 w-8 text-green-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Especialidade Principal</p>
-                <p className="text-lg font-bold text-foreground">{topEspecialidade?.name || 'N/A'}</p>
-                <p className="text-sm text-muted-foreground">{topEspecialidade?.value || 0} pacientes</p>
-              </div>
-              <TrendingUp className="h-8 w-8 text-orange-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Taxa Média Ocupação</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {dadosTaxaOcupacao.length > 0 
-                    ? Math.round(dadosTaxaOcupacao.reduce((acc, item) => acc + item.taxaOcupacao, 0) / dadosTaxaOcupacao.length)
-                    : 0}%
+                <p className="text-sm text-muted-foreground">Taxa de Ocupação Geral</p>
+                <p className="text-3xl font-bold text-foreground">
+                  {indicadoresPrincipais.taxaOcupacao.toFixed(1)}%
                 </p>
               </div>
-              <Building className="h-8 w-8 text-purple-600" />
+              <Badge variant="outline">Setores Assistenciais</Badge>
             </div>
+            <Progress
+              value={Math.min(Math.max(indicadoresPrincipais.taxaOcupacao, 0), 100)}
+              className="h-2"
+            />
+            <p className="text-xs text-muted-foreground">
+              {indicadoresPrincipais.ocupados} de {indicadoresPrincipais.totalOperacional} leitos operacionais
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Status PCP</p>
+                <p className="text-3xl font-bold text-foreground">
+                  {indicadoresPrincipais.nivelPCP.ocupados}
+                </p>
+              </div>
+              <Badge
+                className={cn(
+                  'px-3 py-1 text-sm font-semibold border',
+                  nivelPcpBadgeClasses[indicadoresPrincipais.nivelPCP.cor] || nivelPcpBadgeClasses.blue
+                )}
+              >
+                {indicadoresPrincipais.nivelPCP.label}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {indicadoresPrincipais.nivelPCP.ocupados} de {indicadoresPrincipais.nivelPCP.total || 0} leitos PCP ocupados
+            </p>
           </CardContent>
         </Card>
       </div>
