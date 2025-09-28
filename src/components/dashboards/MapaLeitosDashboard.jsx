@@ -2,7 +2,26 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Copy, Users, Target, TrendingUp, Info, Activity, Calendar, Clock, Building } from 'lucide-react';
+import { Progress } from "@/components/ui/progress";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "@/components/ui/tooltip";
+import {
+  Copy,
+  Users,
+  Info,
+  Activity,
+  Calendar,
+  Clock,
+  BedDouble,
+  Bed,
+  ShieldAlert,
+  Broom,
+  Lock
+} from 'lucide-react';
 import { 
   ResponsiveContainer, 
   PieChart, 
@@ -19,7 +38,13 @@ import {
   BarChart
 } from 'recharts';
 import { onSnapshot } from '@/lib/firebase';
-import { getPacientesCollection, getHistoricoOcupacoesCollection, getLeitosCollection, getSetoresCollection } from '@/lib/firebase';
+import {
+  getPacientesCollection,
+  getHistoricoOcupacoesCollection,
+  getLeitosCollection,
+  getSetoresCollection,
+  getQuartosCollection
+} from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, getDay, getHours, startOfYear, endOfYear, eachMonthOfInterval } from 'date-fns';
@@ -46,6 +71,7 @@ const MapaLeitosDashboard = () => {
   const [historicoOcupacoes, setHistoricoOcupacoes] = useState([]);
   const [leitos, setLeitos] = useState([]);
   const [setores, setSetores] = useState([]);
+  const [quartos, setQuartos] = useState([]);
   const [loading, setLoading] = useState(true);
   
   // Estado para modal de informações
@@ -79,6 +105,14 @@ const MapaLeitosDashboard = () => {
       setLeitos(leitosData);
     });
 
+    const unsubscribeQuartos = onSnapshot(getQuartosCollection(), (snapshot) => {
+      const quartosData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setQuartos(quartosData);
+    });
+
     const unsubscribeSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
       const setoresData = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -92,6 +126,7 @@ const MapaLeitosDashboard = () => {
       unsubscribePacientes();
       unsubscribeHistorico();
       unsubscribeLeitos();
+      unsubscribeQuartos();
       unsubscribeSetores();
     };
   }, []);
@@ -101,7 +136,7 @@ const MapaLeitosDashboard = () => {
     if (!pacientes?.length) return [];
 
     const contagem = {};
-    
+
     pacientes.forEach(paciente => {
       if (paciente.especialidade) {
         const especialidadeFinal = mapeamentoEspecialidades[paciente.especialidade] || paciente.especialidade;
@@ -113,6 +148,238 @@ const MapaLeitosDashboard = () => {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
   }, [pacientes]);
+
+  const indicadoresPrincipais = useMemo(() => {
+    const normalizarTexto = (valor) => {
+      if (!valor) return '';
+      return String(valor)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+    };
+
+    const pacientesAtivos = (pacientes || []).filter(paciente => {
+      const status = normalizarTexto(paciente.statusInternacao || paciente.status || '');
+      if (['alta', 'transferido', 'transferencia', 'encerrada', 'encerrado', 'obito', 'óbito'].includes(status)) {
+        return false;
+      }
+      if (paciente.dataAlta || paciente.dataSaida) {
+        return false;
+      }
+      return true;
+    });
+
+    const pacientesComDataInternacao = pacientesAtivos.filter(paciente => paciente.dataInternacao);
+    const permanencias = pacientesComDataInternacao
+      .map(paciente => calcularPermanenciaAtual(paciente.dataInternacao))
+      .filter(valor => Number.isFinite(valor));
+
+    const tempoMedioBase = permanencias.length > 0
+      ? permanencias.reduce((acc, dias) => acc + dias, 0) / permanencias.length
+      : null;
+
+    if (!setores.length || !leitos.length) {
+      return {
+        taxaOcupacao: 0,
+        ocupadosAssistenciais: 0,
+        totalAssistenciais: 0,
+        pacientesAtivos: pacientesAtivos.length,
+        tempoMedioPermanencia: tempoMedioBase,
+        statusPCP: {
+          label: 'Rotina Diária',
+          toneClass: 'text-sky-600',
+          badgeClass: 'bg-sky-100 text-sky-700',
+          ocupados: 0
+        },
+        vagosRegulaveis: 0,
+        vagosCoorte: 0,
+        higienizacaoTotal: 0,
+        bloqueadosTotal: 0
+      };
+    }
+
+    const setoresPorId = new Map(setores.map(setor => [setor.id, setor]));
+    const setoresAssistenciais = new Set(['enfermaria', 'uti', 'emergencia']);
+    const setoresRegulaveis = new Set(['enfermaria', 'uti']);
+    const setoresHigienizacao = new Set(['centro cirurgico', 'emergencia', 'enfermaria', 'uti']);
+
+    const pacientesPorLeito = new Map(
+      pacientesAtivos
+        .filter(paciente => paciente.leitoId)
+        .map(paciente => [paciente.leitoId, paciente])
+    );
+
+    const leitosPorSetor = new Map();
+    leitos.forEach(leito => {
+      if (!leito.setorId) return;
+      if (!leitosPorSetor.has(leito.setorId)) {
+        leitosPorSetor.set(leito.setorId, []);
+      }
+      leitosPorSetor.get(leito.setorId).push(leito);
+    });
+
+    const quartosPorSetor = new Map();
+    (quartos || []).forEach(quarto => {
+      if (!quarto.setorId) return;
+      if (!quartosPorSetor.has(quarto.setorId)) {
+        quartosPorSetor.set(quarto.setorId, []);
+      }
+      quartosPorSetor.get(quarto.setorId).push(quarto);
+    });
+
+    const leitosComCoorte = new Set();
+
+    setores.forEach(setor => {
+      const tipoNorm = normalizarTexto(setor.tipoSetor);
+      if (!['enfermaria', 'uti'].includes(tipoNorm)) {
+        return;
+      }
+
+      const leitosDoSetor = leitosPorSetor.get(setor.id) || [];
+      if (!leitosDoSetor.length) return;
+
+      let grupos = [];
+
+      if (tipoNorm === 'enfermaria') {
+        const gruposMap = {};
+        leitosDoSetor.forEach(leito => {
+          const codigo = String(leito.codigoLeito || '').trim();
+          const chave = (codigo.substring(0, 3) || '').toUpperCase();
+          if (!gruposMap[chave]) {
+            gruposMap[chave] = [];
+          }
+          gruposMap[chave].push(leito);
+        });
+        grupos = Object.values(gruposMap);
+      } else {
+        const quartosSetor = quartosPorSetor.get(setor.id) || [];
+        if (quartosSetor.length > 0) {
+          grupos = quartosSetor
+            .map(quarto => {
+              const ids = Array.isArray(quarto.leitosIds) ? quarto.leitosIds : [];
+              return ids
+                .map(id => leitosDoSetor.find(leito => leito.id === id))
+                .filter(Boolean);
+            })
+            .filter(grupo => grupo.length > 0);
+        }
+
+        if (!grupos.length) {
+          grupos = leitosDoSetor.map(leito => [leito]);
+        }
+      }
+
+      grupos.forEach(grupo => {
+        const ocupantes = grupo
+          .map(leito => pacientesPorLeito.get(leito.id))
+          .filter(Boolean);
+
+        if (!ocupantes.length) return;
+
+        grupo.forEach(leito => {
+          const status = normalizarTexto(leito.status || leito.statusLeito);
+          if (!pacientesPorLeito.get(leito.id) && (status === 'vago' || status === 'higienizacao')) {
+            leitosComCoorte.add(leito.id);
+          }
+        });
+      });
+    });
+
+    let totalAssistenciais = 0;
+    let ocupadosAssistenciais = 0;
+    let vagosRegulaveis = 0;
+    let vagosCoorte = 0;
+    let higienizacaoTotal = 0;
+    let bloqueadosTotal = 0;
+
+    leitos.forEach(leito => {
+      const setor = setoresPorId.get(leito.setorId);
+      const tipoNorm = normalizarTexto(setor?.tipoSetor);
+      const status = normalizarTexto(leito.status || leito.statusLeito);
+
+      if (setoresAssistenciais.has(tipoNorm)) {
+        totalAssistenciais += 1;
+        if (status === 'ocupado') {
+          ocupadosAssistenciais += 1;
+        }
+      }
+
+      if (setoresRegulaveis.has(tipoNorm) && (status === 'vago' || status === 'higienizacao')) {
+        const hasCoorte = leitosComCoorte.has(leito.id);
+        if (!hasCoorte) {
+          vagosRegulaveis += 1;
+        }
+        if (tipoNorm === 'enfermaria' && hasCoorte) {
+          vagosCoorte += 1;
+        }
+      }
+
+      if (setoresHigienizacao.has(tipoNorm)) {
+        if (status === 'higienizacao') {
+          higienizacaoTotal += 1;
+        }
+        if (status === 'bloqueado') {
+          bloqueadosTotal += 1;
+        }
+      }
+    });
+
+    const setoresPCPIds = setores
+      .filter(setor => {
+        const nomeNorm = normalizarTexto(setor.nomeSetor || setor.nome);
+        return nomeNorm === 'ps decisao cirurgica' || nomeNorm === 'ps decisao clinica';
+      })
+      .map(setor => setor.id);
+
+    const setoresPCPSet = new Set(setoresPCPIds);
+    const totalPcpOcupado = leitos.filter(leito => {
+      return setoresPCPSet.has(leito.setorId) && normalizarTexto(leito.status || leito.statusLeito) === 'ocupado';
+    }).length;
+
+    let statusPCP = {
+      label: 'Rotina Diária',
+      toneClass: 'text-sky-600',
+      badgeClass: 'bg-sky-100 text-sky-700',
+      ocupados: totalPcpOcupado
+    };
+
+    if (totalPcpOcupado >= 23 && totalPcpOcupado <= 28) {
+      statusPCP = {
+        label: 'Nível 1',
+        toneClass: 'text-green-600',
+        badgeClass: 'bg-green-100 text-green-700',
+        ocupados: totalPcpOcupado
+      };
+    } else if (totalPcpOcupado >= 29 && totalPcpOcupado <= 32) {
+      statusPCP = {
+        label: 'Nível 2',
+        toneClass: 'text-yellow-600',
+        badgeClass: 'bg-yellow-100 text-yellow-700',
+        ocupados: totalPcpOcupado
+      };
+    } else if (totalPcpOcupado > 32) {
+      statusPCP = {
+        label: 'Nível 3',
+        toneClass: 'text-red-600',
+        badgeClass: 'bg-red-100 text-red-700',
+        ocupados: totalPcpOcupado
+      };
+    }
+
+    return {
+      taxaOcupacao: totalAssistenciais > 0 ? (ocupadosAssistenciais / totalAssistenciais) * 100 : 0,
+      ocupadosAssistenciais,
+      totalAssistenciais,
+      pacientesAtivos: pacientesAtivos.length,
+      tempoMedioPermanencia: tempoMedioBase,
+      statusPCP,
+      vagosRegulaveis,
+      vagosCoorte,
+      higienizacaoTotal,
+      bloqueadosTotal
+    };
+  }, [leitos, setores, pacientes, quartos]);
 
   // Dados para Média de Permanência e Giro de Leitos por Mês
   const dadosGiroPermanencia = useMemo(() => {
@@ -339,9 +606,23 @@ const MapaLeitosDashboard = () => {
     );
   }
 
-  const totalInternacoes = dadosEspecialidades.reduce((sum, item) => sum + item.value, 0);
-  const especialidadesUnicas = dadosEspecialidades.length;
-  const topEspecialidade = dadosEspecialidades[0];
+  const {
+    taxaOcupacao,
+    ocupadosAssistenciais,
+    totalAssistenciais,
+    pacientesAtivos,
+    tempoMedioPermanencia,
+    statusPCP,
+    vagosRegulaveis,
+    vagosCoorte,
+    higienizacaoTotal,
+    bloqueadosTotal
+  } = indicadoresPrincipais;
+
+  const taxaOcupacaoFormatada = Number.isFinite(taxaOcupacao) ? Math.max(0, Math.min(100, taxaOcupacao)) : 0;
+  const tempoMedioTexto = tempoMedioPermanencia != null
+    ? `${tempoMedioPermanencia.toFixed(1)} dia${tempoMedioPermanencia.toFixed(1) === '1.0' ? '' : 's'}`
+    : 'N/A';
 
   return (
     <div className="p-6 space-y-6">
@@ -362,61 +643,156 @@ const MapaLeitosDashboard = () => {
         </Button>
       </div>
 
-      {/* Cards de Resumo */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Indicadores principais */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+          <CardHeader className="pb-2">
+            <CardTitle>Taxa de Ocupação Geral</CardTitle>
+            <p className="text-sm text-muted-foreground">Enfermaria, UTI e Emergência</p>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-end justify-between gap-4">
               <div>
-                <p className="text-sm text-muted-foreground">Internações Ativas</p>
-                <p className="text-2xl font-bold text-foreground">{totalInternacoes}</p>
-              </div>
-              <Users className="h-8 w-8 text-blue-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Especialidades Ativas</p>
-                <p className="text-2xl font-bold text-foreground">{especialidadesUnicas}</p>
-              </div>
-              <Target className="h-8 w-8 text-green-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Especialidade Principal</p>
-                <p className="text-lg font-bold text-foreground">{topEspecialidade?.name || 'N/A'}</p>
-                <p className="text-sm text-muted-foreground">{topEspecialidade?.value || 0} pacientes</p>
-              </div>
-              <TrendingUp className="h-8 w-8 text-orange-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Taxa Média Ocupação</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {dadosTaxaOcupacao.length > 0 
-                    ? Math.round(dadosTaxaOcupacao.reduce((acc, item) => acc + item.taxaOcupacao, 0) / dadosTaxaOcupacao.length)
-                    : 0}%
+                <p className="text-3xl font-bold text-foreground">{taxaOcupacaoFormatada.toFixed(1)}%</p>
+                <p className="text-sm text-muted-foreground">
+                  {ocupadosAssistenciais}/{totalAssistenciais} leitos ocupados
                 </p>
               </div>
-              <Building className="h-8 w-8 text-purple-600" />
+            </div>
+            <Progress value={taxaOcupacaoFormatada} className="mt-4" />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle>Status PCP</CardTitle>
+            <p className="text-sm text-muted-foreground">PS Decisão Clínica e Cirúrgica</p>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className={`text-2xl font-bold ${statusPCP.toneClass}`}>{statusPCP.label}</p>
+                <p className="text-sm text-muted-foreground">{statusPCP.ocupados} leitos ocupados</p>
+              </div>
+              <div className={`rounded-full px-3 py-1 text-sm font-semibold ${statusPCP.badgeClass}`}>
+                PCP
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      <TooltipProvider>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Card className="cursor-help">
+                <CardContent className="p-5 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Pacientes</p>
+                    <Users className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <p className="text-2xl font-bold text-foreground">{pacientesAtivos}</p>
+                  <p className="text-xs text-muted-foreground">Tempo médio: {tempoMedioTexto}</p>
+                </CardContent>
+              </Card>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-sm">
+              Número total de pacientes internados. O tempo médio é calculado desde a admissão até o momento atual.
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Card className="cursor-help">
+                <CardContent className="p-5 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Ocupados</p>
+                    <BedDouble className="h-5 w-5 text-amber-500" />
+                  </div>
+                  <p className="text-2xl font-bold text-foreground">{ocupadosAssistenciais}</p>
+                  <p className="text-xs text-muted-foreground">Emergência, Enfermaria e UTI</p>
+                </CardContent>
+              </Card>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-sm">
+              Total de leitos ocupados nos setores assistenciais de Emergência, Enfermaria e UTI.
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Card className="cursor-help">
+                <CardContent className="p-5 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Vagos (Reguláveis)</p>
+                    <Bed className="h-5 w-5 text-emerald-500" />
+                  </div>
+                  <p className="text-2xl font-bold text-foreground">{vagosRegulaveis}</p>
+                  <p className="text-xs text-muted-foreground">Sem coorte ativa</p>
+                </CardContent>
+              </Card>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-sm">
+              Leitos vagos ou em higienização em Enfermarias e UTIs que não possuem restrição de coorte, aptos para regulação geral.
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Card className="cursor-help">
+                <CardContent className="p-5 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Vagos (Coorte)</p>
+                    <ShieldAlert className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <p className="text-2xl font-bold text-foreground">{vagosCoorte}</p>
+                  <p className="text-xs text-muted-foreground">Quartos com restrição</p>
+                </CardContent>
+              </Card>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-sm">
+              Leitos vagos ou em higienização em Enfermarias que estão em quartos já ocupados, indicando restrição para alocação (coorte de sexo e/ou isolamento).
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Card className="cursor-help">
+                <CardContent className="p-5 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Higienização</p>
+                    <Broom className="h-5 w-5 text-purple-500" />
+                  </div>
+                  <p className="text-2xl font-bold text-foreground">{higienizacaoTotal}</p>
+                  <p className="text-xs text-muted-foreground">CC, Emergência, Enfermaria e UTI</p>
+                </CardContent>
+              </Card>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-sm">
+              Total de leitos em processo de higienização nos setores de Centro Cirúrgico, Emergência, Enfermaria e UTI.
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Card className="cursor-help">
+                <CardContent className="p-5 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Bloqueados</p>
+                    <Lock className="h-5 w-5 text-rose-500" />
+                  </div>
+                  <p className="text-2xl font-bold text-foreground">{bloqueadosTotal}</p>
+                  <p className="text-xs text-muted-foreground">Setores assistenciais principais</p>
+                </CardContent>
+              </Card>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-sm">
+              Total de leitos bloqueados por manutenção ou outra razão administrativa nos principais setores.
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </TooltipProvider>
 
       {/* Gráficos Principais */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

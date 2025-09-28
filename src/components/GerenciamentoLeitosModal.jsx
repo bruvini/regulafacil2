@@ -20,6 +20,7 @@ import {
   AccordionTrigger
 } from '@/components/ui/accordion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import {
   getSetoresCollection,
@@ -36,6 +37,7 @@ import {
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
+import { cn } from '@/lib/utils';
 
 const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
   // Estados para dados
@@ -54,6 +56,12 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
     nomeSetor: '',
     siglaSetor: '',
     tipoSetor: ''
+  });
+
+  const [setorFormErrors, setSetorFormErrors] = useState({
+    nomeSetor: false,
+    siglaSetor: false,
+    tipoSetor: false
   });
 
   const [leitoForm, setLeitoForm] = useState({
@@ -115,24 +123,59 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
   }, [isOpen]);
 
   useEffect(() => {
+    if (!isOpen) return;
+
+    const body = document?.body;
+    if (!body) return;
+
+    const previousOverflow = body.style.overflow;
+    body.style.overflow = 'hidden';
+
+    return () => {
+      body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
     if (!isOpen) {
       setItemEmEdicao(null);
       setLeitoForm({ setorId: '', codigosLeitos: '', isPCP: false });
       setQuartoForm({ id: '', nomeQuarto: '', setorId: '', leitosIds: [] });
       setLeitoSearch('');
+      setSetorFormErrors({ nomeSetor: false, siglaSetor: false, tipoSetor: false });
     }
   }, [isOpen]);
 
   // Funções CRUD para Setores
   const handleSetorSubmit = async (e) => {
     e.preventDefault();
+    const nomeSetorTrim = setorForm.nomeSetor.trim();
+    const siglaSetorTrim = setorForm.siglaSetor.trim();
+    const tipoSetorTrim = setorForm.tipoSetor.trim();
+
+    const errors = {
+      nomeSetor: nomeSetorTrim === '',
+      siglaSetor: siglaSetorTrim === '',
+      tipoSetor: tipoSetorTrim === ''
+    };
+
+    setSetorFormErrors(errors);
+
+    if (Object.values(errors).some(Boolean)) {
+      toast({
+        title: "Preencha todos os campos obrigatórios.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setLoading(prev => ({ ...prev, setores: true }));
 
     try {
       const setorData = {
-        nomeSetor: setorForm.nomeSetor,
-        siglaSetor: setorForm.siglaSetor,
-        tipoSetor: setorForm.tipoSetor
+        nomeSetor: nomeSetorTrim,
+        siglaSetor: siglaSetorTrim,
+        tipoSetor: tipoSetorTrim
       };
 
       if (editingSetor) {
@@ -147,11 +190,12 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
       }
 
       setSetorForm({ id: '', nomeSetor: '', siglaSetor: '', tipoSetor: '' });
+      setSetorFormErrors({ nomeSetor: false, siglaSetor: false, tipoSetor: false });
     } catch (error) {
-      toast({ 
-        title: "Erro ao salvar setor", 
+      toast({
+        title: "Erro ao salvar setor",
         description: error.message,
-        variant: "destructive" 
+        variant: "destructive"
       });
     } finally {
       setLoading(prev => ({ ...prev, setores: false }));
@@ -166,6 +210,7 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
       tipoSetor: setor.tipoSetor
     });
     setEditingSetor(setor.id);
+    setSetorFormErrors({ nomeSetor: false, siglaSetor: false, tipoSetor: false });
   };
 
   const handleDeleteSetor = async (setorId) => {
@@ -434,9 +479,9 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
               </TabsList>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 pb-6">
+            <div className="flex-1 px-6 pb-6">
               {/* Aba Setores */}
-              <TabsContent value="setores" className="space-y-6">
+              <TabsContent value="setores" className="flex flex-col gap-6">
               <Card>
                 <CardHeader>
                   <CardTitle>
@@ -451,8 +496,14 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
                         <Input
                           id="nomeSetor"
                           value={setorForm.nomeSetor}
-                          onChange={(e) => setSetorForm({...setorForm, nomeSetor: e.target.value})}
-                          required
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setSetorForm(prev => ({ ...prev, nomeSetor: value }));
+                            if (setorFormErrors.nomeSetor && value.trim()) {
+                              setSetorFormErrors(prev => ({ ...prev, nomeSetor: false }));
+                            }
+                          }}
+                          className={cn(setorFormErrors.nomeSetor && 'border-destructive focus-visible:ring-destructive')}
                         />
                       </div>
                       <div>
@@ -460,17 +511,28 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
                         <Input
                           id="siglaSetor"
                           value={setorForm.siglaSetor}
-                          onChange={(e) => setSetorForm({...setorForm, siglaSetor: e.target.value})}
-                          required
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setSetorForm(prev => ({ ...prev, siglaSetor: value }));
+                            if (setorFormErrors.siglaSetor && value.trim()) {
+                              setSetorFormErrors(prev => ({ ...prev, siglaSetor: false }));
+                            }
+                          }}
+                          className={cn(setorFormErrors.siglaSetor && 'border-destructive focus-visible:ring-destructive')}
                         />
                       </div>
                       <div>
                         <Label htmlFor="tipoSetor">Tipo de Setor</Label>
-                        <Select 
-                          value={setorForm.tipoSetor} 
-                          onValueChange={(value) => setSetorForm({...setorForm, tipoSetor: value})}
+                        <Select
+                          value={setorForm.tipoSetor}
+                          onValueChange={(value) => {
+                            setSetorForm(prev => ({ ...prev, tipoSetor: value }));
+                            if (setorFormErrors.tipoSetor && value.trim()) {
+                              setSetorFormErrors(prev => ({ ...prev, tipoSetor: false }));
+                            }
+                          }}
                         >
-                          <SelectTrigger>
+                          <SelectTrigger className={cn(setorFormErrors.tipoSetor && 'border-destructive focus-visible:ring-destructive')}>
                             <SelectValue placeholder="Selecione o tipo" />
                           </SelectTrigger>
                           <SelectContent>
@@ -489,12 +551,13 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
                         Salvar
                       </Button>
                       {editingSetor && (
-                        <Button 
-                          type="button" 
+                        <Button
+                          type="button"
                           variant="outline"
                           onClick={() => {
                             setEditingSetor(null);
                             setSetorForm({ id: '', nomeSetor: '', siglaSetor: '', tipoSetor: '' });
+                            setSetorFormErrors({ nomeSetor: false, siglaSetor: false, tipoSetor: false });
                           }}
                         >
                           Cancelar
@@ -506,63 +569,67 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
               </Card>
 
               {/* Lista de Setores */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Setores Cadastrados</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {setores.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-4">
-                      Nenhum setor cadastrado ainda.
-                    </p>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left p-2">Nome</th>
-                            <th className="text-left p-2">Sigla</th>
-                            <th className="text-left p-2">Tipo</th>
-                            <th className="text-left p-2">Ações</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {setores.map((setor) => (
-                            <tr key={setor.id} className="border-b">
-                              <td className="p-2">{setor.nomeSetor}</td>
-                              <td className="p-2">{setor.siglaSetor}</td>
-                              <td className="p-2">{setor.tipoSetor}</td>
-                              <td className="p-2">
-                                <div className="flex gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleEditSetor(setor)}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={() => handleDeleteSetor(setor.id)}
-                                    disabled={loading.setores}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <ScrollArea className="h-[60vh] pr-4">
+                <div className="pr-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Setores Cadastrados</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {setores.length === 0 ? (
+                        <p className="text-muted-foreground text-center py-4">
+                          Nenhum setor cadastrado ainda.
+                        </p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse">
+                            <thead>
+                              <tr className="border-b">
+                                <th className="text-left p-2">Nome</th>
+                                <th className="text-left p-2">Sigla</th>
+                                <th className="text-left p-2">Tipo</th>
+                                <th className="text-left p-2">Ações</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {setores.map((setor) => (
+                                <tr key={setor.id} className="border-b">
+                                  <td className="p-2">{setor.nomeSetor}</td>
+                                  <td className="p-2">{setor.siglaSetor}</td>
+                                  <td className="p-2">{setor.tipoSetor}</td>
+                                  <td className="p-2">
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleEditSetor(setor)}
+                                      >
+                                        <Edit className="h-4 w-4" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="destructive"
+                                        onClick={() => handleDeleteSetor(setor.id)}
+                                        disabled={loading.setores}
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </ScrollArea>
             </TabsContent>
 
             {/* Aba Leitos */}
-            <TabsContent value="leitos" className="space-y-6">
+            <TabsContent value="leitos" className="flex flex-col gap-6">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="w-full sm:max-w-xs">
                   <Input
@@ -649,113 +716,117 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
               </Card>
 
               {/* Lista de Leitos */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Leitos Cadastrados</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {leitos.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-4">
-                      Nenhum leito cadastrado ainda.
-                    </p>
-                  ) : (
-                    <Accordion type="multiple" className="space-y-4">
-                      {Object.entries(
-                        leitos.reduce((acc, leito) => {
-                          if (!leito.setorId) {
-                            return acc;
-                          }
+              <ScrollArea className="h-[60vh] pr-4">
+                <div className="pr-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Leitos Cadastrados</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {leitos.length === 0 ? (
+                        <p className="text-muted-foreground text-center py-4">
+                          Nenhum leito cadastrado ainda.
+                        </p>
+                      ) : (
+                        <Accordion type="multiple" className="space-y-4">
+                          {Object.entries(
+                            leitos.reduce((acc, leito) => {
+                              if (!leito.setorId) {
+                                return acc;
+                              }
 
-                          if (!acc[leito.setorId]) {
-                            acc[leito.setorId] = [];
-                          }
+                              if (!acc[leito.setorId]) {
+                                acc[leito.setorId] = [];
+                              }
 
-                          acc[leito.setorId].push(leito);
-                          return acc;
-                        }, {})
-                      ).map(([setorId, grupoLeitos]) => {
-                        const setor = setores.find((s) => s.id === setorId) || {};
-                        const sortedLeitos = [...grupoLeitos].sort((a, b) =>
-                          (a.codigoLeito || '').localeCompare(b.codigoLeito || '')
-                        );
-                        const termoBusca = leitoSearch.trim().toLowerCase();
-                        const leitosFiltrados = termoBusca
-                          ? sortedLeitos.filter((leito) =>
-                              (leito.codigoLeito || '').toLowerCase().includes(termoBusca)
-                            )
-                          : sortedLeitos;
+                              acc[leito.setorId].push(leito);
+                              return acc;
+                            }, {})
+                          ).map(([setorId, grupoLeitos]) => {
+                            const setor = setores.find((s) => s.id === setorId) || {};
+                            const sortedLeitos = [...grupoLeitos].sort((a, b) =>
+                              (a.codigoLeito || '').localeCompare(b.codigoLeito || '')
+                            );
+                            const termoBusca = leitoSearch.trim().toLowerCase();
+                            const leitosFiltrados = termoBusca
+                              ? sortedLeitos.filter((leito) =>
+                                  (leito.codigoLeito || '').toLowerCase().includes(termoBusca)
+                                )
+                              : sortedLeitos;
 
-                        return (
-                          <AccordionItem key={setorId} value={`setor-${setorId}`}>
-                            <AccordionTrigger className="flex justify-between gap-4 text-left">
-                              <div className="flex flex-1 items-center justify-between gap-4">
-                                <div className="flex flex-col text-sm font-semibold">
-                                  <span>
-                                    {setor.nomeSetor || 'Setor não identificado'}
-                                    {setor.siglaSetor ? ` (${setor.siglaSetor})` : ''}
-                                  </span>
-                                </div>
-                                <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
-                                  {leitosFiltrados.length} {leitosFiltrados.length === 1 ? 'leito' : 'leitos'}
-                                </span>
-                              </div>
-                            </AccordionTrigger>
-                            <AccordionContent>
-                              {sortedLeitos.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">
-                                  Nenhum leito cadastrado neste setor.
-                                </p>
-                              ) : leitosFiltrados.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">
-                                  Nenhum leito encontrado para a busca.
-                                </p>
-                              ) : (
-                                <div className="space-y-3">
-                                  {leitosFiltrados.map((leito) => (
-                                    <div
-                                      key={leito.id}
-                                      className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
-                                    >
-                                      <div className="space-y-1">
-                                        <p className="font-medium">
-                                          {leito.codigoLeito || 'Código não informado'}
-                                        </p>
-                                        <div className="text-sm text-muted-foreground">
-                                          <span className="mr-3">
-                                            Status: {leito.status || 'Não informado'}
-                                          </span>
-                                          <span>PCP: {leito.isPCP ? 'Sim' : 'Não'}</span>
-                                        </div>
-                                      </div>
-                                      <div className="flex gap-2">
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() => handleEditLeito(leito)}
-                                        >
-                                          <Edit className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="destructive"
-                                          onClick={() => handleDeleteLeito(leito.id)}
-                                          disabled={loading.leitos}
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                      </div>
+                            return (
+                              <AccordionItem key={setorId} value={`setor-${setorId}`}>
+                                <AccordionTrigger className="flex justify-between gap-4 text-left">
+                                  <div className="flex flex-1 items-center justify-between gap-4">
+                                    <div className="flex flex-col text-sm font-semibold">
+                                      <span>
+                                        {setor.nomeSetor || 'Setor não identificado'}
+                                        {setor.siglaSetor ? ` (${setor.siglaSetor})` : ''}
+                                      </span>
                                     </div>
-                                  ))}
-                                </div>
-                              )}
-                            </AccordionContent>
-                          </AccordionItem>
-                        );
-                      })}
-                    </Accordion>
-                  )}
-                </CardContent>
-              </Card>
+                                    <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+                                      {leitosFiltrados.length} {leitosFiltrados.length === 1 ? 'leito' : 'leitos'}
+                                    </span>
+                                  </div>
+                                </AccordionTrigger>
+                                <AccordionContent>
+                                  {sortedLeitos.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground">
+                                      Nenhum leito cadastrado neste setor.
+                                    </p>
+                                  ) : leitosFiltrados.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground">
+                                      Nenhum leito encontrado para a busca.
+                                    </p>
+                                  ) : (
+                                    <div className="space-y-3">
+                                      {leitosFiltrados.map((leito) => (
+                                        <div
+                                          key={leito.id}
+                                          className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
+                                        >
+                                          <div className="space-y-1">
+                                            <p className="font-medium">
+                                              {leito.codigoLeito || 'Código não informado'}
+                                            </p>
+                                            <div className="text-sm text-muted-foreground">
+                                              <span className="mr-3">
+                                                Status: {leito.status || 'Não informado'}
+                                              </span>
+                                              <span>PCP: {leito.isPCP ? 'Sim' : 'Não'}</span>
+                                            </div>
+                                          </div>
+                                          <div className="flex gap-2">
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => handleEditLeito(leito)}
+                                            >
+                                              <Edit className="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="destructive"
+                                              onClick={() => handleDeleteLeito(leito.id)}
+                                              disabled={loading.leitos}
+                                            >
+                                              <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </AccordionContent>
+                              </AccordionItem>
+                            );
+                          })}
+                        </Accordion>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </ScrollArea>
             </TabsContent>
             </div>
 
