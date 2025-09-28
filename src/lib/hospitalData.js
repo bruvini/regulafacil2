@@ -100,25 +100,13 @@ export const getHospitalData = async () => {
   const pacientesProcessados = pacientesCrus.map(p => processarPaciente(p, infeccoesMap));
   console.log(`[HospitalData] ${pacientesProcessados.length} pacientes processados e enriquecidos.`);
 
-  // 4. Pré-processar dados em Mapas para acesso rápido e eficiente
-  const pacientesPorLeitoId = new Map(
-    pacientesProcessados
-      .filter(p => p.leitoId)
-      .map(p => [p.leitoId, p])
-  );
-  const quartosPorId = new Map(quartos.map(q => [q.id, q]));
-  const setoresPorId = new Map(setores.map(s => [s.id, s]));
-
-  // 5. Retornar um objeto único com todos os dados prontos para o aplicativo.
+  // 4. Retornar um objeto único com todos os dados prontos para o aplicativo.
   const hospitalData = {
     pacientes: pacientesProcessados,
     leitos,
     setores,
     quartos,
     infeccoes,
-    pacientesPorLeitoId,
-    quartosPorId,
-    setoresPorId,
   };
 
   console.log('[HospitalData] Pipeline concluído.', hospitalData);
