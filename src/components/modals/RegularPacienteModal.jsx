@@ -61,17 +61,20 @@ const RegularPacienteModal = ({
 
   const pacienteEnriquecido = useMemo(() => {
     if (!hospitalData || !paciente) return null;
-    return hospitalData.pacientes.find(p => p.id === paciente.id) || paciente;
+    return hospitalData.pacientes.find(p => p.id === paciente.id) || null;
   }, [hospitalData, paciente]);
 
   const relatorio = useMemo(() => {
-    if (!hospitalData || !pacienteEnriquecido) return null;
+    if (!hospitalData || !paciente) return null;
+    const pacienteAtualizado = hospitalData.pacientes.find(p => p.id === paciente.id);
+    if (!pacienteAtualizado) return null;
+
     const pacienteComIdade = {
-      ...pacienteEnriquecido,
-      idade: calcularIdade(pacienteEnriquecido.dataNascimento),
+      ...pacienteAtualizado,
+      idade: calcularIdade(pacienteAtualizado.dataNascimento),
     };
     return getRelatorioCompatibilidade(pacienteComIdade, hospitalData, modo);
-  }, [hospitalData, pacienteEnriquecido, modo]);
+  }, [hospitalData, paciente, modo]);
 
   // Preserva o fluxo de confirmação direta
   useEffect(() => {
@@ -142,6 +145,7 @@ const RegularPacienteModal = ({
     }
 
     const { porSexo, porPCP, porIsolamento } = relatorio.regras;
+    const pacienteParaResumo = pacienteEnriquecido || paciente;
     const isolamentosAtivos = pacienteEnriquecido
       ? [...getChavesIsolamentoAtivo(pacienteEnriquecido)].join(', ') || 'Nenhum'
       : 'Desconhecido';
@@ -153,8 +157,8 @@ const RegularPacienteModal = ({
             <CardTitle className="text-base">Perfil do Paciente</CardTitle>
           </CardHeader>
           <CardContent className="text-sm space-y-2">
-            <p><strong>Nome:</strong> {pacienteEnriquecido?.nomePaciente || paciente?.nomePaciente}</p>
-            <p><strong>Sexo:</strong> {pacienteEnriquecido?.sexo || 'N/I'}</p>
+            <p><strong>Nome:</strong> {pacienteParaResumo?.nomePaciente || paciente?.nomePaciente}</p>
+            <p><strong>Sexo:</strong> {pacienteEnriquecido?.sexo || paciente?.sexo || 'N/I'}</p>
             <p><strong>Isolamentos:</strong> {isolamentosAtivos}</p>
           </CardContent>
         </Card>

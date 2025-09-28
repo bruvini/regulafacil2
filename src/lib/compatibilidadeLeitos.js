@@ -22,25 +22,25 @@ export const getChavesIsolamentoAtivo = (paciente) => {
 // === FUNÇÃO PRINCIPAL ORQUESTRADORA ===
 
 /**
- * Gera um relatório detalhado de compatibilidade de leitos para um paciente.
+ * Gera um relatório detalhado de compatibilidade de leitos para um paciente,
+ * consumindo a estrutura hierárquica pré-processada pelo pipeline.
  * @param {Object} pacienteAlvo - O paciente enriquecido (com idade).
  * @param {Object} hospitalData - O objeto de dados completo do pipeline.
  * @param {string} modo - 'enfermaria' ou 'uti'.
  * @returns {Object} Um relatório estruturado com os resultados de cada regra.
  */
 export const getRelatorioCompatibilidade = (pacienteAlvo, hospitalData, modo = 'enfermaria') => {
-  const { leitos, pacientesPorLeitoId, quartosPorId, setoresPorId } = hospitalData;
+  const { leitos, setores = [] } = hospitalData;
 
-  // Filtro inicial: Apenas leitos com status 'Vago' ou 'Higienização'
   const leitosDisponiveis = leitos.filter(leito => {
     const status = (leito.status || '').trim().toUpperCase();
     return status === 'VAGO' || status === 'HIGIENIZAÇÃO';
   });
 
-  // MODO UTI: Lógica simples e separada
   if (modo === 'uti') {
+    const setoresPorId = new Map(setores.map(setor => [setor.id, setor]));
     const leitosDeUTI = leitosDisponiveis.filter(leito => {
-      const setor = setoresPorId?.get?.(leito.setorId);
+      const setor = setoresPorId.get(leito.setorId);
       return (setor?.tipoSetor || '').toUpperCase() === 'UTI';
     });
     return {
@@ -55,85 +55,61 @@ export const getRelatorioCompatibilidade = (pacienteAlvo, hospitalData, modo = '
     };
   }
 
-  // MODO ENFERMARIA: Aplica todas as regras
   const relatorio = {};
+  const chavesPaciente = getChavesIsolamentoAtivo(pacienteAlvo);
 
-  const chavesIsolamentoPaciente = getChavesIsolamentoAtivo(pacienteAlvo);
-
-  // --- Regra de PCP ---
   const elegivelPCP = (
     (pacienteAlvo.idade ?? 0) >= 18 &&
     (pacienteAlvo.idade ?? 0) <= 60 &&
-    chavesIsolamentoPaciente.size === 0 &&
-    pacienteAlvo.setorOrigem !== 'CC - RECUPERAÇÃO'
+    chavesPaciente.size === 0 &&
+    (pacienteAlvo.setorOrigem || '').toUpperCase() !== 'CC - RECUPERAÇÃO'
   );
   relatorio.porPCP = {
     elegivel: elegivelPCP,
-    mensagem: elegivelPCP ? 'Paciente elegível para leitos PCP.' : 'Paciente NÃO elegível para leitos PCP.',
+    mensagem: elegivelPCP
+      ? `Elegível para leitos PCP (idade ${pacienteAlvo.idade}, sem isolamento).`
+      : `NÃO elegível para leitos PCP (idade ${pacienteAlvo.idade}, isolamento ou origem CC).`,
     leitos: elegivelPCP ? leitosDisponiveis.filter(l => l.isPCP) : [],
   };
 
-  // --- Regras de Quarto (Sexo e Isolamento) ---
   const leitosPorSexo = [];
   const leitosPorIsolamento = [];
 
   for (const leito of leitosDisponiveis) {
-    // Ignora leitos PCP se o paciente não for elegível
-    if (leito.isPCP && !elegivelPCP) {
+    if (leito.isPCP && !elegivelPCP) continue;
+
+    const coorte = leito.restricaoCoorte;
+
+    if (!coorte) {
+      leitosPorSexo.push(leito);
+      if (chavesPaciente.size === 0) {
+        leitosPorIsolamento.push(leito);
+      }
       continue;
     }
 
-    const quarto = quartosPorId?.get?.(leito.quartoId);
-    if (!quarto) continue; // Leito sem quarto não pode ser avaliado
-
-    const outrosLeitosNoQuarto = hospitalData.leitos.filter(l => l.quartoId === leito.quartoId && l.id !== leito.id);
-    const ocupantes = outrosLeitosNoQuarto
-      .map(l => pacientesPorLeitoId?.get?.(l.id))
-      .filter(Boolean);
-
-    // Validação de Sexo
-    const sexosOcupantes = new Set(ocupantes.map(o => o.sexo).filter(Boolean));
-    if (sexosOcupantes.size <= 1) {
-      const [sexoQuarto] = [...sexosOcupantes];
-      if (!sexoQuarto || (pacienteAlvo.sexo && pacienteAlvo.sexo === sexoQuarto)) {
-        leitosPorSexo.push(leito);
-      }
+    if (pacienteAlvo.sexo && pacienteAlvo.sexo === coorte.sexo) {
+      leitosPorSexo.push(leito);
     }
 
-    // Validação de Isolamento
-    const chavesOcupantes = new Set();
-    ocupantes.forEach(o => getChavesIsolamentoAtivo(o).forEach(chave => chavesOcupantes.add(chave)));
-
-    const quartoIsolado = chavesOcupantes.size > 0;
-    const pacienteIsolado = chavesIsolamentoPaciente.size > 0;
-
-    // Se o quarto está isolado, o paciente precisa ter o mesmo isolamento
-    if (quartoIsolado) {
-      if (
-        pacienteIsolado &&
-        chavesIsolamentoPaciente.size === chavesOcupantes.size &&
-        [...chavesIsolamentoPaciente].every(c => chavesOcupantes.has(c))
-      ) {
-        leitosPorIsolamento.push(leito);
-      }
-    }
-    // Se o quarto não está isolado, o paciente também não pode ter isolamento
-    else if (!pacienteIsolado) {
+    const isolamentosCoorte = Array.isArray(coorte.isolamentos) ? coorte.isolamentos : [];
+    if (
+      chavesPaciente.size === isolamentosCoorte.length &&
+      [...chavesPaciente].every(chave => isolamentosCoorte.includes(chave))
+    ) {
       leitosPorIsolamento.push(leito);
     }
   }
 
   relatorio.porSexo = {
-    mensagem: `Paciente do sexo '${pacienteAlvo.sexo}' é compatível com quartos femininos/masculinos ou vazios.`,
+    mensagem: `Compatível com quartos do sexo '${pacienteAlvo.sexo}' ou vazios.`,
     leitos: leitosPorSexo,
   };
   relatorio.porIsolamento = {
-    mensagem: `Paciente com isolamentos [${[...chavesIsolamentoPaciente]}] é compatível com quartos de mesma coorte ou vazios.`,
+    mensagem: `Compatível com quartos de coorte [${[...chavesPaciente]}] ou vazios.`,
     leitos: leitosPorIsolamento,
   };
 
-  // --- Resultado Final ---
-  // A compatibilidade final é a interseção de todas as regras
   const idLeitosPorSexo = new Set(leitosPorSexo.map(l => l.id));
   const idLeitosPorIsolamento = new Set(leitosPorIsolamento.map(l => l.id));
 
