@@ -27,10 +27,18 @@ import {
   db
 } from '@/lib/firebase';
 import RegularPacienteModal from '@/components/modals/RegularPacienteModal';
-import { getIsolamentosAtivosDetalhados } from "@/lib/compatibilidadeLeitos";
 import { useToast } from '@/hooks/use-toast';
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
+
+const extrairIsolamentosAtivos = (isolamentos) => {
+  if (!isolamentos) return [];
+  if (Array.isArray(isolamentos)) return isolamentos.filter(Boolean);
+  if (typeof isolamentos === 'object') {
+    return Object.values(isolamentos).filter(Boolean);
+  }
+  return [];
+};
 
 const normalizarTexto = (texto) =>
   String(texto || '')
@@ -410,7 +418,7 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
     const sexoSigla = sexoNormalizado === 'M' || sexoNormalizado === 'MASCULINO' ? 'M' : 'F';
     const tempoInternacao = calcularTempoInternacao(paciente.dataInternacao);
     const mostrarTempo = setor === "PS DECISÃO CLINICA" || setor === "PS DECISÃO CIRURGICA";
-    const isolamentosAtivos = getIsolamentosAtivosDetalhados(paciente.isolamentos);
+    const isolamentosAtivos = extrairIsolamentosAtivos(paciente.isolamentos);
 
     return (
       <Card className="p-4 hover:shadow-md transition-shadow border border-muted">
@@ -444,12 +452,14 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
             <div className="flex flex-wrap gap-1">
               {isolamentosAtivos.map((iso, index) => (
                 <Badge
-                  key={`${paciente.id || paciente.nomePaciente || 'paciente'}-${iso.sigla || iso.nome || 'iso'}-${index}`}
+                  key={`${paciente.id || paciente.nomePaciente || 'paciente'}-${
+                    typeof iso === 'string' ? iso : iso?.sigla || iso?.nome || 'iso'
+                  }-${index}`}
                   variant="destructive"
                   className="text-xs flex items-center gap-1"
                 >
                   <Shield className="h-3 w-3" />
-                  {iso.sigla || iso.nome}
+                  {typeof iso === 'string' ? iso : iso?.sigla || iso?.nome || 'Isolamento'}
                 </Badge>
               ))}
             </div>
