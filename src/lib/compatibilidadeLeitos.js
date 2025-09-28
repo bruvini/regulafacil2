@@ -84,27 +84,36 @@ const extrairInformacoesIsolamento = (isolamento) => {
 
   if (typeof isolamento === 'object') {
     const sigla =
-      isolamento.siglaInfeccao ||
       isolamento.sigla ||
+      isolamento.siglaInfeccao ||
       isolamento.codigo ||
       isolamento.tipo ||
       isolamento.nome ||
       '';
 
     const nome =
-      isolamento.nomeInfeccao ||
       isolamento.nome ||
+      isolamento.nomeInfeccao ||
       isolamento.descricao ||
       sigla ||
       'Isolamento';
 
+    const infeccaoRef = isolamento.infeccaoId ?? isolamento.infecaoId;
+    const infeccaoId =
+      typeof infeccaoRef === 'string'
+        ? infeccaoRef
+        : typeof infeccaoRef === 'object' && infeccaoRef
+          ? infeccaoRef.id || infeccaoRef?.path?.split?.('/')?.pop?.()
+          : '';
+
     const identificador =
-      isolamento.infeccaoId ??
-      isolamento.infecaoId ??
-      isolamento.id ??
-      isolamento.codigo ??
-      sigla ??
-      nome ??
+      sigla ||
+      isolamento.siglaInfeccao ||
+      isolamento.codigo ||
+      isolamento.tipo ||
+      isolamento.id ||
+      infeccaoId ||
+      nome ||
       '';
 
     const chaveBase = normalizarTexto(identificador || sigla || nome);
@@ -156,11 +165,12 @@ const normalizarRestricaoIsolamentos = (lista) => {
 
     if (typeof item === 'object') {
       const chave = normalizarTexto(
+        item.sigla ??
+        item.siglaInfeccao ??
         item.infeccaoId ??
         item.infecaoId ??
         item.id ??
         item.codigo ??
-        item.sigla ??
         item.nome ??
         item.tipo ??
         ''
