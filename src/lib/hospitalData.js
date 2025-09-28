@@ -71,13 +71,12 @@ const processarPaciente = (paciente, infeccoesMap) => {
 };
 
 /**
- * Função principal do pipeline. Busca todos os dados do hospital, processa-os
- * e retorna uma estrutura de dados limpa e pronta para uso.
+ * Função principal do pipeline. Agora ela enriquece E estrutura os dados do hospital
+ * em uma hierarquia de Setores > Quartos > Leitos, aplicando as regras de coorte.
  */
 export const getHospitalData = async () => {
-  console.log('[HospitalData] Iniciando busca e processamento de dados...');
+  console.log('[HospitalData] Iniciando busca, enriquecimento e ESTRUTURAÇÃO de dados...');
 
-  // 1. Buscar todas as coleções em paralelo para otimizar o tempo de carregamento.
   const [
     pacientesCrus,
     leitos,
@@ -92,35 +91,116 @@ export const getHospitalData = async () => {
     fetchCollection(getInfeccoesCollection),
   ]);
 
-  // 2. Criar um mapa de infecções para consulta rápida (muito mais performático do que buscar a cada vez).
   const infeccoesMap = new Map(infeccoes.map(inf => [inf.id, inf]));
-  console.log(`[HospitalData] Mapa de ${infeccoesMap.size} infecções criado.`);
-
-  // 3. Processar cada paciente para enriquecer seus dados.
   const pacientesProcessados = pacientesCrus.map(p => processarPaciente(p, infeccoesMap));
-  console.log(`[HospitalData] ${pacientesProcessados.length} pacientes processados e enriquecidos.`);
-
-  // 4. Pré-processar dados em Mapas para acesso rápido e eficiente
   const pacientesPorLeitoId = new Map(
     pacientesProcessados
       .filter(p => p.leitoId)
-      .map(p => [p.leitoId, p])
+      .map(p => [p.leitoId, p]),
   );
-  const quartosPorId = new Map(quartos.map(q => [q.id, q]));
-  const setoresPorId = new Map(setores.map(s => [s.id, s]));
 
-  // 5. Retornar um objeto único com todos os dados prontos para o aplicativo.
+  // Vincula pacientes já processados aos leitos correspondentes
+  const leitosComPacientes = leitos.map(leito => ({
+    ...leito,
+    paciente: pacientesPorLeitoId.get(leito.id) || null,
+  }));
+
+  const estruturaFinal = setores.map(setor => {
+    const leitosDoSetor = leitosComPacientes.filter(l => l.setorId === setor.id);
+    let quartosDoSetor = [];
+
+    if ((setor.tipoSetor || '').toUpperCase() === 'ENFERMARIA') {
+      const gruposQuarto = leitosDoSetor.reduce((acc, leito) => {
+        const chave = (leito.codigoLeito || 'SEM-CODIGO').substring(0, 3);
+        if (!acc[chave]) {
+          acc[chave] = {
+            id: `quarto-dinamico-${setor.id}-${chave}`,
+            nomeQuarto: `Quarto ${chave}`,
+            setorId: setor.id,
+            leitos: [],
+          };
+        }
+        const leitoAssociado = leito;
+        leitoAssociado.quartoId = acc[chave].id;
+        acc[chave].leitos.push(leitoAssociado);
+        return acc;
+      }, {});
+      quartosDoSetor = Object.values(gruposQuarto);
+    } else {
+      const quartosOficiais = quartos.filter(q => q.setorId === setor.id);
+      quartosDoSetor = quartosOficiais.map(quarto => {
+        const idsPermitidos = new Set(quarto.leitosIds || []);
+        const leitosDoQuarto = leitosDoSetor.filter(l => idsPermitidos.has(l.id) || l.quartoId === quarto.id);
+        leitosDoQuarto.forEach(leito => {
+          leito.quartoId = quarto.id;
+        });
+        return {
+          ...quarto,
+          leitos: leitosDoQuarto,
+        };
+      });
+
+      const leitosSemQuarto = leitosDoSetor.filter(leito => !quartosDoSetor.some(quarto => quarto.leitos.includes(leito)));
+      if (leitosSemQuarto.length > 0) {
+        const quartoGenericoId = `quarto-generico-${setor.id}`;
+        leitosSemQuarto.forEach(leito => {
+          leito.quartoId = quartoGenericoId;
+        });
+        quartosDoSetor.push({
+          id: quartoGenericoId,
+          nomeQuarto: 'Quarto Não Definido',
+          setorId: setor.id,
+          leitos: leitosSemQuarto,
+        });
+      }
+    }
+
+    for (const quarto of quartosDoSetor) {
+      const ocupantes = quarto.leitos.map(l => l.paciente).filter(Boolean);
+      let restricao = null;
+
+      if (ocupantes.length > 0) {
+        const sexosOcupantes = new Set(ocupantes.map(o => o.sexo).filter(Boolean));
+        const chavesIsolamento = new Set();
+        ocupantes.forEach(o => {
+          (o.isolamentos || [])
+            .filter(iso => iso.statusConsideradoAtivo)
+            .forEach(iso => {
+              const chave = (iso.siglaInfeccao || iso.sigla || '').toLowerCase();
+              if (chave) {
+                chavesIsolamento.add(chave);
+              }
+            });
+        });
+
+        if (sexosOcupantes.size === 1) {
+          restricao = {
+            sexo: [...sexosOcupantes][0],
+            isolamentos: [...chavesIsolamento],
+          };
+        }
+      }
+
+      for (const leito of quarto.leitos) {
+        const status = (leito.status || '').toUpperCase();
+        if ((status === 'VAGO' || status === 'HIGIENIZAÇÃO') && restricao) {
+          leito.restricaoCoorte = restricao;
+        }
+      }
+    }
+
+    return { ...setor, quartos: quartosDoSetor };
+  });
+
   const hospitalData = {
+    estrutura: estruturaFinal,
     pacientes: pacientesProcessados,
-    leitos,
+    leitos: leitosComPacientes,
     setores,
     quartos,
     infeccoes,
-    pacientesPorLeitoId,
-    quartosPorId,
-    setoresPorId,
   };
 
-  console.log('[HospitalData] Pipeline concluído.', hospitalData);
+  console.log('[HospitalData] Pipeline com ESTRUTURA HIERÁRQUICA concluído.', hospitalData);
   return hospitalData;
 };
