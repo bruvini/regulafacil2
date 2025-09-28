@@ -19,15 +19,16 @@ import {
   Copy,
   RefreshCw
 } from 'lucide-react';
-import { 
-  getDocs, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  doc, 
+import {
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
   serverTimestamp,
   arrayUnion,
-  db
+  db,
+  deleteField
 } from '@/lib/firebase';
 import { 
   getSetoresCollection, 
@@ -448,6 +449,13 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       return acc;
     }, {});
 
+    const setoresPorId = Object.values(processedData.setores || {}).reduce((acc, setorAtual) => {
+      if (setorAtual?.id) {
+        acc[setorAtual.id] = setorAtual;
+      }
+      return acc;
+    }, {});
+
     const errosLeitosMap = new Map();
     const registrarErroLeito = (nome, codigo) => {
       const nomeFormatado = (nome || 'Paciente sem nome').toString().trim();
@@ -556,11 +564,18 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       // Executar movimentações
       movimentacoesValidas.forEach(({ paciente, dadosNovos }) => {
         const pacienteRef = doc(db, PATIENTS_COLLECTION_PATH, paciente.id);
-        batch.update(pacienteRef, {
+        const setorDestino = setoresPorId[dadosNovos.setorId];
+        const updates = {
           leitoId: dadosNovos.leitoId,
           setorId: dadosNovos.setorId,
           especialidade: dadosNovos.especialidade
-        });
+        };
+
+        if (setorDestino?.tipoSetor === 'UTI') {
+          updates.pedidoUTI = deleteField();
+        }
+
+        batch.update(pacienteRef, updates);
         leitosParaAtualizar.add(paciente.leitoId); // Leito antigo
         leitosParaAtualizar.add(dadosNovos.leitoId); // Leito novo
       });

@@ -11,6 +11,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuIte
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
   ChevronDown,
   MoreVertical,
@@ -407,7 +409,10 @@ const LeitoCard = ({
               <StickyNote className="h-4 w-4 mr-2" />
               OBSERVAÇÕES
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onSolicitarUTI(leito.paciente)}>
+            <DropdownMenuItem
+              onClick={() => onSolicitarUTI(leito.paciente)}
+              disabled={leito.setor?.tipoSetor === 'UTI'}
+            >
               <AlertTriangle className="h-4 w-4 mr-2" />
               {leito.paciente?.pedidoUTI ? 'REMOVER PEDIDO UTI' : 'SOLICITAR UTI'}
             </DropdownMenuItem>
@@ -726,7 +731,8 @@ const MapaLeitosPanel = () => {
     comProvavelAlta: false,
     comAltaNoLeito: false,
     comSolicitacaoRemanejamento: false,
-    comPedidoTransferenciaExterna: false
+    comPedidoTransferenciaExterna: false,
+    isolamentosSelecionados: []
   });
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   
@@ -1345,6 +1351,47 @@ const MapaLeitosPanel = () => {
     return Array.from(especialidades).sort();
   }, [pacientes]);
 
+  const isolamentosSelecionadosLabel = useMemo(() => {
+    if (!filtros.isolamentosSelecionados || filtros.isolamentosSelecionados.length === 0) {
+      return 'Selecionar isolamentos...';
+    }
+
+    const nomesSelecionados = filtros.isolamentosSelecionados
+      .map(id => {
+        const infeccao = infeccoesPorId[id];
+        if (!infeccao) return null;
+        return infeccao.siglaInfeccao || infeccao.nomeInfeccao || null;
+      })
+      .filter(Boolean);
+
+    if (nomesSelecionados.length === 0) {
+      return `${filtros.isolamentosSelecionados.length} isolamento(s) selecionado(s)`;
+    }
+
+    const [primeiro, segundo, ...resto] = nomesSelecionados;
+    const baseLabel = [primeiro, segundo].filter(Boolean).join(', ');
+    if (resto.length > 0) {
+      return `${baseLabel} +${resto.length}`;
+    }
+
+    return baseLabel || `${filtros.isolamentosSelecionados.length} isolamento(s) selecionado(s)`;
+  }, [filtros.isolamentosSelecionados, infeccoesPorId]);
+
+  const alternarIsolamentoFiltro = (infeccaoId) => {
+    if (!infeccaoId) return;
+
+    setFiltros(prev => {
+      const selecionados = prev.isolamentosSelecionados || [];
+      const jaSelecionado = selecionados.includes(infeccaoId);
+      return {
+        ...prev,
+        isolamentosSelecionados: jaSelecionado
+          ? selecionados.filter(id => id !== infeccaoId)
+          : [...selecionados, infeccaoId]
+      };
+    });
+  };
+
   // Processar dados em estrutura hierárquica
   const dadosEstruturados = useMemo(() => {
     if (!setores.length || !leitos.length) return {};
@@ -1661,11 +1708,35 @@ const MapaLeitosPanel = () => {
     if (filtros.status.length > 0 && !filtros.status.includes(leito.status)) {
       return false;
     }
-    
+
+    if (filtros.isolamentosSelecionados.length > 0) {
+      if (!leito.paciente) {
+        return false;
+      }
+
+      const isolamentosPacienteIds = new Set(
+        (leito.paciente.isolamentos || [])
+          .map(iso => iso?.infeccaoId?.id)
+          .filter(Boolean)
+      );
+
+      const isolamentosFiltroIds = new Set(filtros.isolamentosSelecionados);
+
+      if (isolamentosPacienteIds.size !== isolamentosFiltroIds.size) {
+        return false;
+      }
+
+      for (const idFiltro of isolamentosFiltroIds) {
+        if (!isolamentosPacienteIds.has(idFiltro)) {
+          return false;
+        }
+      }
+    }
+
     // Filtros específicos de leitos ocupados
     if (['Ocupado', 'Regulado'].includes(leito.status) && leito.paciente) {
       const paciente = leito.paciente;
-      
+
       // Filtro por sexo
       if (filtros.sexo.length > 0 && !filtros.sexo.includes(paciente.sexo)) {
         return false;
@@ -1703,7 +1774,8 @@ const MapaLeitosPanel = () => {
       comProvavelAlta: false,
       comAltaNoLeito: false,
       comSolicitacaoRemanejamento: false,
-      comPedidoTransferenciaExterna: false
+      comPedidoTransferenciaExterna: false,
+      isolamentosSelecionados: []
     });
   };
 
@@ -1814,8 +1886,8 @@ const MapaLeitosPanel = () => {
               {/* Especialidade */}
               <div>
                 <h4 className="font-medium mb-3">Especialidade</h4>
-                <Select 
-                  value={filtros.especialidade} 
+                <Select
+                  value={filtros.especialidade}
                   onValueChange={(value) => setFiltros(prev => ({ ...prev, especialidade: value }))}
                 >
                   <SelectTrigger>
@@ -1830,6 +1902,58 @@ const MapaLeitosPanel = () => {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Isolamentos */}
+              <div>
+                <h4 className="font-medium mb-3">Isolamento</h4>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-between overflow-hidden"
+                    >
+                      <span className="truncate text-left">
+                        {isolamentosSelecionadosLabel}
+                      </span>
+                      <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-72 p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar isolamentos..." />
+                      <CommandList>
+                        <CommandEmpty>Nenhuma infecção encontrada.</CommandEmpty>
+                        <CommandGroup>
+                          {infeccoes.map((infeccao) => {
+                            const id = infeccao.id;
+                            const isSelected = filtros.isolamentosSelecionados.includes(id);
+                            const label = [infeccao?.siglaInfeccao, infeccao?.nomeInfeccao]
+                              .filter(Boolean)
+                              .join(' - ') || 'Infecção sem nome';
+
+                            return (
+                              <CommandItem
+                                key={id}
+                                value={`${infeccao?.siglaInfeccao || ''} ${infeccao?.nomeInfeccao || ''}`.trim()}
+                                onSelect={() => alternarIsolamentoFiltro(id)}
+                              >
+                                <div className="flex w-full items-center space-x-2">
+                                  <Checkbox
+                                    checked={isSelected}
+                                    onCheckedChange={() => alternarIsolamentoFiltro(id)}
+                                    onClick={(event) => event.stopPropagation()}
+                                  />
+                                  <span className="flex-1 truncate text-sm">{label}</span>
+                                </div>
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               {/* Indicadores de Paciente */}
