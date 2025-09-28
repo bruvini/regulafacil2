@@ -3,12 +3,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, CheckCircle, XCircle, Bed } from "lucide-react";
+import { Loader2, BedDouble, User, Shield, AlertTriangle } from "lucide-react";
 import { getHospitalData } from '@/lib/hospitalData';
-import { getLeitosCompativeis } from '@/lib/compatibilidadeLeitos'; // Importando nosso novo motor de regras!
+import { getRelatorioCompatibilidade, getChavesIsolamentoAtivo } from '@/lib/compatibilidadeLeitos';
 import ConfirmarRegulacaoModal from './ConfirmarRegulacaoModal';
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 // Função para calcular idade (necessária para a regra de PCP)
 const calcularIdade = (dataNascimento) => {
@@ -30,7 +30,6 @@ const calcularIdade = (dataNascimento) => {
   return idade;
 };
 
-
 const RegularPacienteModal = ({
   isOpen,
   onClose,
@@ -41,14 +40,14 @@ const RegularPacienteModal = ({
   const [modalStep, setModalStep] = useState('selecao');
   const [leitoSelecionado, setLeitoSelecionado] = useState(null);
 
-  const [loadingData, setLoadingData] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [hospitalData, setHospitalData] = useState(null);
   const [error, setError] = useState(null);
 
   // Carrega os dados da Fase 1
   useEffect(() => {
     if (isOpen && modalStep === 'selecao' && !leitoSugerido) {
-      setLoadingData(true);
+      setLoading(true);
       setError(null);
       getHospitalData()
         .then(setHospitalData)
@@ -56,20 +55,24 @@ const RegularPacienteModal = ({
           console.error("Erro ao carregar dados do hospital:", err);
           setError("Falha ao carregar os dados do hospital.");
         })
-        .finally(() => setLoadingData(false));
+        .finally(() => setLoading(false));
     }
   }, [isOpen, modalStep, leitoSugerido]);
 
-  // Executa as regras da Fase 2 e memoriza o resultado
-  const relatorioCompatibilidade = useMemo(() => {
-    if (!hospitalData || !paciente) {
-      return { compativeis: [], rejeitados: [] };
-    }
-    // Adiciona a idade ao objeto do paciente para uso nas regras
-    const pacienteComIdade = { ...paciente, idade: calcularIdade(paciente.dataNascimento) };
-    return getLeitosCompativeis(pacienteComIdade, hospitalData);
+  const pacienteEnriquecido = useMemo(() => {
+    if (!hospitalData || !paciente) return null;
+    return hospitalData.pacientes.find(p => p.id === paciente.id) || paciente;
   }, [hospitalData, paciente]);
-  
+
+  const relatorio = useMemo(() => {
+    if (!hospitalData || !pacienteEnriquecido) return null;
+    const pacienteComIdade = {
+      ...pacienteEnriquecido,
+      idade: calcularIdade(pacienteEnriquecido.dataNascimento),
+    };
+    return getRelatorioCompatibilidade(pacienteComIdade, hospitalData, modo);
+  }, [hospitalData, pacienteEnriquecido, modo]);
+
   // Preserva o fluxo de confirmação direta
   useEffect(() => {
     if (!isOpen) {
@@ -89,71 +92,100 @@ const RegularPacienteModal = ({
     setLeitoSelecionado(null);
   };
 
-  const RelatorioResultados = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[60vh]">
-      {/* Coluna de Leitos Compatíveis */}
-      <div className="flex flex-col space-y-3">
-        <div className="flex items-center text-green-600">
-          <CheckCircle className="h-5 w-5 mr-2" />
-          <h3 className="font-semibold">{relatorioCompatibilidade.compativeis.length} Leitos Compatíveis</h3>
+  const ListaLeitos = ({ leitos }) => (
+    <div className="space-y-1">
+      {leitos.map(leito => (
+        <div key={leito.id} className="flex items-center text-xs p-1 rounded bg-muted/50">
+          <BedDouble className="h-3 w-3 mr-2 flex-shrink-0" />
+          <span className="font-mono">{leito.codigoLeito}</span>
         </div>
-        <ScrollArea className="border rounded-lg p-2 flex-1">
-          {relatorioCompatibilidade.compativeis.length > 0 ? (
-            <div className="space-y-2">
-              {relatorioCompatibilidade.compativeis.map(leito => (
-                <div key={leito.id} className="flex items-center gap-2 p-2 bg-green-50 rounded-md">
-                  <Bed className="h-4 w-4 text-green-700" />
-                  <span className="font-mono text-sm">{leito.codigoLeito}</span>
-                </div>
-              ))}
-            </div>
-          ) : <p className="text-center text-sm text-muted-foreground p-4">Nenhum leito compatível encontrado.</p>}
-        </ScrollArea>
-      </div>
-
-      {/* Coluna de Leitos Rejeitados */}
-      <div className="flex flex-col space-y-3">
-        <div className="flex items-center text-red-600">
-          <XCircle className="h-5 w-5 mr-2" />
-          <h3 className="font-semibold">{relatorioCompatibilidade.rejeitados.length} Leitos Rejeitados</h3>
-        </div>
-        <ScrollArea className="border rounded-lg p-2 flex-1">
-           {relatorioCompatibilidade.rejeitados.length > 0 ? (
-            <div className="space-y-2">
-              {relatorioCompatibilidade.rejeitados.map(({leito, motivo}) => (
-                <div key={leito.id} className="flex items-center justify-between gap-2 p-2 bg-red-50 rounded-md">
-                   <div className="flex items-center gap-2">
-                     <Bed className="h-4 w-4 text-red-700" />
-                     <span className="font-mono text-sm">{leito.codigoLeito}</span>
-                   </div>
-                   <Badge variant="destructive" className="text-xs">{motivo}</Badge>
-                </div>
-              ))}
-            </div>
-          ) : <p className="text-center text-sm text-muted-foreground p-4">Nenhum leito rejeitado.</p>}
-        </ScrollArea>
-      </div>
+      ))}
+      {leitos.length === 0 && (
+        <p className="text-xs text-muted-foreground text-center">Nenhum leito disponível.</p>
+      )}
     </div>
   );
+
+  const RuleCard = ({ title, icon: Icon, data }) => (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold">{data.leitos.length}</div>
+        <p className="text-xs text-muted-foreground">{data.mensagem}</p>
+        <ScrollArea className="h-40 mt-4 border rounded-md p-2">
+          <ListaLeitos leitos={data.leitos} />
+        </ScrollArea>
+      </CardContent>
+    </Card>
+  );
+
+  const renderRelatorio = () => {
+    if (!relatorio) {
+      return <p className="text-sm text-muted-foreground">Não foi possível gerar o relatório.</p>;
+    }
+
+    if (relatorio.modo === 'uti') {
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle>Modo UTI</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-4 text-sm text-muted-foreground">{relatorio.regras.porTipoSetor.mensagem}</p>
+            <ListaLeitos leitos={relatorio.compativeisFinais} />
+          </CardContent>
+        </Card>
+      );
+    }
+
+    const { porSexo, porPCP, porIsolamento } = relatorio.regras;
+    const isolamentosAtivos = pacienteEnriquecido
+      ? [...getChavesIsolamentoAtivo(pacienteEnriquecido)].join(', ') || 'Nenhum'
+      : 'Desconhecido';
+
+    return (
+      <div className="space-y-6">
+        <Card className="bg-slate-50">
+          <CardHeader>
+            <CardTitle className="text-base">Perfil do Paciente</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm space-y-2">
+            <p><strong>Nome:</strong> {pacienteEnriquecido?.nomePaciente || paciente?.nomePaciente}</p>
+            <p><strong>Sexo:</strong> {pacienteEnriquecido?.sexo || 'N/I'}</p>
+            <p><strong>Isolamentos:</strong> {isolamentosAtivos}</p>
+          </CardContent>
+        </Card>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <RuleCard title="Compatibilidade por Sexo" icon={User} data={porSexo} />
+          <RuleCard title="Compatibilidade por PCP" icon={AlertTriangle} data={porPCP} />
+          <RuleCard title="Compatibilidade por Isolamento" icon={Shield} data={porIsolamento} />
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
       <Dialog open={isOpen && modalStep === 'selecao'} onOpenChange={onClose}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-6xl">
           <DialogHeader>
             <DialogTitle className="text-lg">
-              Fase 2: Diagnóstico do Motor de Regras ({paciente?.nomePaciente})
+              Fase 2.1: Diagnóstico por Regra de Negócio
             </DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            {loadingData && (
+            {loading && (
               <div className="flex items-center justify-center h-40">
                 <Loader2 className="h-8 w-8 animate-spin mr-3" />
-                <span>Analisando compatibilidade...</span>
+                <span>Carregando dados do hospital...</span>
               </div>
             )}
-            {error && <p className="text-red-500">{error}</p>}
-            {!loadingData && hospitalData && <RelatorioResultados />}
+            {error && <p className="text-red-500 text-center">{error}</p>}
+            {!loading && !error && hospitalData && renderRelatorio()}
           </div>
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="outline" onClick={onClose}>
@@ -163,13 +195,18 @@ const RegularPacienteModal = ({
         </DialogContent>
       </Dialog>
 
-      {/* Modal de Confirmação */}
       {leitoSelecionado && paciente && modalStep === 'confirmacao' && (
-         <Dialog open={true} onOpenChange={() => {}}>
-           <DialogContent className="max-w-lg">
-             {/* ... conteúdo do modal de confirmação ... */}
-           </DialogContent>
-         </Dialog>
+        <ConfirmarRegulacaoModal
+          isOpen
+          onClose={onClose}
+          paciente={paciente}
+          leito={leitoSelecionado}
+          onBack={() => {
+            setModalStep('selecao');
+            setLeitoSelecionado(null);
+          }}
+          onSuccess={handleRegulacaoConcluida}
+        />
       )}
     </>
   );
