@@ -105,6 +105,12 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
     dataPrevistaInternacaoTexto: ''
   });
 
+  const [errosDatas, setErrosDatas] = useState({
+    dataNascimento: false,
+    dataSolicitacao: false,
+    dataPrevistaInternacao: false
+  });
+
   const [calendariosAbertos, setCalendariosAbertos] = useState({
     dataNascimento: false,
     dataSolicitacao: false,
@@ -202,6 +208,11 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
       dataSolicitacao: false,
       dataPrevistaInternacao: false
     });
+    setErrosDatas({
+      dataNascimento: false,
+      dataSolicitacao: false,
+      dataPrevistaInternacao: false
+    });
   };
 
   const atualizarCampoData = useCallback((campo, valor) => {
@@ -210,28 +221,64 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
       [campo]: valor,
       [`${campo}Texto`]: valor ? format(valor, 'dd/MM/yyyy') : ''
     }));
+    setErrosDatas(prev => ({ ...prev, [campo]: false }));
+  }, []);
+
+  const aplicarMascaraData = useCallback((valor) => {
+    const digits = (valor || '').replace(/\D/g, '').slice(0, 8);
+
+    if (digits.length <= 2) {
+      return digits;
+    }
+
+    if (digits.length <= 4) {
+      return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    }
+
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
   }, []);
 
   const handleInputData = useCallback((campo, valor) => {
-    setNovaReserva(prev => {
-      const proximo = { ...prev, [`${campo}Texto`]: valor };
+    const mascarado = aplicarMascaraData(valor);
+    const digits = mascarado.replace(/\D/g, '');
 
-      if (!valor) {
-        proximo[campo] = null;
-        return proximo;
-      }
+    let dataValida = null;
+    let textoParaArmazenar = mascarado;
+    let erro = false;
 
-      const dataParseada = parse(valor, 'dd/MM/yyyy', new Date());
+    if (digits.length === 8) {
+      const dataParseada = parse(mascarado, 'dd/MM/yyyy', new Date());
       if (isValid(dataParseada)) {
-        proximo[campo] = dataParseada;
-        proximo[`${campo}Texto`] = format(dataParseada, 'dd/MM/yyyy');
+        dataValida = dataParseada;
+        textoParaArmazenar = format(dataParseada, 'dd/MM/yyyy');
       } else {
-        proximo[campo] = null;
+        erro = true;
       }
+    } else if (digits.length === 0) {
+      textoParaArmazenar = '';
+    }
 
-      return proximo;
-    });
-  }, []);
+    setNovaReserva(prev => ({
+      ...prev,
+      [campo]: dataValida,
+      [`${campo}Texto`]: textoParaArmazenar
+    }));
+
+    setErrosDatas(prev => ({
+      ...prev,
+      [campo]: erro
+    }));
+  }, [aplicarMascaraData]);
+
+  const handleBlurData = useCallback((campo) => {
+    const textoAtual = novaReserva[`${campo}Texto`] || '';
+    const digits = textoAtual.replace(/\D/g, '');
+
+    setErrosDatas(prev => ({
+      ...prev,
+      [campo]: digits.length === 0 ? false : (digits.length !== 8 || prev[campo])
+    }));
+  }, [novaReserva]);
 
   const handleSelecionarData = useCallback((campo, data) => {
     atualizarCampoData(campo, data ?? null);
@@ -458,8 +505,10 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
                               value={novaReserva.dataNascimentoTexto}
                               placeholder="dd/mm/aaaa"
                               onFocus={() => setCalendariosAbertos(prev => ({ ...prev, dataNascimento: true }))}
-                              onInput={(event) => handleInputData('dataNascimento', event.target.value)}
-                              className="pl-8"
+                              onChange={(event) => handleInputData('dataNascimento', event.target.value)}
+                              onBlur={() => handleBlurData('dataNascimento')}
+                              className={`pl-8 ${errosDatas.dataNascimento ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                              aria-invalid={errosDatas.dataNascimento || undefined}
                             />
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
@@ -569,8 +618,10 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
                                 value={novaReserva.dataSolicitacaoTexto}
                                 placeholder="dd/mm/aaaa"
                                 onFocus={() => setCalendariosAbertos(prev => ({ ...prev, dataSolicitacao: true }))}
-                                onInput={(event) => handleInputData('dataSolicitacao', event.target.value)}
-                                className="pl-8"
+                                onChange={(event) => handleInputData('dataSolicitacao', event.target.value)}
+                                onBlur={() => handleBlurData('dataSolicitacao')}
+                                className={`pl-8 ${errosDatas.dataSolicitacao ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                                aria-invalid={errosDatas.dataSolicitacao || undefined}
                               />
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="start">
@@ -635,8 +686,10 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
                                 value={novaReserva.dataPrevistaInternacaoTexto}
                                 placeholder="dd/mm/aaaa"
                                 onFocus={() => setCalendariosAbertos(prev => ({ ...prev, dataPrevistaInternacao: true }))}
-                                onInput={(event) => handleInputData('dataPrevistaInternacao', event.target.value)}
-                                className="pl-8"
+                                onChange={(event) => handleInputData('dataPrevistaInternacao', event.target.value)}
+                                onBlur={() => handleBlurData('dataPrevistaInternacao')}
+                                className={`pl-8 ${errosDatas.dataPrevistaInternacao ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                                aria-invalid={errosDatas.dataPrevistaInternacao || undefined}
                               />
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="start">
