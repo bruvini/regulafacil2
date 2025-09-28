@@ -25,7 +25,14 @@ const RegularPacienteModal = ({
   const [leitoSelecionado, setLeitoSelecionado] = useState(null);
 
   // 1. USA O HOOK MESTRE PARA TER A VISÃO COMPLETA E ENRIQUECIDA DO HOSPITAL
-  const { estrutura, pacientesEnriquecidos, loading } = useDadosHospitalares();
+  const {
+    estrutura,
+    pacientesEnriquecidos,
+    setores = [],
+    leitos = [],
+    infeccoes = [],
+    loading
+  } = useDadosHospitalares();
 
   // 2. ENCONTRA A VERSÃO ENRIQUECIDA DO PACIENTE-ALVO
   const pacienteEnriquecido = useMemo(() => {
@@ -38,6 +45,11 @@ const RegularPacienteModal = ({
     if (loading || !pacienteEnriquecido) return [];
     return encontrarLeitosCompativeis(pacienteEnriquecido, { estrutura }, modo);
   }, [pacienteEnriquecido, estrutura, modo, loading]);
+
+  const leitoOrigem = useMemo(() => {
+    if (!pacienteEnriquecido?.leitoId) return null;
+    return leitos.find(leito => leito.id === pacienteEnriquecido.leitoId) || null;
+  }, [pacienteEnriquecido, leitos]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -56,6 +68,12 @@ const RegularPacienteModal = ({
     onClose();
     setModalStep('selecao');
     setLeitoSelecionado(null);
+  };
+
+  const handleLeitoSelect = (leito) => {
+    console.log('Leito selecionado:', leito);
+    setLeitoSelecionado(leito);
+    setModalStep('confirmacao');
   };
 
   const renderContent = () => {
@@ -84,20 +102,16 @@ const RegularPacienteModal = ({
         <ScrollArea className="h-96 border rounded-md">
           {leitosCompativeis.length > 0 ? (
             leitosCompativeis.map(leito => (
-              <button
+              <div
                 key={leito.id}
-                type="button"
-                className="w-full text-left p-3 border-b hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary"
-                onClick={() => {
-                  setLeitoSelecionado(leito);
-                  setModalStep('confirmacao');
-                }}
+                className="p-3 border-b hover:bg-muted/50 cursor-pointer"
+                onClick={() => handleLeitoSelect(leito)}
               >
-                <p className="font-mono text-sm">{leito.codigoLeito}</p>
-                {leito.nomeSetor && (
-                  <p className="text-xs text-muted-foreground">{leito.nomeSetor}</p>
-                )}
-              </button>
+                <p className="font-mono font-semibold">{leito.codigoLeito}</p>
+                <p className="text-sm text-muted-foreground">
+                  {setores.find(s => s.id === leito.setorId)?.nomeSetor || leito.nomeSetor || 'Setor não informado'}
+                </p>
+              </div>
             ))
           ) : (
             <div className="flex items-center justify-center h-full p-4">
@@ -110,35 +124,40 @@ const RegularPacienteModal = ({
   };
 
   return (
-    <>
-      <Dialog open={isOpen && modalStep === 'selecao'} onOpenChange={onClose}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>Regular Paciente: {pacienteAlvo?.nomePaciente}</DialogTitle>
-          </DialogHeader>
-          {renderContent()}
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>Regular Paciente: {pacienteAlvo?.nomePaciente}</DialogTitle>
+        </DialogHeader>
+
+        {modalStep === 'selecao' && renderContent()}
+
+        {leitoSelecionado && pacienteEnriquecido && modalStep === 'confirmacao' && (
+          <ConfirmarRegulacaoModal
+            isOpen={true}
+            onClose={handleRegulacaoConcluida}
+            paciente={pacienteEnriquecido}
+            leitoOrigem={leitoOrigem}
+            leitoDestino={leitoSelecionado}
+            infeccoes={infeccoes}
+            onBack={() => {
+              setModalStep('selecao');
+              setLeitoSelecionado(null);
+            }}
+            showAsContent={true}
+            modo={modo}
+          />
+        )}
+
+        {modalStep === 'selecao' && (
           <DialogFooter>
             <Button variant="outline" onClick={onClose}>
               Fechar
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {leitoSelecionado && pacienteEnriquecido && modalStep === 'confirmacao' && (
-        <ConfirmarRegulacaoModal
-          isOpen
-          onClose={onClose}
-          paciente={pacienteEnriquecido}
-          leito={leitoSelecionado}
-          onBack={() => {
-            setModalStep('selecao');
-            setLeitoSelecionado(null);
-          }}
-          onSuccess={handleRegulacaoConcluida}
-        />
-      )}
-    </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 };
 

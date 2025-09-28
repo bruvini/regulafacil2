@@ -20,15 +20,16 @@ import { db, getLeitosCollection, getPacientesCollection, getHistoricoRegulacoes
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
 
-const ConfirmarRegulacaoModal = ({ 
-  isOpen, 
-  onClose, 
-  paciente, 
-  leitoOrigem, 
-  leitoDestino, 
+const ConfirmarRegulacaoModal = ({
+  isOpen,
+  onClose,
+  paciente,
+  leitoOrigem,
+  leitoDestino,
   infeccoes = [],
   showAsContent = false,
-  modo = 'enfermaria'
+  modo = 'enfermaria',
+  onBack = null
 }) => {
   const [observacoes, setObservacoes] = useState('');
   const [processando, setProcessando] = useState(false);
@@ -218,6 +219,18 @@ const ConfirmarRegulacaoModal = ({
 
   if (!paciente || !leitoOrigem || !leitoDestino) return null;
 
+  const handleCancelar = () => {
+    if (processando) return;
+    if (typeof onBack === 'function') {
+      onBack();
+      return;
+    }
+
+    if (typeof onClose === 'function') {
+      onClose();
+    }
+  };
+
   if (showAsContent) {
     return (
       <div className="space-y-4">
@@ -248,14 +261,14 @@ const ConfirmarRegulacaoModal = ({
 
         {/* Botão de ação */}
         <div className="flex justify-end gap-2 pt-4 border-t">
-          <Button 
-            variant="outline" 
-            onClick={onClose}
+          <Button
+            variant="outline"
+            onClick={handleCancelar}
             disabled={processando}
           >
-            Cancelar
+            {onBack ? 'Voltar' : 'Cancelar'}
           </Button>
-          <Button 
+          <Button
             onClick={concluirRegulacao}
             disabled={processando}
             className="bg-primary hover:bg-primary/90"
@@ -313,14 +326,14 @@ const ConfirmarRegulacaoModal = ({
 
           {/* Botões de ação */}
           <div className="flex justify-end gap-2 pt-4 border-t">
-            <Button 
-              variant="outline" 
-              onClick={onClose}
+            <Button
+              variant="outline"
+              onClick={handleCancelar}
               disabled={processando}
             >
-              Cancelar
+              {onBack ? 'Voltar' : 'Cancelar'}
             </Button>
-            <Button 
+            <Button
               onClick={concluirRegulacao}
               disabled={processando}
               className="bg-primary hover:bg-primary/90"
