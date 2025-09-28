@@ -297,9 +297,8 @@ const MapaLeitosDashboard = () => {
       const setor = setoresPorId.get(leito.setorId);
       const tipoNorm = normalizarTexto(setor?.tipoSetor);
       const status = normalizarTexto(leito.status || leito.statusLeito);
-      const statusAssistencialAtivo = status === 'ocupado' || status === 'vago' || status === 'higienizacao';
 
-      if (setoresAssistenciais.has(tipoNorm) && statusAssistencialAtivo) {
+      if (setoresAssistenciais.has(tipoNorm)) {
         totalAssistenciais += 1;
         if (status === 'ocupado') {
           ocupadosAssistenciais += 1;
