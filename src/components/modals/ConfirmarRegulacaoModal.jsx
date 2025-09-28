@@ -40,8 +40,10 @@ const ConfirmarRegulacaoModal = ({
     if (!paciente || !leitoOrigem || !leitoDestino) return '';
 
     const nomesPaciente = paciente.nomePaciente;
-    const setorOrigem = `${leitoOrigem.siglaSetor} - ${leitoOrigem.codigoLeito}`;
-    const setorDestino = `${leitoDestino.siglaSetor} - ${leitoDestino.codigoLeito}`;
+    const setorOrigemIdentificador = leitoOrigem.siglaSetor || leitoOrigem.nomeSetor || 'Setor não informado';
+    const setorDestinoIdentificador = leitoDestino.siglaSetor || leitoDestino.nomeSetor || 'Setor não informado';
+    const setorOrigem = `${setorOrigemIdentificador} - ${leitoOrigem.codigoLeito}`;
+    const setorDestino = `${setorDestinoIdentificador} - ${leitoDestino.codigoLeito}`;
     
     // Obter nomes das infecções
     const nomesInfeccoes = (paciente.isolamentos || [])
