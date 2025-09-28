@@ -104,20 +104,29 @@ const RegulacaoLeitosPage = () => {
       const unsubPacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
         (async () => {
           const pacientesData = await Promise.all(
-            snapshot.docs.map(doc =>
-              processarPaciente(
-                {
-                  id: doc.id,
-                  ...doc.data()
-                },
-                infeccoesMap
-              )
-            )
+            snapshot.docs.map(async (doc) => {
+              const dadosBrutos = {
+                id: doc.id,
+                ...doc.data()
+              };
+
+              console.log('[RegulacaoLeitosPage] Paciente bruto:', {
+                id: dadosBrutos.id,
+                nome: dadosBrutos?.nomePaciente,
+                sexo: dadosBrutos?.sexo,
+                leitoId: dadosBrutos?.leitoId,
+                isolamentos: dadosBrutos?.isolamentos
+              });
+
+              return processarPaciente(dadosBrutos, infeccoesMap);
+            })
           );
 
           if (!ativo) return;
 
-          setPacientes(pacientesData.filter(Boolean));
+          const pacientesFiltrados = pacientesData.filter(Boolean);
+          console.log('[RegulacaoLeitosPage] Pacientes carregados:', pacientesFiltrados);
+          setPacientes(pacientesFiltrados);
         })();
       });
       unsubscribes.push(unsubPacientes);

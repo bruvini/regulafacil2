@@ -65,6 +65,8 @@ export const normalizarEstruturaPaciente = (paciente) => {
     pacienteNormalizado.isolamentos = [];
   }
 
+  console.log('[PacienteUtils] Paciente normalizado:', pacienteNormalizado);
+
   return pacienteNormalizado;
 };
 
@@ -115,6 +117,13 @@ export const processarPaciente = async (paciente, infeccoesMap = new Map()) => {
     pacienteNormalizado.isolamentos,
     infeccoesMap
   );
+
+  console.log('[PacienteUtils] Paciente enriquecido:', {
+    nome: pacienteNormalizado?.nomePaciente,
+    sexo: pacienteNormalizado?.sexo,
+    leitoId: pacienteNormalizado?.leitoId,
+    isolamentos: isolamentosDetalhados,
+  });
 
   return { ...pacienteNormalizado, isolamentos: isolamentosDetalhados };
 };
