@@ -29,10 +29,17 @@ export const normalizarEstruturaPaciente = (paciente) => {
 
   pacienteNormalizado.sexo = normalizarSexo(pacienteNormalizado.sexo);
 
+  console.log(
+    '[PacienteUtils] Isolamentos brutos do paciente',
+    pacienteNormalizado?.nomePaciente,
+    pacienteNormalizado?.isolamentos
+  );
+
   if (Array.isArray(pacienteNormalizado.isolamentos)) {
     pacienteNormalizado.isolamentos = pacienteNormalizado.isolamentos
       .filter(Boolean)
       .map((isolamentoOriginal) => {
+        console.log('[PacienteUtils] Processando isolamento:', isolamentoOriginal);
         if (!isolamentoOriginal || typeof isolamentoOriginal !== 'object') {
           return isolamentoOriginal;
         }
@@ -65,6 +72,8 @@ export const normalizarEstruturaPaciente = (paciente) => {
     pacienteNormalizado.isolamentos = [];
   }
 
+  console.log('[PacienteUtils] Paciente normalizado:', pacienteNormalizado);
+
   return pacienteNormalizado;
 };
 
@@ -76,11 +85,51 @@ export const normalizarEstruturaPaciente = (paciente) => {
 const enriquecerIsolamentos = async (isolamentos, infeccoesMap) => {
   if (!Array.isArray(isolamentos) || !infeccoesMap) return [];
 
-  const isolamentosEnriquecidos = await Promise.all(
-    isolamentos.map(async (iso) => {
-      if (!iso || !iso.infeccaoId) return iso;
+  const construirIsolamentoBase = (isoOriginal) => {
+    if (!isoOriginal) return null;
 
-      const infeccaoId = typeof iso.infeccaoId === 'object' ? iso.infeccaoId.id : String(iso.infeccaoId);
+    const isolamento = { ...isoOriginal };
+    const infeccaoRef = isolamento.infeccaoId ?? isolamento.infecaoId;
+
+    let infeccaoId = null;
+    if (typeof infeccaoRef === 'string') {
+      infeccaoId = infeccaoRef;
+    } else if (typeof infeccaoRef === 'object' && infeccaoRef) {
+      infeccaoId = infeccaoRef.id || null;
+    }
+
+    const siglaBase =
+      isolamento.sigla ||
+      isolamento.siglaInfeccao ||
+      (infeccaoId ? String(infeccaoId) : '') ||
+      '';
+
+    const nomeBase =
+      isolamento.nome ||
+      isolamento.nomeInfeccao ||
+      isolamento.sigla ||
+      isolamento.siglaInfeccao ||
+      (infeccaoId ? String(infeccaoId) : '') ||
+      '';
+
+    return {
+      ...isolamento,
+      infeccaoId: infeccaoId || isolamento.infeccaoId || isolamento.infecaoId || null,
+      sigla: siglaBase,
+      nome: nomeBase,
+    };
+  };
+
+  const isolamentosEnriquecidos = await Promise.all(
+    isolamentos.map(async (isoOriginal) => {
+      const isolamentoBase = construirIsolamentoBase(isoOriginal);
+      if (!isolamentoBase) return null;
+
+      const { infeccaoId } = isolamentoBase;
+      if (!infeccaoId) {
+        return isolamentoBase;
+      }
+
       let infeccaoData = infeccoesMap.get(infeccaoId);
 
       if (!infeccaoData) {
@@ -93,15 +142,25 @@ const enriquecerIsolamentos = async (isolamentos, infeccoesMap) => {
           }
         } catch (error) {
           console.error(`Erro ao buscar infecção ${infeccaoId}:`, error);
-          return iso;
+          return isolamentoBase;
         }
       }
 
-      return infeccaoData ? { ...iso, ...infeccaoData } : iso;
+      if (!infeccaoData) {
+        return isolamentoBase;
+      }
+
+      const isolamentoComDados = { ...isolamentoBase, ...infeccaoData };
+
+      return {
+        ...isolamentoComDados,
+        sigla: isolamentoComDados.sigla || isolamentoBase.sigla,
+        nome: isolamentoComDados.nome || isolamentoBase.nome,
+      };
     })
   );
 
-  return isolamentosEnriquecidos.filter(Boolean);
+  return isolamentosEnriquecidos.filter((item) => item && item.sigla);
 };
 
 /**
@@ -115,6 +174,13 @@ export const processarPaciente = async (paciente, infeccoesMap = new Map()) => {
     pacienteNormalizado.isolamentos,
     infeccoesMap
   );
+
+  console.log('[PacienteUtils] Paciente enriquecido:', {
+    nome: pacienteNormalizado?.nomePaciente,
+    sexo: pacienteNormalizado?.sexo,
+    leitoId: pacienteNormalizado?.leitoId,
+    isolamentos: isolamentosDetalhados,
+  });
 
   return { ...pacienteNormalizado, isolamentos: isolamentosDetalhados };
 };
