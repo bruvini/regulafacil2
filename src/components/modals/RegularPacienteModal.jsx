@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -7,16 +7,14 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
-import { 
+import {
   getLeitosCollection,
   getQuartosCollection,
   getSetoresCollection,
   getPacientesCollection,
-  getInfeccoesCollection,
-  getDoc,
-  doc,
   onSnapshot
 } from '@/lib/firebase';
+import { processarPaciente, normalizarEstruturaPaciente } from '@/lib/pacienteUtils';
 import LeitoSelectionStep from './steps/LeitoSelectionStep';
 import ConfirmarRegulacaoModal from './ConfirmarRegulacaoModal';
 
@@ -49,143 +47,6 @@ const RegularPacienteModal = ({
     });
     infeccoesCacheRef.current = cacheAtual;
   }, [infeccoes]);
-
-  const normalizarSexoPaciente = useCallback((valor) => {
-    if (typeof valor === 'string' && valor.trim().toUpperCase() === 'M') {
-      return 'M';
-    }
-    return 'F';
-  }, []);
-
-  const construirPacienteBasico = useCallback((pacienteOriginal) => {
-    if (!pacienteOriginal) return null;
-
-    const pacienteNormalizado = { ...pacienteOriginal };
-
-    if (pacienteNormalizado.leitoId && typeof pacienteNormalizado.leitoId === 'object') {
-      pacienteNormalizado.leitoId = pacienteNormalizado.leitoId.id || pacienteNormalizado.leitoId;
-    }
-
-    if (pacienteNormalizado.leitoId) {
-      pacienteNormalizado.leitoId = String(pacienteNormalizado.leitoId);
-    }
-
-    pacienteNormalizado.sexo = normalizarSexoPaciente(pacienteNormalizado.sexo);
-
-    if (Array.isArray(pacienteNormalizado.isolamentos)) {
-      pacienteNormalizado.isolamentos = pacienteNormalizado.isolamentos
-        .filter(Boolean)
-        .map((isolamentoOriginal) => {
-          if (!isolamentoOriginal || typeof isolamentoOriginal !== 'object') {
-            return isolamentoOriginal;
-          }
-
-          const isolamento = { ...isolamentoOriginal };
-          const infeccaoRef = isolamento.infeccaoId || isolamento.infecaoId;
-
-          let infeccaoId = null;
-          if (typeof infeccaoRef === 'string') {
-            infeccaoId = infeccaoRef;
-          } else if (typeof infeccaoRef === 'object' && infeccaoRef) {
-            infeccaoId = infeccaoRef.id || null;
-          }
-
-          const siglaBase =
-            isolamento.sigla ||
-            isolamento.siglaInfeccao ||
-            (infeccaoId ? String(infeccaoId) : '');
-
-          const nomeBase = isolamento.nome || isolamento.nomeInfeccao || siglaBase || '';
-
-          return {
-            ...isolamento,
-            infeccaoId: infeccaoId || isolamento.infeccaoId || isolamento.infecaoId || null,
-            sigla: siglaBase || '',
-            nome: nomeBase || '',
-          };
-        });
-    } else {
-      pacienteNormalizado.isolamentos = [];
-    }
-
-    return pacienteNormalizado;
-  }, [normalizarSexoPaciente]);
-
-  const enriquecerIsolamentos = useCallback(async (isolamentos = []) => {
-    if (!Array.isArray(isolamentos)) return [];
-
-    const itens = await Promise.all(
-      isolamentos.map(async (isolamentoOriginal) => {
-        if (!isolamentoOriginal) return isolamentoOriginal;
-
-        const isolamento = { ...isolamentoOriginal };
-        const infeccaoRef = isolamento.infeccaoId || isolamento.infecaoId;
-
-        let infeccaoId = null;
-        if (typeof infeccaoRef === 'string') {
-          infeccaoId = infeccaoRef;
-        } else if (typeof infeccaoRef === 'object' && infeccaoRef) {
-          infeccaoId = infeccaoRef.id || null;
-        }
-
-        let sigla =
-          isolamento.sigla ||
-          isolamento.siglaInfeccao ||
-          (typeof infeccaoId === 'string' ? infeccaoId : '');
-        let nome = isolamento.nome || isolamento.nomeInfeccao || sigla || '';
-
-        if (infeccaoId) {
-          let dadosInfeccao = infeccoesCacheRef.current.get(infeccaoId);
-
-          if (!dadosInfeccao) {
-            try {
-              if (typeof infeccaoRef === 'object' && infeccaoRef) {
-                const snapshot = await getDoc(infeccaoRef);
-                if (snapshot.exists()) {
-                  dadosInfeccao = { id: snapshot.id, ...snapshot.data() };
-                  infeccoesCacheRef.current.set(snapshot.id, dadosInfeccao);
-                }
-              } else {
-                const docRef = doc(getInfeccoesCollection(), infeccaoId);
-                const snapshot = await getDoc(docRef);
-                if (snapshot.exists()) {
-                  dadosInfeccao = { id: snapshot.id, ...snapshot.data() };
-                  infeccoesCacheRef.current.set(snapshot.id, dadosInfeccao);
-                }
-              }
-            } catch (error) {
-              console.error('Erro ao buscar infecção do isolamento:', error);
-            }
-          }
-
-          if (dadosInfeccao) {
-            sigla = sigla || dadosInfeccao.siglaInfeccao || dadosInfeccao.sigla || infeccaoId || '';
-            nome = nome || dadosInfeccao.nomeInfeccao || dadosInfeccao.nome || sigla;
-          }
-        }
-
-        return {
-          ...isolamento,
-          infeccaoId: infeccaoId || isolamento.infeccaoId || isolamento.infecaoId || null,
-          sigla: sigla || '',
-          nome: nome || '',
-        };
-      })
-    );
-
-    return itens.filter(Boolean);
-  }, []);
-
-  const enriquecerPaciente = useCallback(
-    async (pacienteOriginal) => {
-      const pacienteBasico = construirPacienteBasico(pacienteOriginal);
-      if (!pacienteBasico) return null;
-
-      const isolamentosDetalhados = await enriquecerIsolamentos(pacienteBasico.isolamentos);
-      return { ...pacienteBasico, isolamentos: isolamentosDetalhados };
-    },
-    [construirPacienteBasico, enriquecerIsolamentos]
-  );
 
   // Buscar todos os dados necessários
   useEffect(() => {
@@ -230,16 +91,19 @@ const RegularPacienteModal = ({
           (async () => {
             const pacientesData = await Promise.all(
               snapshot.docs.map((docSnapshot) =>
-                enriquecerPaciente({
-                  id: docSnapshot.id,
-                  ...docSnapshot.data()
-                })
+                processarPaciente(
+                  {
+                    id: docSnapshot.id,
+                    ...docSnapshot.data()
+                  },
+                  infeccoesCacheRef.current
+                )
               )
             );
 
             if (!ativo) return;
 
-            setDados(prev => ({ ...prev, pacientes: pacientesData, loading: false }));
+            setDados(prev => ({ ...prev, pacientes: pacientesData.filter(Boolean), loading: false }));
           })();
         });
 
@@ -258,7 +122,7 @@ const RegularPacienteModal = ({
       ativo = false;
       unsubscribes.forEach(unsub => unsub && unsub());
     };
-  }, [isOpen, paciente, enriquecerPaciente]);
+  }, [isOpen, paciente]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -285,7 +149,7 @@ const RegularPacienteModal = ({
         return;
       }
 
-      const enriquecido = await enriquecerPaciente(paciente);
+      const enriquecido = await processarPaciente(paciente, infeccoesCacheRef.current);
       if (ativo) {
         setPacienteProcessado(enriquecido);
       }
@@ -296,7 +160,7 @@ const RegularPacienteModal = ({
     return () => {
       ativo = false;
     };
-  }, [paciente, enriquecerPaciente]);
+  }, [paciente]);
 
   const handleLeitoSelect = (leito) => {
     setLeitoSelecionado(leito);
@@ -309,7 +173,7 @@ const RegularPacienteModal = ({
   };
 
   const getLeitoOrigem = () => {
-    const pacienteAtual = pacienteProcessado || construirPacienteBasico(paciente);
+    const pacienteAtual = pacienteProcessado || normalizarEstruturaPaciente(paciente);
     if (!pacienteAtual || !dados.leitos || !dados.setores) return null;
 
     // Buscar o leito atual do paciente
@@ -335,7 +199,7 @@ const RegularPacienteModal = ({
     setLeitoSelecionado(null);
   };
 
-  const pacienteBasico = useMemo(() => construirPacienteBasico(paciente), [paciente, construirPacienteBasico]);
+  const pacienteBasico = useMemo(() => normalizarEstruturaPaciente(paciente), [paciente]);
   const pacienteAtual = pacienteProcessado || pacienteBasico;
 
   if (!pacienteAtual) return null;
