@@ -21,9 +21,9 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
     leitos: [],
     quartos: [],
     pacientes: [],
-    infeccoes: [],
     loading: true
   });
+  const [infeccoes, setInfeccoes] = useState([]);
 
   const formatarMensagemRestricaoCoorte = (restricao) => {
     if (!restricao) {
@@ -89,7 +89,7 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
         id: doc.id,
         ...doc.data()
       }));
-      setDados(prev => ({ ...prev, infeccoes: infeccoesData }));
+      setInfeccoes(infeccoesData);
     });
     unsubscribes.push(unsubInfeccoes);
 
@@ -99,11 +99,11 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
   }, [isOpen]);
 
   const infeccoesPorId = useMemo(() => {
-    return (dados.infeccoes || []).reduce((acc, infeccaoAtual) => {
+    return (infeccoes || []).reduce((acc, infeccaoAtual) => {
       acc[infeccaoAtual.id] = infeccaoAtual;
       return acc;
     }, {});
-  }, [dados.infeccoes]);
+  }, [infeccoes]);
 
   // Processar dados e aplicar lógica de coorte
   const dadosProcessados = useMemo(() => {
@@ -144,21 +144,21 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
           const isolamentosSet = new Set();
           pacientesOcupantes.forEach(pacienteOcupante => {
             (pacienteOcupante.isolamentos || []).forEach(isolamento => {
-              let sigla = null;
+              let siglaNormalizada = '';
               const infeccaoRef = isolamento?.infeccaoId;
-              if (infeccaoRef && infeccaoRef.id) {
+              if (infeccaoRef?.id) {
                 const infeccaoCompleta = infeccoesPorId[infeccaoRef.id];
                 if (infeccaoCompleta) {
-                  sigla = infeccaoCompleta.siglaInfeccao || infeccaoCompleta.sigla || sigla;
+                  siglaNormalizada = (infeccaoCompleta.siglaInfeccao || infeccaoCompleta.sigla || '').trim();
                 }
               }
 
-              if (!sigla) {
-                sigla = isolamento?.siglaInfeccao || isolamento?.sigla || isolamento?.nomeInfeccao;
+              if (!siglaNormalizada) {
+                siglaNormalizada = (isolamento?.siglaInfeccao || isolamento?.sigla || isolamento?.nomeInfeccao || '').trim();
               }
 
-              if (sigla) {
-                isolamentosSet.add(String(sigla).trim());
+              if (siglaNormalizada) {
+                isolamentosSet.add(siglaNormalizada);
               }
             });
           });
@@ -170,7 +170,8 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
 
         quartoAtual.leitos.forEach(leitoQuarto => {
           const possuiPaciente = Boolean(pacientesPorLeito[leitoQuarto.id]);
-          if (restricao && !possuiPaciente && leitoQuarto.status === 'Vago') {
+          const statusElegivel = leitoQuarto.status === 'Vago' || leitoQuarto.status === 'Higienização';
+          if (restricao && !possuiPaciente && statusElegivel) {
             leitoQuarto.restricaoCoorte = restricao;
           } else {
             leitoQuarto.restricaoCoorte = null;
