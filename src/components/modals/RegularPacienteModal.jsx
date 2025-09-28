@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,9 @@ import {
   getQuartosCollection,
   getSetoresCollection,
   getPacientesCollection,
+  getInfeccoesCollection,
+  getDoc,
+  doc,
   onSnapshot
 } from '@/lib/firebase';
 import LeitoSelectionStep from './steps/LeitoSelectionStep';
@@ -34,12 +37,162 @@ const RegularPacienteModal = ({
   });
   const [modalStep, setModalStep] = useState('selecao');
   const [leitoSelecionado, setLeitoSelecionado] = useState(null);
+  const [pacienteProcessado, setPacienteProcessado] = useState(null);
+  const infeccoesCacheRef = useRef(new Map());
+
+  useEffect(() => {
+    const cacheAtual = new Map(infeccoesCacheRef.current);
+    (infeccoes || []).forEach((infeccao) => {
+      if (infeccao?.id) {
+        cacheAtual.set(infeccao.id, infeccao);
+      }
+    });
+    infeccoesCacheRef.current = cacheAtual;
+  }, [infeccoes]);
+
+  const normalizarSexoPaciente = useCallback((valor) => {
+    if (typeof valor === 'string' && valor.trim().toUpperCase() === 'M') {
+      return 'M';
+    }
+    return 'F';
+  }, []);
+
+  const construirPacienteBasico = useCallback((pacienteOriginal) => {
+    if (!pacienteOriginal) return null;
+
+    const pacienteNormalizado = { ...pacienteOriginal };
+
+    if (pacienteNormalizado.leitoId && typeof pacienteNormalizado.leitoId === 'object') {
+      pacienteNormalizado.leitoId = pacienteNormalizado.leitoId.id || pacienteNormalizado.leitoId;
+    }
+
+    if (pacienteNormalizado.leitoId) {
+      pacienteNormalizado.leitoId = String(pacienteNormalizado.leitoId);
+    }
+
+    pacienteNormalizado.sexo = normalizarSexoPaciente(pacienteNormalizado.sexo);
+
+    if (Array.isArray(pacienteNormalizado.isolamentos)) {
+      pacienteNormalizado.isolamentos = pacienteNormalizado.isolamentos
+        .filter(Boolean)
+        .map((isolamentoOriginal) => {
+          if (!isolamentoOriginal || typeof isolamentoOriginal !== 'object') {
+            return isolamentoOriginal;
+          }
+
+          const isolamento = { ...isolamentoOriginal };
+          const infeccaoRef = isolamento.infeccaoId || isolamento.infecaoId;
+
+          let infeccaoId = null;
+          if (typeof infeccaoRef === 'string') {
+            infeccaoId = infeccaoRef;
+          } else if (typeof infeccaoRef === 'object' && infeccaoRef) {
+            infeccaoId = infeccaoRef.id || null;
+          }
+
+          const siglaBase =
+            isolamento.sigla ||
+            isolamento.siglaInfeccao ||
+            (infeccaoId ? String(infeccaoId) : '');
+
+          const nomeBase = isolamento.nome || isolamento.nomeInfeccao || siglaBase || '';
+
+          return {
+            ...isolamento,
+            infeccaoId: infeccaoId || isolamento.infeccaoId || isolamento.infecaoId || null,
+            sigla: siglaBase || '',
+            nome: nomeBase || '',
+          };
+        });
+    } else {
+      pacienteNormalizado.isolamentos = [];
+    }
+
+    return pacienteNormalizado;
+  }, [normalizarSexoPaciente]);
+
+  const enriquecerIsolamentos = useCallback(async (isolamentos = []) => {
+    if (!Array.isArray(isolamentos)) return [];
+
+    const itens = await Promise.all(
+      isolamentos.map(async (isolamentoOriginal) => {
+        if (!isolamentoOriginal) return isolamentoOriginal;
+
+        const isolamento = { ...isolamentoOriginal };
+        const infeccaoRef = isolamento.infeccaoId || isolamento.infecaoId;
+
+        let infeccaoId = null;
+        if (typeof infeccaoRef === 'string') {
+          infeccaoId = infeccaoRef;
+        } else if (typeof infeccaoRef === 'object' && infeccaoRef) {
+          infeccaoId = infeccaoRef.id || null;
+        }
+
+        let sigla =
+          isolamento.sigla ||
+          isolamento.siglaInfeccao ||
+          (typeof infeccaoId === 'string' ? infeccaoId : '');
+        let nome = isolamento.nome || isolamento.nomeInfeccao || sigla || '';
+
+        if (infeccaoId) {
+          let dadosInfeccao = infeccoesCacheRef.current.get(infeccaoId);
+
+          if (!dadosInfeccao) {
+            try {
+              if (typeof infeccaoRef === 'object' && infeccaoRef) {
+                const snapshot = await getDoc(infeccaoRef);
+                if (snapshot.exists()) {
+                  dadosInfeccao = { id: snapshot.id, ...snapshot.data() };
+                  infeccoesCacheRef.current.set(snapshot.id, dadosInfeccao);
+                }
+              } else {
+                const docRef = doc(getInfeccoesCollection(), infeccaoId);
+                const snapshot = await getDoc(docRef);
+                if (snapshot.exists()) {
+                  dadosInfeccao = { id: snapshot.id, ...snapshot.data() };
+                  infeccoesCacheRef.current.set(snapshot.id, dadosInfeccao);
+                }
+              }
+            } catch (error) {
+              console.error('Erro ao buscar infecção do isolamento:', error);
+            }
+          }
+
+          if (dadosInfeccao) {
+            sigla = sigla || dadosInfeccao.siglaInfeccao || dadosInfeccao.sigla || infeccaoId || '';
+            nome = nome || dadosInfeccao.nomeInfeccao || dadosInfeccao.nome || sigla;
+          }
+        }
+
+        return {
+          ...isolamento,
+          infeccaoId: infeccaoId || isolamento.infeccaoId || isolamento.infecaoId || null,
+          sigla: sigla || '',
+          nome: nome || '',
+        };
+      })
+    );
+
+    return itens.filter(Boolean);
+  }, []);
+
+  const enriquecerPaciente = useCallback(
+    async (pacienteOriginal) => {
+      const pacienteBasico = construirPacienteBasico(pacienteOriginal);
+      if (!pacienteBasico) return null;
+
+      const isolamentosDetalhados = await enriquecerIsolamentos(pacienteBasico.isolamentos);
+      return { ...pacienteBasico, isolamentos: isolamentosDetalhados };
+    },
+    [construirPacienteBasico, enriquecerIsolamentos]
+  );
 
   // Buscar todos os dados necessários
   useEffect(() => {
     if (!isOpen || !paciente) return;
 
     let unsubscribes = [];
+    let ativo = true;
 
     const buscarDados = async () => {
       setDados(prev => ({ ...prev, loading: true }));
@@ -74,31 +227,44 @@ const RegularPacienteModal = ({
 
         // Listener para pacientes
         const unsubPacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
-          const pacientesData = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          setDados(prev => ({ ...prev, pacientes: pacientesData, loading: false }));
+          (async () => {
+            const pacientesData = await Promise.all(
+              snapshot.docs.map((docSnapshot) =>
+                enriquecerPaciente({
+                  id: docSnapshot.id,
+                  ...docSnapshot.data()
+                })
+              )
+            );
+
+            if (!ativo) return;
+
+            setDados(prev => ({ ...prev, pacientes: pacientesData, loading: false }));
+          })();
         });
 
         unsubscribes = [unsubLeitos, unsubQuartos, unsubSetores, unsubPacientes];
       } catch (error) {
         console.error('Erro ao buscar dados:', error);
-        setDados(prev => ({ ...prev, loading: false }));
+        if (ativo) {
+          setDados(prev => ({ ...prev, loading: false }));
+        }
       }
     };
 
     buscarDados();
 
     return () => {
+      ativo = false;
       unsubscribes.forEach(unsub => unsub && unsub());
     };
-  }, [isOpen, paciente]);
+  }, [isOpen, paciente, enriquecerPaciente]);
 
   useEffect(() => {
     if (!isOpen) {
       setModalStep('selecao');
       setLeitoSelecionado(null);
+      setPacienteProcessado(null);
       return;
     }
 
@@ -107,6 +273,30 @@ const RegularPacienteModal = ({
       setModalStep('confirmacao');
     }
   }, [isOpen, leitoSugerido]);
+
+  useEffect(() => {
+    let ativo = true;
+
+    const prepararPaciente = async () => {
+      if (!paciente) {
+        if (ativo) {
+          setPacienteProcessado(null);
+        }
+        return;
+      }
+
+      const enriquecido = await enriquecerPaciente(paciente);
+      if (ativo) {
+        setPacienteProcessado(enriquecido);
+      }
+    };
+
+    prepararPaciente();
+
+    return () => {
+      ativo = false;
+    };
+  }, [paciente, enriquecerPaciente]);
 
   const handleLeitoSelect = (leito) => {
     setLeitoSelecionado(leito);
@@ -119,10 +309,11 @@ const RegularPacienteModal = ({
   };
 
   const getLeitoOrigem = () => {
-    if (!paciente || !dados.leitos || !dados.setores) return null;
+    const pacienteAtual = pacienteProcessado || construirPacienteBasico(paciente);
+    if (!pacienteAtual || !dados.leitos || !dados.setores) return null;
 
     // Buscar o leito atual do paciente
-    const leitoAtual = dados.leitos.find(l => l.id === paciente.leitoId);
+    const leitoAtual = dados.leitos.find(l => l.id === pacienteAtual.leitoId);
     if (!leitoAtual) return null;
 
     // Buscar o setor do leito atual
@@ -130,10 +321,10 @@ const RegularPacienteModal = ({
 
     return {
       id: leitoAtual.id,
-      codigoLeito: leitoAtual.codigoLeito || paciente.codigoLeito || 'N/A',
-      siglaSetor: setorAtual?.siglaSetor || paciente.siglaSetor || 'N/A',
+      codigoLeito: leitoAtual.codigoLeito || pacienteAtual.codigoLeito || 'N/A',
+      siglaSetor: setorAtual?.siglaSetor || pacienteAtual.siglaSetor || 'N/A',
       nomeSetor: setorAtual?.nomeSetor || 'N/A',
-      setorId: setorAtual?.id || leitoAtual.setorId || paciente.setorId || null
+      setorId: setorAtual?.id || leitoAtual.setorId || pacienteAtual.setorId || null
     };
   };
 
@@ -144,7 +335,10 @@ const RegularPacienteModal = ({
     setLeitoSelecionado(null);
   };
 
-  if (!paciente) return null;
+  const pacienteBasico = useMemo(() => construirPacienteBasico(paciente), [paciente, construirPacienteBasico]);
+  const pacienteAtual = pacienteProcessado || pacienteBasico;
+
+  if (!pacienteAtual) return null;
 
   return (
     <>
@@ -153,14 +347,14 @@ const RegularPacienteModal = ({
         <DialogContent className="max-w-4xl max-h-[80vh]">
           <DialogHeader>
             <DialogTitle className="text-lg">
-              Selecionar Leito de Destino para: {paciente?.nomePaciente}
+              Selecionar Leito de Destino para: {pacienteAtual?.nomePaciente}
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             <LeitoSelectionStep
               dados={dados}
-              paciente={paciente}
+              paciente={pacienteAtual}
               modo={modo}
               onLeitoSelect={handleLeitoSelect}
             />
@@ -175,9 +369,9 @@ const RegularPacienteModal = ({
       </Dialog>
 
       {/* Modal de Confirmação */}
-      {leitoSelecionado && paciente && modalStep === 'confirmacao' && (
-        <Dialog 
-          open={true} 
+      {leitoSelecionado && pacienteAtual && modalStep === 'confirmacao' && (
+        <Dialog
+          open={true}
           onOpenChange={() => {}}
         >
           <DialogContent 
@@ -202,7 +396,7 @@ const RegularPacienteModal = ({
             <ConfirmarRegulacaoModal
               isOpen={true}
               onClose={handleRegulacaoConcluida}
-              paciente={paciente}
+              paciente={pacienteAtual}
               leitoOrigem={getLeitoOrigem()}
               leitoDestino={leitoSelecionado}
               infeccoes={infeccoes}
