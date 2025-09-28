@@ -6,7 +6,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 
 const DiagnosticoIsolamentosModal = ({ isOpen, onClose, pacientes }) => {
-  const pacientesComIsolamento = pacientes.filter(p => p.isolamentos && p.isolamentos.length > 0);
+  const pacientesComIsolamento = pacientes.filter(p =>
+    p.isolamentos &&
+    p.isolamentos.length > 0 &&
+    p.isolamentos.some(iso => iso.siglaInfeccao || iso.sigla)
+  );
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -16,7 +20,7 @@ const DiagnosticoIsolamentosModal = ({ isOpen, onClose, pacientes }) => {
         </DialogHeader>
         <div className="py-4">
           <p className="mb-4 text-sm text-muted-foreground">
-            Esta é uma lista de todos os pacientes atualmente internados que possuem isolamentos ativos, com base nos dados processados pelo pipeline.
+            Lista de pacientes internados com isolamentos ativos, baseada nos dados enriquecidos pelo pipeline. Se um paciente com isolamento não aparece aqui, há um erro no enriquecimento.
           </p>
           <ScrollArea className="h-96 border rounded-lg p-3">
             {pacientesComIsolamento.length > 0 ? (
@@ -27,7 +31,7 @@ const DiagnosticoIsolamentosModal = ({ isOpen, onClose, pacientes }) => {
                     <div className="flex flex-wrap gap-2 mt-2">
                       {paciente.isolamentos.map((iso, index) => (
                         <Badge key={index} variant="destructive">
-                          {iso.siglaInfeccao || iso.sigla || 'N/A'} ({iso.status})
+                          {iso.siglaInfeccao || iso.sigla || 'ERRO: N/A'} ({iso.status})
                         </Badge>
                       ))}
                     </div>
@@ -35,7 +39,7 @@ const DiagnosticoIsolamentosModal = ({ isOpen, onClose, pacientes }) => {
                 ))}
               </div>
             ) : (
-              <p className="text-center text-muted-foreground">Nenhum paciente com isolamento ativo encontrado.</p>
+              <p className="text-center text-muted-foreground">Nenhum paciente com isolamento ativo e enriquecido foi encontrado.</p>
             )}
           </ScrollArea>
         </div>
