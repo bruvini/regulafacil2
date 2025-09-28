@@ -75,6 +75,7 @@ const getSectorTypeColor = (tipoSetor) => {
 // Componente LeitoCard Dinâmico
 const LeitoCard = ({
   leito,
+  infeccoesPorId = {},
   onBloquearLeito,
   onSolicitarHigienizacao,
   onDesbloquearLeito,
@@ -302,15 +303,36 @@ const LeitoCard = ({
     const badges = [];
     const paciente = leito.paciente;
 
-    // Badges de isolamentos
     if (paciente.isolamentos && paciente.isolamentos.length > 0) {
-      paciente.isolamentos.forEach(isolamento => {
-        badges.push(
-          <Badge key={isolamento.id || isolamento.infeccaoId || isolamento.siglaInfeccao} variant="destructive" className="text-xs px-1.5 py-0.5">
-            {isolamento.siglaInfeccao}
-          </Badge>
-        );
-      });
+      badges.push(
+        <div key="isolamentos" className="flex flex-wrap gap-1 mt-1">
+          {paciente.isolamentos.map(isolamento => {
+            const infeccaoRef = isolamento?.infeccaoId;
+            if (infeccaoRef?.id) {
+              const infeccao = infeccoesPorId[infeccaoRef.id];
+              const sigla = (infeccao?.siglaInfeccao || infeccao?.sigla || '').trim();
+              if (sigla) {
+                return (
+                  <Badge key={`isolamento-${infeccao.id}`} variant="destructive" className="text-xs">
+                    {sigla}
+                  </Badge>
+                );
+              }
+            }
+
+            const siglaFallback = (isolamento?.siglaInfeccao || isolamento?.sigla || isolamento?.nomeInfeccao || '').trim();
+            if (siglaFallback) {
+              return (
+                <Badge key={`isolamento-${siglaFallback}`} variant="destructive" className="text-xs">
+                  {siglaFallback}
+                </Badge>
+              );
+            }
+
+            return null;
+          })}
+        </div>
+      );
     }
 
     if (paciente.observacoes && paciente.observacoes.length > 0) {
@@ -1404,21 +1426,21 @@ const MapaLeitosPanel = () => {
           const isolamentosSet = new Set();
           pacientesOcupantes.forEach(pacienteOcupante => {
             (pacienteOcupante.isolamentos || []).forEach(isolamento => {
-              let sigla = null;
+              let siglaNormalizada = '';
               const infeccaoRef = isolamento?.infeccaoId;
-              if (infeccaoRef && infeccaoRef.id) {
+              if (infeccaoRef?.id) {
                 const infeccaoCompleta = infeccoesPorId[infeccaoRef.id];
                 if (infeccaoCompleta) {
-                  sigla = infeccaoCompleta.siglaInfeccao || infeccaoCompleta.sigla || sigla;
+                  siglaNormalizada = (infeccaoCompleta.siglaInfeccao || infeccaoCompleta.sigla || '').trim();
                 }
               }
 
-              if (!sigla) {
-                sigla = isolamento?.siglaInfeccao || isolamento?.sigla || isolamento?.nomeInfeccao;
+              if (!siglaNormalizada) {
+                siglaNormalizada = (isolamento?.siglaInfeccao || isolamento?.sigla || isolamento?.nomeInfeccao || '').trim();
               }
 
-              if (sigla) {
-                isolamentosSet.add(String(sigla).trim());
+              if (siglaNormalizada) {
+                isolamentosSet.add(siglaNormalizada);
               }
             });
           });
@@ -1430,7 +1452,8 @@ const MapaLeitosPanel = () => {
 
         quartoAtual.leitos.forEach(leitoQuarto => {
           const possuiPaciente = Boolean(pacientesPorLeito[leitoQuarto.id]);
-          if (restricao && !possuiPaciente && leitoQuarto.status === 'Vago') {
+          const statusElegivel = leitoQuarto.status === 'Vago' || leitoQuarto.status === 'Higienização';
+          if (restricao && !possuiPaciente && statusElegivel) {
             leitoQuarto.restricaoCoorte = restricao;
             leitoQuarto.contextoQuarto = {
               sexo: restricao.sexo,
@@ -1900,6 +1923,7 @@ const MapaLeitosPanel = () => {
                                 <MemoizedLeitoCard
                                   key={leito.id}
                                   leito={leito}
+                                  infeccoesPorId={infeccoesPorId}
                                   onBloquearLeito={(leito) => setModalBloquear({ open: true, leito })}
                                   onSolicitarHigienizacao={(leito) => setModalHigienizacao({ open: true, leito })}
                                   onDesbloquearLeito={(leito) => setModalDesbloquear({ open: true, leito })}
@@ -1938,6 +1962,7 @@ const MapaLeitosPanel = () => {
                                 <MemoizedLeitoCard
                                   key={leito.id}
                                   leito={leito}
+                                  infeccoesPorId={infeccoesPorId}
                                   onBloquearLeito={(leito) => setModalBloquear({ open: true, leito })}
                                   onSolicitarHigienizacao={(leito) => setModalHigienizacao({ open: true, leito })}
                                   onDesbloquearLeito={(leito) => setModalDesbloquear({ open: true, leito })}
