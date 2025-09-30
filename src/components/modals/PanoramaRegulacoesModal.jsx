@@ -13,10 +13,10 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { Copy, Loader2, AlertCircle, CalendarRange, Clock, MapPin, Users } from 'lucide-react';
 import {
-  getAuditoriaCollection,
   getPacientesCollection,
   getLeitosCollection,
   getSetoresCollection,
+  getHistoricoRegulacoesCollection,
   getDocs,
   query,
   where,
@@ -258,151 +258,85 @@ const processarDadosRelatorio = (dados, periodo) => {
     pendentesPorOrigemMapa.get(setorId).regulacoes.push(item);
   });
 
-  const logsOrdenados = [...dados.logs]
-    .filter((log) => log.timestamp)
-    .sort((a, b) => {
-      const aTime = a.timestamp ? a.timestamp.getTime() : 0;
-      const bTime = b.timestamp ? b.timestamp.getTime() : 0;
-      return aTime - bTime;
-    });
-
-  const historicoPorPaciente = {};
-
-  logsOrdenados.forEach((log) => {
-    const detalhes = analisarLogRegulacao(log.acao);
-    if (!detalhes) return;
-
-    const pacienteInfo = identificarPacienteLog(log, detalhes, pacientesPorId, pacientesPorNome);
-    const chave = pacienteInfo.pacienteId
-      ? `id:${pacienteInfo.pacienteId}`
-      : `nome:${normalizarTexto(pacienteInfo.pacienteNome)}`;
-
-    if (!historicoPorPaciente[chave]) {
-      historicoPorPaciente[chave] = {
-        pacienteId: pacienteInfo.pacienteId,
-        pacienteNome: pacienteInfo.pacienteNome,
-        regulacoes: [],
-      };
-    }
-
-    const lista = historicoPorPaciente[chave].regulacoes;
-    let atual = lista[lista.length - 1];
-    if (!atual || atual.statusFinal) {
-      atual = null;
-    }
-
-    if (detalhes.tipo === 'inicio') {
-      const nova = {
-        id: `${chave}-${lista.length + 1}`,
-        pacienteId: pacienteInfo.pacienteId,
-        pacienteNome: pacienteInfo.pacienteNome,
-        inicio: log.timestamp || null,
-        origemDescricao: detalhes.origem,
-        destinoDescricao: detalhes.destino,
-        alteracoes: [],
-        statusFinal: null,
-        fim: null,
-        tempoTotalMinutos: null,
-        motivoCancelamento: null,
-      };
-      lista.push(nova);
-      return;
-    }
-
-    if (!atual) {
-      atual = {
-        id: `${chave}-${lista.length + 1}`,
-        pacienteId: pacienteInfo.pacienteId,
-        pacienteNome: pacienteInfo.pacienteNome,
-        inicio: null,
-        origemDescricao: detalhes.origem,
-        destinoDescricao: detalhes.destino,
-        alteracoes: [],
-        statusFinal: null,
-        fim: null,
-        tempoTotalMinutos: null,
-        motivoCancelamento: null,
-      };
-      lista.push(atual);
-    }
-
-    if (detalhes.tipo === 'alteracao') {
-      if (detalhes.destino) {
-        atual.destinoDescricao = detalhes.destino;
-      }
-      atual.alteracoes.push({
-        timestamp: log.timestamp || null,
-        destinoDescricao: detalhes.destino,
-        motivo: detalhes.motivo,
-      });
-    } else if (detalhes.tipo === 'conclusao') {
-      atual.statusFinal = 'Concluída';
-      atual.fim = log.timestamp || null;
-      if (!atual.inicio) {
-        atual.inicio = log.timestamp || null;
-      }
-      if (atual.inicio && atual.fim) {
-        const diff = atual.fim.getTime() - atual.inicio.getTime();
-        if (Number.isFinite(diff) && diff >= 0) {
-          atual.tempoTotalMinutos = Math.round(diff / 60000);
-        }
-      }
-    } else if (detalhes.tipo === 'cancelamento') {
-      atual.statusFinal = 'Cancelada';
-      atual.fim = log.timestamp || null;
-      atual.motivoCancelamento = detalhes.motivo;
-      if (!atual.inicio) {
-        atual.inicio = log.timestamp || null;
-      }
-      if (atual.inicio && atual.fim) {
-        const diff = atual.fim.getTime() - atual.inicio.getTime();
-        if (Number.isFinite(diff) && diff >= 0) {
-          atual.tempoTotalMinutos = Math.round(diff / 60000);
-        }
-      }
-    }
-  });
-
-  const historicoRegulacoes = Object.values(historicoPorPaciente).flatMap((item) =>
-    item.regulacoes.map((regulacao) => {
-      const paciente = regulacao.pacienteId ? pacientesPorId.get(regulacao.pacienteId) : null;
-      const statusFinal = regulacao.statusFinal || 'Pendente';
-      let tempoTotalMinutos = regulacao.tempoTotalMinutos;
-
-      if (statusFinal === 'Pendente' && regulacao.inicio && periodoFim) {
-        const diff = periodoFim.getTime() - regulacao.inicio.getTime();
-        if (Number.isFinite(diff) && diff >= 0) {
-          tempoTotalMinutos = Math.round(diff / 60000);
-        }
-      }
+  const historicoRegulacoes = (dados.historicoRegulacoes || [])
+    .map((registro) => {
+      const dataEvento = parseDate(registro.data);
+      const fimEvento = registro.fim ? parseDate(registro.fim) : null;
+      const pacienteRegistro = registro.paciente || null;
+      const pacienteNome =
+        pacienteRegistro?.nome ||
+        pacienteRegistro?.nomePaciente ||
+        registro.nomePaciente ||
+        'Paciente não identificado';
+      const leitoDestino = registro.leitoDestino || null;
+      const leitoAnterior = registro.leitoAnterior || null;
+      const destinoDescricao =
+        leitoDestino?.id ||
+        registro.leitoDestinoId ||
+        registro.destinoDescricao ||
+        null;
+      const origemDescricao =
+        leitoAnterior?.id ||
+        registro.leitoAnteriorId ||
+        registro.origemDescricao ||
+        null;
+      const usuarioRegistro = registro.usuario || {};
+      const usuarioNome =
+        usuarioRegistro.displayName ||
+        usuarioRegistro.nome ||
+        usuarioRegistro.nomeCompleto ||
+        registro.usuarioNome ||
+        'Usuário não informado';
+      const statusFinal = registro.status || registro.statusFinal || registro.resultado || null;
+      const tempoTotalMinutos = Number.isFinite(registro.tempoTotalMinutos)
+        ? registro.tempoTotalMinutos
+        : null;
+      const alteracoes = Array.isArray(registro.alteracoes) ? registro.alteracoes : [];
 
       return {
-        ...regulacao,
-        paciente,
+        id: registro.id,
+        paciente: pacienteRegistro,
+        pacienteNome,
+        inicio: dataEvento,
+        fim: fimEvento,
+        destinoDescricao,
+        origemDescricao,
+        leitoDestino,
+        leitoAnterior,
+        tipo: registro.tipo || 'Tipo não informado',
+        usuario: usuarioRegistro,
+        usuarioNome,
         statusFinal,
         tempoTotalMinutos,
+        alteracoes,
+        motivoCancelamento: registro.motivoCancelamento || registro.motivo || null,
       };
     })
-  );
-
-  historicoRegulacoes.sort((a, b) => {
-    const aTime = a.inicio ? a.inicio.getTime() : 0;
-    const bTime = b.inicio ? b.inicio.getTime() : 0;
-    return bTime - aTime;
-  });
-
-  const resumoPeriodo = {
-    concluidas: historicoRegulacoes.filter((item) => item.statusFinal === 'Concluída').length,
-    canceladas: historicoRegulacoes.filter((item) => item.statusFinal === 'Cancelada').length,
-    pendentes: historicoRegulacoes.filter((item) => {
-      if (item.statusFinal !== 'Pendente') return false;
-      if (!periodoInicio || !periodoFim || !item.inicio) return false;
+    .filter((item) => {
+      if (!periodoInicio || !periodoFim || !item.inicio) return true;
       const inicioTime = item.inicio.getTime();
       return inicioTime >= periodoInicio.getTime() && inicioTime <= periodoFim.getTime();
+    })
+    .sort((a, b) => {
+      const aTime = a.inicio ? a.inicio.getTime() : 0;
+      const bTime = b.inicio ? b.inicio.getTime() : 0;
+      return bTime - aTime;
+    });
+
+  const resumoPeriodo = {
+    concluidas: historicoRegulacoes.filter(
+      (item) => normalizarTexto(item.statusFinal) === 'concluída'
+    ).length,
+    canceladas: historicoRegulacoes.filter(
+      (item) => normalizarTexto(item.statusFinal) === 'cancelada'
+    ).length,
+    pendentes: historicoRegulacoes.filter((item) => {
+      if (!item.statusFinal) return false;
+      return normalizarTexto(item.statusFinal) === 'pendente';
     }).length,
     alteradas: historicoRegulacoes.reduce((acc, item) => acc + (item.alteracoes?.length || 0), 0),
   };
-  resumoPeriodo.total = resumoPeriodo.concluidas + resumoPeriodo.canceladas + resumoPeriodo.pendentes;
+  resumoPeriodo.total = historicoRegulacoes.length;
 
   return {
     pendentes,
@@ -415,7 +349,7 @@ const processarDadosRelatorio = (dados, periodo) => {
 const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
   const [dados, setDados] = useState({
     loading: false,
-    logs: [],
+    historicoRegulacoes: [],
     pacientes: [],
     leitos: [],
     setores: [],
@@ -436,16 +370,15 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
         const periodoInicio = periodo.inicio instanceof Date ? periodo.inicio : new Date(periodo.inicio);
         const periodoFim = periodo.fim instanceof Date ? periodo.fim : new Date(periodo.fim);
 
-        const auditoriaQuery = query(
-          getAuditoriaCollection(),
-          where('pagina', '==', 'Regulação de Leitos'),
-          where('timestamp', '>=', periodoInicio),
-          where('timestamp', '<=', periodoFim),
-          orderBy('timestamp', 'asc'),
+        const historicoQuery = query(
+          getHistoricoRegulacoesCollection(),
+          where('data', '>=', periodoInicio),
+          where('data', '<=', periodoFim),
+          orderBy('data', 'desc'),
         );
 
-        const [auditoriaSnapshot, pacientesSnapshot, leitosSnapshot, setoresSnapshot] = await Promise.all([
-          getDocs(auditoriaQuery),
+        const [historicoSnapshot, pacientesSnapshot, leitosSnapshot, setoresSnapshot] = await Promise.all([
+          getDocs(historicoQuery),
           getDocs(getPacientesCollection()),
           getDocs(getLeitosCollection()),
           getDocs(getSetoresCollection()),
@@ -453,14 +386,10 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
 
         if (!ativo) return;
 
-        const logs = auditoriaSnapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data,
-            timestamp: data.timestamp ? parseDate(data.timestamp) : null,
-          };
-        });
+        const historicoRegulacoes = historicoSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
 
         const pacientes = pacientesSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         const leitos = leitosSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -468,7 +397,7 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
 
         setDados({
           loading: false,
-          logs,
+          historicoRegulacoes,
           pacientes,
           leitos,
           setores,
@@ -500,9 +429,11 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
     ? format(periodo.fim, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
     : '-';
 
-  const statusBadgeVariant = (status) => {
-    if (status === 'Concluída') return 'default';
-    if (status === 'Cancelada') return 'destructive';
+  const tipoBadgeVariant = (tipo) => {
+    if (!tipo) return 'outline';
+    const tipoNormalizado = normalizarTexto(tipo);
+    if (tipoNormalizado.includes('intern')) return 'default';
+    if (tipoNormalizado.includes('remanej')) return 'secondary';
     return 'outline';
   };
 
@@ -809,27 +740,43 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
                             <CardTitle className="text-base font-semibold">
                               {item.pacienteNome}
                             </CardTitle>
-                            <Badge variant={statusBadgeVariant(item.statusFinal)}>{item.statusFinal}</Badge>
+                            <Badge variant={tipoBadgeVariant(item.tipo)}>
+                              {item.tipo || 'Tipo não informado'}
+                            </Badge>
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            {item.paciente?.nomeSocial ? `Nome social: ${item.paciente.nomeSocial}` : ''}
-                          </p>
+                          <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+                            {item.paciente?.nomeSocial && (
+                              <span>Nome social: {item.paciente.nomeSocial}</span>
+                            )}
+                            <span>Responsável: {item.usuarioNome}</span>
+                          </div>
                         </CardHeader>
                         <CardContent className="space-y-3 text-sm">
                           <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
                             <MapPin className="h-4 w-4" />
-                            <span>{item.origemDescricao || 'Origem não informada'}</span>
+                            <span>
+                              {item.origemDescricao
+                                ? `Leito anterior: ${item.origemDescricao}`
+                                : 'Leito anterior não informado'}
+                            </span>
                             <span className="text-muted-foreground">→</span>
-                            <span>{item.destinoDescricao || 'Destino não informado'}</span>
+                            <span>
+                              {item.destinoDescricao
+                                ? `Leito destino: ${item.destinoDescricao}`
+                                : 'Leito destino não informado'}
+                            </span>
                           </div>
                           <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                             <div className="flex items-center gap-2">
                               <CalendarRange className="h-4 w-4" />
-                              <span>Início: {item.inicio ? formatDateTime(item.inicio) : 'Não informado'}</span>
+                              <span>
+                                Data da ação:{' '}
+                                {item.inicio ? formatDateTime(item.inicio) : 'Não informado'}
+                              </span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <Clock className="h-4 w-4" />
-                              <span>Tempo total: {formatMinutesToLabel(item.tempoTotalMinutos)}</span>
+                              <Users className="h-4 w-4" />
+                              <span>Registrado por: {item.usuarioNome}</span>
                             </div>
                           </div>
                           {item.motivoCancelamento && (
