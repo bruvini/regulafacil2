@@ -25,6 +25,17 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+const formatMinutesToHours = (minutes) => {
+  if (!Number.isFinite(minutes) || minutes < 0) return 'Não informado';
+  if (minutes === 0) return '0 min';
+  const horas = Math.floor(minutes / 60);
+  const mins = Math.round(minutes % 60);
+  const partes = [];
+  if (horas > 0) partes.push(`${horas}h`);
+  if (mins > 0) partes.push(`${mins}min`);
+  return partes.join(' ');
+};
+
 const parseDate = (value) => {
   if (!value) return null;
   if (typeof value.toDate === 'function') {
@@ -191,6 +202,7 @@ const processarDadosRelatorio = (dados, periodo) => {
 
   const leitosMap = new Map(dados.leitos.map((leito) => [leito.id, leito]));
   const setoresMap = new Map(dados.setores.map((setor) => [setor.id, setor]));
+  const pacientesMap = new Map(dados.pacientes.map((paciente) => [paciente.id, paciente]));
   const pacientesPorId = new Map(dados.pacientes.map((paciente) => [paciente.id, paciente]));
 
   const pacientesPorNome = new Map();
@@ -252,12 +264,11 @@ const processarDadosRelatorio = (dados, periodo) => {
     .map((registro) => {
       // Garante a leitura do campo correto retornado pelo Firestore
       const dataInicio = parseDate(registro.dataInicio);
-      const dataFim = registro.fim ? parseDate(registro.fim) : null;
-      const pacienteRegistro = registro.paciente || null;
+      const dataFim = parseDate(registro.dataConclusao || registro.dataCancelamento || null);
+      const pacienteDoc = pacientesMap.get(registro.pacienteId);
       const pacienteNome =
-        pacienteRegistro?.nome ||
-        pacienteRegistro?.nomePaciente ||
-        registro.nomePaciente ||
+        pacienteDoc?.nomePaciente ||
+        registro.pacienteNome ||
         'Paciente não identificado';
       const leitoDestino = registro.leitoDestino || null;
       const leitoAnterior = registro.leitoAnterior || null;
@@ -340,14 +351,21 @@ const processarDadosRelatorio = (dados, periodo) => {
         registro.usuarioNome ||
         'Usuário não informado';
       const statusFinal = registro.status || registro.statusFinal || registro.resultado || null;
-      const tempoTotalMinutos = Number.isFinite(registro.tempoTotalMinutos)
-        ? registro.tempoTotalMinutos
-        : null;
+      let tempoRegulacaoMinutos = registro.tempoRegulacaoMinutos;
+
+      // Se não houver tempo pré-calculado, calcula manualmente
+      if (!Number.isFinite(tempoRegulacaoMinutos)) {
+        const dataFimCalculo = parseDate(registro.dataConclusao || registro.dataCancelamento || null);
+        if (dataInicio && dataFimCalculo) {
+          const diffMs = dataFimCalculo.getTime() - dataInicio.getTime();
+          tempoRegulacaoMinutos = Math.round(diffMs / 60000);
+        }
+      }
       const alteracoes = Array.isArray(registro.alteracoes) ? registro.alteracoes : [];
 
       return {
         id: registro.id,
-        paciente: pacienteRegistro,
+        paciente: pacienteDoc,
         pacienteNome,
         dataInicio,
         dataFim,
@@ -359,7 +377,6 @@ const processarDadosRelatorio = (dados, periodo) => {
         usuario: usuarioRegistro,
         usuarioNome,
         statusFinal,
-        tempoTotalMinutos,
         alteracoes,
         motivoCancelamento: registro.motivoCancelamento || registro.motivo || null,
         leitoOrigemId,
@@ -374,11 +391,10 @@ const processarDadosRelatorio = (dados, periodo) => {
         setorDestinoSigla,
         leitoDestinoFinalNome,
         setorDestinoFinalSigla,
-        tempoRegulacaoMinutos: Number.isFinite(tempoTotalMinutos)
-          ? Math.round(tempoTotalMinutos)
-          : dataInicio && dataFim
-            ? Math.max(Math.round((dataFim.getTime() - dataInicio.getTime()) / 60000), 0)
-            : null,
+        tempoRegulacaoMinutos: Number.isFinite(tempoRegulacaoMinutos)
+          ? Math.max(Math.round(tempoRegulacaoMinutos), 0)
+          : null,
+        tempoTotalFormatado: formatMinutesToHours(tempoRegulacaoMinutos),
       };
     })
     .sort((a, b) => {
@@ -495,14 +511,6 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
     ? format(periodo.fim, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
     : '-';
 
-  const tipoBadgeVariant = (tipo) => {
-    if (!tipo) return 'outline';
-    const tipoNormalizado = normalizarTexto(tipo);
-    if (tipoNormalizado.includes('intern')) return 'default';
-    if (tipoNormalizado.includes('remanej')) return 'secondary';
-    return 'outline';
-  };
-
   const copiarPanorama = async () => {
     const { historicoRegulacoes, resumoPeriodo } = dadosProcessados;
 
@@ -539,10 +547,6 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
           statusNormalizado === 'alterada'
             ? `${origemSigla} ${leitoOrigem} → ${destinoSigla} ${leitoDestino} → **${destinoFinalSigla} ${leitoDestinoFinal}**`
             : `${origemSigla} ${leitoOrigem} → ${destinoSigla} ${leitoDestino}`;
-        const tempoTotalTexto = Number.isFinite(item.tempoRegulacaoMinutos)
-          ? `${item.tempoRegulacaoMinutos} min`
-          : 'Não informado';
-
         if (index > 0) {
           linhas.push('');
         }
@@ -551,7 +555,7 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
         linhas.push(destinoLinha);
         linhas.push(`Início: ${item.dataInicio ? formatDateTime(item.dataInicio) : 'Não informado'}`);
         linhas.push(`Status: ${item.statusFinal || 'Não informado'}`);
-        linhas.push(`Tempo total: ${tempoTotalTexto}`);
+        linhas.push(`Tempo total: ${item.tempoTotalFormatado || 'Não informado'}`);
 
         if (statusNormalizado === 'cancelada' && item.motivoCancelamento) {
           linhas.push(`Motivo do cancelamento: ${item.motivoCancelamento}`);
@@ -779,10 +783,6 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
                             </span>
                           </>
                         );
-                      const tempoTotalTexto = Number.isFinite(item.tempoRegulacaoMinutos)
-                        ? `${item.tempoRegulacaoMinutos} min`
-                        : 'Não informado';
-
                       return (
                         <Card key={item.id} className="border">
                           <CardHeader className="space-y-1">
@@ -790,15 +790,11 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
                               <CardTitle className="text-base font-semibold">
                                 {item.pacienteNome}
                               </CardTitle>
-                              <Badge variant={tipoBadgeVariant(item.tipo)}>
-                                {item.tipo || 'Tipo não informado'}
-                              </Badge>
                             </div>
                             <div className="flex flex-col gap-1 text-xs text-muted-foreground">
                               {item.paciente?.nomeSocial && (
                                 <span>Nome social: {item.paciente.nomeSocial}</span>
                               )}
-                              <span>Responsável: {item.usuarioNome}</span>
                               {item.statusFinal && <span>Status: {item.statusFinal}</span>}
                             </div>
                           </CardHeader>
@@ -817,11 +813,7 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
                               </div>
                               <div className="flex items-center gap-2">
                                 <Clock className="h-4 w-4" />
-                                <span>Tempo total: {tempoTotalTexto}</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Users className="h-4 w-4" />
-                                <span>Registrado por: {item.usuarioNome}</span>
+                                <span>Tempo total: {item.tempoTotalFormatado}</span>
                               </div>
                             </div>
                             {statusNormalizado === 'cancelada' && item.motivoCancelamento && (
