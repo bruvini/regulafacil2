@@ -58,17 +58,22 @@ export const encontrarLeitosCompativeis = (pacienteAlvo, hospitalData, modo = 'e
       return;
     }
 
-    // Regra PCP
+    // Regra PCP (Refatorada para maior clareza e correção)
     if (leito.isPCP) {
-      if (
-        idade == null ||
-        idade < 18 ||
-        idade > 60 ||
-        chavesPaciente.size > 0 ||
-        (pacienteAlvo.setorOrigem || '').toUpperCase() === 'CC - RECUPERAÇÃO'
-      ) {
-        return; // Rejeitado
+      // Para um leito PCP, o paciente DEVE ser elegível.
+      // Vamos verificar todas as condições de elegibilidade.
+      const isAgeOk = idade !== null && idade >= 18 && idade <= 60;
+      const hasNoIsolation = chavesPaciente.size === 0;
+      const isOriginOk = (pacienteAlvo.setorOrigem || '').toUpperCase() !== 'CC - RECUPERAÇÃO';
+
+      // O paciente só é elegível se TODAS as condições forem verdadeiras.
+      const isPcpEligible = isAgeOk && hasNoIsolation && isOriginOk;
+
+      // Se o paciente NÃO for elegível para PCP, este leito não é compatível.
+      if (!isPcpEligible) {
+        return; // Rejeita o leito
       }
+      // Se for elegível, a função continua para as próximas verificações (coorte, sexo, etc.).
     }
 
     // Regras de Coorte (Sexo e Isolamento)
