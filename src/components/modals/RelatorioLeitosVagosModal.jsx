@@ -97,11 +97,63 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
   }, [isOpen]);
 
   const infeccoesPorId = useMemo(() => {
-    return (infeccoes || []).reduce((acc, infeccaoAtual) => {
-      acc[infeccaoAtual.id] = infeccaoAtual;
-      return acc;
-    }, {});
+    return new Map((infeccoes || []).map(infeccaoAtual => [infeccaoAtual.id, infeccaoAtual]));
   }, [infeccoes]);
+
+  const pacientesPorId = useMemo(() => {
+    return new Map((dados.pacientes || []).map(pacienteAtual => [pacienteAtual.id, pacienteAtual]));
+  }, [dados.pacientes]);
+
+  const aplicarRestricoesCoorte = (quartos, pacientesMap, infeccoesMap) => {
+    if (!quartos || !pacientesMap || !infeccoesMap) return;
+
+    quartos.forEach(quarto => {
+      const leitosOcupados = quarto.leitos.filter(l => (l.status === 'Ocupado' || l.status === 'Regulado') && l.pacienteId);
+
+      if (leitosOcupados.length === 0) return; // Nenhuma restrição se o quarto não tiver pacientes
+
+      let coorteSexo = null;
+      const coorteIsolamentos = new Set();
+      let isSexoConflitante = false;
+
+      leitosOcupados.forEach(leitoOcupado => {
+        const paciente = pacientesMap.get(leitoOcupado.pacienteId);
+        if (!paciente) return;
+
+        // Define o sexo da coorte com base no primeiro paciente
+        if (coorteSexo === null) {
+          coorteSexo = paciente.sexo;
+        } else if (coorteSexo !== paciente.sexo) {
+          isSexoConflitante = true;
+        }
+
+        // Agrega os isolamentos de todos os pacientes do quarto
+        (paciente.isolamentos || []).forEach(iso => {
+          const infeccao = infeccoesMap.get(iso.infeccaoId);
+          if (infeccao) {
+            const sigla = infeccao.siglaInfeccao || infeccao.sigla;
+            if (sigla) coorteIsolamentos.add(sigla);
+          }
+        });
+      });
+
+      // Se houver conflito de sexo no quarto, não é possível criar uma coorte válida
+      if (isSexoConflitante) return;
+
+      // Cria o objeto de restrição
+      const restricao = {
+        sexo: coorteSexo,
+        isolamentos: Array.from(coorteIsolamentos)
+      };
+
+      // Aplica a restrição a todos os leitos VAGOS do quarto
+      quarto.leitos.forEach(leito => {
+        if (leito.status === 'Vago') {
+          leito.restricaoCoorte = restricao;
+        }
+      });
+    });
+  };
 
   // Processar dados e aplicar lógica de coorte
   const dadosProcessados = useMemo(() => {
@@ -116,68 +168,6 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
       }
     });
 
-    const normalizarSexo = (valor) => {
-      if (!valor) return 'Não informado';
-      const texto = String(valor).trim().toUpperCase();
-      if (texto.startsWith('M')) return 'Masculino';
-      if (texto.startsWith('F')) return 'Feminino';
-      return 'Não informado';
-    };
-
-    const aplicarRestricoesCoorte = (quartosAlvo = []) => {
-      quartosAlvo.forEach(quartoAtual => {
-        const pacientesOcupantes = quartoAtual.leitos
-          .map(leitoQuarto => pacientesPorLeito[leitoQuarto.id])
-          .filter(paciente => paciente);
-
-        const possuiOcupantes = pacientesOcupantes.length > 0;
-        let restricao = null;
-
-        if (possuiOcupantes) {
-          restricao = {
-            sexo: normalizarSexo(pacientesOcupantes[0]?.sexo),
-            isolamentos: []
-          };
-
-          const isolamentosSet = new Set();
-          pacientesOcupantes.forEach(pacienteOcupante => {
-            (pacienteOcupante.isolamentos || []).forEach(isolamento => {
-              let siglaNormalizada = '';
-              const infeccaoRef = isolamento?.infeccaoId;
-              if (infeccaoRef?.id) {
-                const infeccaoCompleta = infeccoesPorId[infeccaoRef.id];
-                if (infeccaoCompleta) {
-                  siglaNormalizada = (infeccaoCompleta.siglaInfeccao || infeccaoCompleta.sigla || '').trim();
-                }
-              }
-
-              if (!siglaNormalizada) {
-                siglaNormalizada = (isolamento?.siglaInfeccao || isolamento?.sigla || isolamento?.nomeInfeccao || '').trim();
-              }
-
-              if (siglaNormalizada) {
-                isolamentosSet.add(siglaNormalizada);
-              }
-            });
-          });
-
-          if (isolamentosSet.size > 0) {
-            restricao.isolamentos = Array.from(isolamentosSet).sort((a, b) => a.localeCompare(b));
-          }
-        }
-
-        quartoAtual.leitos.forEach(leitoQuarto => {
-          const possuiPaciente = Boolean(pacientesPorLeito[leitoQuarto.id]);
-          const statusElegivel = leitoQuarto.status === 'Vago' || leitoQuarto.status === 'Higienização';
-          if (restricao && !possuiPaciente && statusElegivel) {
-            leitoQuarto.restricaoCoorte = restricao;
-          } else {
-            leitoQuarto.restricaoCoorte = null;
-          }
-        });
-      });
-    };
-
     const setoresElegiveis = setores.filter(setor =>
       setor.tipoSetor === 'Enfermaria' || setor.tipoSetor === 'UTI'
     );
@@ -191,6 +181,7 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
           ...leito,
           status: leito.status || leito.statusLeito || 'Desconhecido',
           paciente: pacientesPorLeito[leito.id] || null,
+          pacienteId: leito.pacienteId || pacientesPorLeito[leito.id]?.id || null,
           restricaoCoorte: null
         }));
 
@@ -230,7 +221,7 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
             return nomeA.localeCompare(nomeB);
           });
 
-        aplicarRestricoesCoorte(quartosComLeitos);
+        aplicarRestricoesCoorte(quartosComLeitos, pacientesPorId, infeccoesPorId);
         leitosSemQuarto = [];
       } else {
         const quartosDoSetor = quartos
@@ -265,7 +256,7 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
           };
         });
 
-        aplicarRestricoesCoorte(quartosComLeitos);
+        aplicarRestricoesCoorte(quartosComLeitos, pacientesPorId, infeccoesPorId);
       }
 
       const leitosVagos = [...quartosComLeitos.flatMap(quarto => quarto.leitos), ...leitosSemQuarto]
@@ -295,7 +286,7 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
     });
 
     return estruturarPorSetor;
-  }, [dados, infeccoesPorId]);
+  }, [dados, infeccoesPorId, pacientesPorId]);
 
   const gerarMensagemWhatsApp = (nomeSetor, leitosVagos) => {
     let mensagem = `*Verificação de disponibilidade de leitos - ${nomeSetor}*\n\n`;
