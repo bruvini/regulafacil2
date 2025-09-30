@@ -250,6 +250,7 @@ const processarDadosRelatorio = (dados, periodo) => {
 
   const historicoRegulacoes = (dados.historicoRegulacoes || [])
     .map((registro) => {
+      // Garante a leitura do campo correto retornado pelo Firestore
       const dataInicio = parseDate(registro.dataInicio);
       const dataFim = registro.fim ? parseDate(registro.fim) : null;
       const pacienteRegistro = registro.paciente || null;
@@ -438,6 +439,7 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
           getHistoricoRegulacoesCollection(),
           where('dataInicio', '>=', periodoInicio),
           where('dataInicio', '<=', periodoFim),
+          // Manter 'desc' para pegar os mais recentes primeiro, a ordenação visual será feita depois.
           orderBy('dataInicio', 'desc'),
         );
 
