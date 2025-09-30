@@ -250,7 +250,7 @@ const processarDadosRelatorio = (dados, periodo) => {
 
   const historicoRegulacoes = (dados.historicoRegulacoes || [])
     .map((registro) => {
-      const dataInicio = parseDate(registro.data);
+      const dataInicio = parseDate(registro.dataInicio);
       const dataFim = registro.fim ? parseDate(registro.fim) : null;
       const pacienteRegistro = registro.paciente || null;
       const pacienteNome =
@@ -441,9 +441,9 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
 
         const historicoQuery = query(
           getHistoricoRegulacoesCollection(),
-          where('data', '>=', periodoInicio),
-          where('data', '<=', periodoFim),
-          orderBy('data', 'desc'),
+          where('dataInicio', '>=', periodoInicio),
+          where('dataInicio', '<=', periodoFim),
+          orderBy('dataInicio', 'desc'),
         );
 
         const [historicoSnapshot, pacientesSnapshot, leitosSnapshot, setoresSnapshot] = await Promise.all([
@@ -508,7 +508,6 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
 
   const copiarPanorama = async () => {
     const { historicoRegulacoes, resumoPeriodo } = dadosProcessados;
-
     const periodoInicioTexto = formatDateTime(periodo?.inicio ? new Date(periodo.inicio) : null);
     const periodoFimTexto = formatDateTime(periodo?.fim ? new Date(periodo.fim) : null);
 
@@ -758,6 +757,20 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
                       const leitoDestinoFinal = item.leitoDestinoFinalNome || leitoDestino;
                       const destinoLinha =
                         statusNormalizado === 'alterada' ? (
+                          <>
+                            <span>
+                              {origemSigla} {leitoOrigem}
+                            </span>
+                            <span className="text-muted-foreground">→</span>
+                            <span>
+                              {destinoSigla} {leitoDestino}
+                            </span>
+                            <span className="text-muted-foreground">→</span>
+                            <span className="font-semibold text-foreground">
+                              {destinoFinalSigla} {leitoDestinoFinal}
+                            </span>
+                          </>
+                        ) : (
                           <>
                             <span>
                               {origemSigla} {leitoOrigem}
