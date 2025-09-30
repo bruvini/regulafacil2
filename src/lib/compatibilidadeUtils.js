@@ -50,7 +50,7 @@ export const encontrarLeitosCompativeis = (pacienteAlvo, hospitalData, modo = 'e
 
   const leitosCompativeis = [];
 
-  const avaliarLeito = (leito) => {
+  const avaliarLeito = (leito, leitosDoQuarto = [leito]) => {
     if (!['Vago', 'Higienização'].includes(leito.status)) return;
 
     if (modo === 'uti') {
@@ -73,14 +73,25 @@ export const encontrarLeitosCompativeis = (pacienteAlvo, hospitalData, modo = 'e
 
     // Regras de Coorte (Sexo e Isolamento)
     const coorte = leito.restricaoCoorte;
+    const outrosLeitosDoQuarto = (leitosDoQuarto || []).filter((outro) => outro?.id !== leito.id);
+    const quartoDisponivelParaIsolamento = outrosLeitosDoQuarto.every((outro) =>
+      ['Vago', 'Higienização'].includes(outro?.status)
+    );
+
     if (coorte) { // Quarto ocupado
       if (pacienteAlvo.sexo !== coorte.sexo) return; // Rejeita por sexo
-      const isolamentosCoorte = new Set(coorte.isolamentos);
-      if (chavesPaciente.size !== isolamentosCoorte.size || ![...chavesPaciente].every(c => isolamentosCoorte.has(c))) {
-        return; // Rejeita por isolamento
+      const isolamentosCoorte = new Set(coorte.isolamentos || []);
+
+      if (chavesPaciente.size > 0) {
+        const todosIsolamentosCompativeis = [...chavesPaciente].every((c) => isolamentosCoorte.has(c));
+        if (!todosIsolamentosCompativeis) {
+          return; // Rejeita por isolamento incompatível
+        }
+      } else if (isolamentosCoorte.size > 0) {
+        return; // Paciente sem isolamento não pode entrar em quarto com isolamento ativo
       }
-    } else { // Quarto vazio
-      if (chavesPaciente.size > 0) return; // Rejeita se paciente tem isolamento e quarto está vazio
+    } else if (chavesPaciente.size > 0 && !quartoDisponivelParaIsolamento) {
+      return; // Rejeita se paciente tem isolamento e quarto não está completamente vazio
     }
 
     leitosCompativeis.push(leito);
@@ -90,10 +101,11 @@ export const encontrarLeitosCompativeis = (pacienteAlvo, hospitalData, modo = 'e
     if ((setor.tipoSetor || '').toUpperCase() !== tipoSetorAlvo) return;
 
     (setor.quartos || []).forEach(quarto => {
-      quarto.leitos.forEach(avaliarLeito);
+      const leitosQuarto = quarto.leitos || [];
+      leitosQuarto.forEach(leitoQuarto => avaliarLeito(leitoQuarto, leitosQuarto));
     });
 
-    (setor.leitosSemQuarto || []).forEach(avaliarLeito);
+    (setor.leitosSemQuarto || []).forEach(leitoIsolado => avaliarLeito(leitoIsolado, [leitoIsolado]));
   });
 
   return leitosCompativeis;
