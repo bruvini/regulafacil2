@@ -1410,12 +1410,29 @@ const MapaLeitosPanel = () => {
       const termoBusca = filtros.busca.trim().toUpperCase();
       const codigoLeito = (leito.codigoLeito || '').toUpperCase();
       const nomePaciente = leito.paciente ? (leito.paciente.nomePaciente || '').toUpperCase() : '';
-      
+
       if (!codigoLeito.includes(termoBusca) && !nomePaciente.includes(termoBusca)) {
         return false;
       }
     }
-    
+
+    // Etapa 1: Identificar se algum filtro de paciente está ativo
+    const hasPatientSpecificFilters =
+      filtros.isolamentosSelecionados.length > 0 ||
+      filtros.sexo.length > 0 ||
+      filtros.especialidade !== 'all' ||
+      filtros.comPedidoUTI ||
+      filtros.comProvavelAlta ||
+      filtros.comAltaNoLeito ||
+      filtros.comSolicitacaoRemanejamento ||
+      filtros.comPedidoTransferenciaExterna;
+
+    // Etapa 2: Aplicar a regra principal
+    if (hasPatientSpecificFilters && !['Ocupado', 'Regulado'].includes(leito.status)) {
+      // Se há um filtro de paciente e o leito não está ocupado, ele nunca deve aparecer.
+      return false;
+    }
+
     // Filtro por status
     if (filtros.status.length > 0 && !filtros.status.includes(leito.status)) {
       return false;
@@ -1428,7 +1445,7 @@ const MapaLeitosPanel = () => {
 
       const isolamentosPacienteIds = new Set(
         (leito.paciente.isolamentos || [])
-          .map(iso => iso?.infeccaoId?.id)
+          .map(iso => iso.infeccaoId)
           .filter(Boolean)
       );
 
