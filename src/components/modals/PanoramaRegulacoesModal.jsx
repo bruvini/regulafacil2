@@ -380,6 +380,11 @@ const processarDadosRelatorio = (dados, periodo) => {
             : null,
       };
     })
+    .filter((item) => {
+      if (!periodoInicio || !periodoFim || !item.dataInicio) return true;
+      const inicioTime = item.dataInicio.getTime();
+      return inicioTime >= periodoInicio.getTime() && inicioTime <= periodoFim.getTime();
+    })
     .sort((a, b) => {
       const aTime = a.dataInicio ? a.dataInicio.getTime() : 0;
       const bTime = b.dataInicio ? b.dataInicio.getTime() : 0;
@@ -503,7 +508,6 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
 
   const copiarPanorama = async () => {
     const { historicoRegulacoes, resumoPeriodo } = dadosProcessados;
-
     const periodoInicioTexto = formatDateTime(periodo?.inicio ? new Date(periodo.inicio) : null);
     const periodoFimTexto = formatDateTime(periodo?.fim ? new Date(periodo.fim) : null);
 
@@ -753,6 +757,20 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
                       const leitoDestinoFinal = item.leitoDestinoFinalNome || leitoDestino;
                       const destinoLinha =
                         statusNormalizado === 'alterada' ? (
+                          <>
+                            <span>
+                              {origemSigla} {leitoOrigem}
+                            </span>
+                            <span className="text-muted-foreground">→</span>
+                            <span>
+                              {destinoSigla} {leitoDestino}
+                            </span>
+                            <span className="text-muted-foreground">→</span>
+                            <span className="font-semibold text-foreground">
+                              {destinoFinalSigla} {leitoDestinoFinal}
+                            </span>
+                          </>
+                        ) : (
                           <>
                             <span>
                               {origemSigla} {leitoOrigem}
