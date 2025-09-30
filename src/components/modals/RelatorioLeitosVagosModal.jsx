@@ -29,12 +29,10 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
     if (!restricao) {
       return '';
     }
-
-    const isolamentos = restricao.isolamentos || [];
+    const isolamentos = (restricao.isolamentos || []).map(sigla => sigla.toUpperCase());
     if (isolamentos.length > 0) {
       return `Permitido apenas pacientes do sexo ${restricao.sexo} com isolamento de ${isolamentos.join(', ')}`;
     }
-
     return `Permitido apenas pacientes do sexo ${restricao.sexo}`;
   };
 
@@ -271,12 +269,22 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
       }
 
       const leitosVagos = [...quartosComLeitos.flatMap(quarto => quarto.leitos), ...leitosSemQuarto]
-        .filter(leito => (leito.status === 'Vago' || leito.status === 'Higienização') && !leito.paciente)
+        .filter(leito =>
+          leito.status === 'Vago' &&
+          !leito.paciente &&
+          !leito.reservaExterna &&
+          !leito.regulacaoEmAndamento &&
+          leito.statusLeito !== 'Reservado'
+        )
         .sort((a, b) => {
           const codeA = a.codigoLeito || '';
           const codeB = b.codigoLeito || '';
           return codeA.localeCompare(codeB);
-        });
+        })
+        .map(leito => ({
+          ...leito,
+          compatibilidade: formatarMensagemRestricaoCoorte(leito.restricaoCoorte) || 'Livre',
+        }));
 
       if (leitosVagos.length > 0) {
         estruturarPorSetor[setor.id] = {
@@ -295,8 +303,8 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
     
     leitosVagos.forEach(leito => {
       const statusDetalhado = leito.status;
-      const restricaoInfo = leito.restricaoCoorte
-        ? ` | Coorte: ${formatarMensagemRestricaoCoorte(leito.restricaoCoorte)}`
+      const restricaoInfo = leito.compatibilidade !== 'Livre'
+        ? ` | Coorte: ${leito.compatibilidade}`
         : '';
 
       mensagem += `_${leito.codigoLeito} - Status: ${statusDetalhado}${restricaoInfo}_\n`;
@@ -393,12 +401,12 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
                               </Badge>
                             </td>
                             <td className="px-4 py-3">
-                              {leito.restricaoCoorte ? (
+                              {leito.compatibilidade !== 'Livre' ? (
                                 <span className="text-xs font-semibold text-blue-700">
-                                  {formatarMensagemRestricaoCoorte(leito.restricaoCoorte)}
+                                  {leito.compatibilidade}
                                 </span>
                               ) : (
-                                <span className="text-xs text-muted-foreground">Sem restrição de coorte</span>
+                                <span className="text-xs text-muted-foreground">Livre</span>
                               )}
                             </td>
                           </tr>
