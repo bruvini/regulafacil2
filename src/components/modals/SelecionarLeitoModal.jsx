@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -6,10 +6,20 @@ import {
   DialogTitle,
   DialogFooter
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { BedDouble, MapPin } from 'lucide-react';
+import { BedDouble, Loader2, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
   doc,
@@ -47,6 +57,18 @@ const calcularIdade = (dataNascimento) => {
 
   return idade;
 };
+
+const normalizarNomeSetor = (valor) =>
+  (valor || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9\s]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+
+const NOME_SETOR_ONCOLOGIA = normalizarNomeSetor('UNID. ONCOLOGIA');
 
 const getLeitosCompatíveis = (paciente, todosOsDados, modo = 'enfermaria') => {
   if (!paciente || !todosOsDados) return [];
@@ -226,6 +248,9 @@ const getLeitosCompatíveis = (paciente, todosOsDados, modo = 'enfermaria') => {
 const SelecionarLeitoModal = ({ isOpen, onClose, reserva, dadosHospital }) => {
   const { currentUser } = useAuth();
   const { toast } = useToast();
+  const [confirmacaoAberta, setConfirmacaoAberta] = useState(false);
+  const [leitoParaConfirmar, setLeitoParaConfirmar] = useState(null);
+  const [reservando, setReservando] = useState(false);
 
   const {
     leitos: leitosHospital = [],
@@ -237,6 +262,14 @@ const SelecionarLeitoModal = ({ isOpen, onClose, reserva, dadosHospital }) => {
 
   const isolamentoTexto = (reserva?.isolamento ?? '').toString().trim();
   const deveExibirIsolamento = isolamentoTexto && !['NÃO', 'NAO'].includes(isolamentoTexto.toUpperCase());
+
+  useEffect(() => {
+    if (!isOpen) {
+      setConfirmacaoAberta(false);
+      setLeitoParaConfirmar(null);
+      setReservando(false);
+    }
+  }, [isOpen]);
 
   const pacienteAdaptado = useMemo(() => {
     if (!reserva) return null;
@@ -318,9 +351,21 @@ const SelecionarLeitoModal = ({ isOpen, onClose, reserva, dadosHospital }) => {
       ? leitosUti
       : (leitosEnfermaria.length > 0 ? leitosEnfermaria : leitosUti);
 
+    const origemReserva = (reserva?.origem || '').toString().trim().toUpperCase();
+
+    const candidatosFiltrados = origemReserva === 'ONCOLOGIA'
+      ? candidatos.filter((leitoAtual) => {
+          const setorRelacionado = setoresPorId.get(leitoAtual.setorId);
+          const nomeComparacao = normalizarNomeSetor(
+            leitoAtual.nomeSetor || setorRelacionado?.nomeSetor || setorRelacionado?.siglaSetor || ''
+          );
+          return nomeComparacao === NOME_SETOR_ONCOLOGIA;
+        })
+      : candidatos;
+
     const mapa = new Map();
 
-    candidatos.forEach((leito) => {
+    candidatosFiltrados.forEach((leito) => {
       if (!leito) return;
       const setor = setoresPorId.get(leito.setorId);
       const quarto = quartosPorId.get(leito.quartoId);
@@ -343,10 +388,11 @@ const SelecionarLeitoModal = ({ isOpen, onClose, reserva, dadosHospital }) => {
     leitosHospital,
     setoresHospital,
     pacientesHospital,
-    quartosHospital
+    quartosHospital,
+    reserva
   ]);
 
-  const handleSelecionarLeito = async (leito) => {
+  const efetivarReservaLeito = async (leito) => {
     try {
       const batch = writeBatch(db);
 
@@ -401,6 +447,7 @@ const SelecionarLeitoModal = ({ isOpen, onClose, reserva, dadosHospital }) => {
       });
 
       onClose();
+      return true;
     } catch (error) {
       console.error('Erro ao reservar leito:', error);
       toast({
@@ -408,89 +455,160 @@ const SelecionarLeitoModal = ({ isOpen, onClose, reserva, dadosHospital }) => {
         description: "Erro ao reservar leito. Tente novamente.",
         variant: "destructive"
       });
+      return false;
+    }
+  };
+
+  const abrirConfirmacaoReserva = (leito) => {
+    setLeitoParaConfirmar(leito);
+    setConfirmacaoAberta(true);
+  };
+
+  const fecharConfirmacao = () => {
+    setConfirmacaoAberta(false);
+    setLeitoParaConfirmar(null);
+  };
+
+  const confirmarReserva = async () => {
+    if (!leitoParaConfirmar) return;
+    setReservando(true);
+    const sucesso = await efetivarReservaLeito(leitoParaConfirmar);
+    setReservando(false);
+    if (sucesso) {
+      fecharConfirmacao();
     }
   };
 
   if (!reserva) return null;
 
   return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
-    >
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <BedDouble className="h-5 w-5 text-primary" />
-            Selecionar Leito para {reserva.nomeCompleto}
-          </DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog
+        open={isOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            onClose();
+          }
+        }}
+      >
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BedDouble className="h-5 w-5 text-primary" />
+              Selecionar Leito para {reserva.nomeCompleto}
+            </DialogTitle>
+          </DialogHeader>
 
-        <div className="space-y-4">
-          {/* Informações do paciente */}
-          <Card className="bg-muted/50">
-            <CardContent className="pt-6">
-              <div className="flex flex-wrap gap-4">
-                <div>
-                  <span className="font-semibold">Paciente:</span> {reserva.nomeCompleto}
-                </div>
-                <div>
-                  <span className="font-semibold">Sexo:</span> {reserva.sexo}
-                </div>
-                {deveExibirIsolamento && (
+          <div className="space-y-4">
+            {/* Informações do paciente */}
+            <Card className="bg-muted/50">
+              <CardContent className="pt-6">
+                <div className="flex flex-wrap gap-4">
                   <div>
-                    <span className="font-semibold">Isolamento:</span>
-                    <Badge variant="destructive" className="ml-2">
-                      {isolamentoTexto}
-                    </Badge>
+                    <span className="font-semibold">Paciente:</span> {reserva.nomeCompleto}
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                  <div>
+                    <span className="font-semibold">Sexo:</span> {reserva.sexo}
+                  </div>
+                  {deveExibirIsolamento && (
+                    <div>
+                      <span className="font-semibold">Isolamento:</span>
+                      <Badge variant="destructive" className="ml-2">
+                        {isolamentoTexto}
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
 
-          {/* Lista de leitos disponíveis */}
-          <div className="space-y-3">
-            <h3 className="text-lg font-semibold">
-              Leitos Disponíveis ({leitosDisponiveis.length})
-            </h3>
-            
-            {leitosDisponiveis.length === 0 ? (
-              <Card>
-                <CardContent className="pt-6 text-center">
-                  <p className="text-muted-foreground">
-                    Nenhum leito disponível no momento.
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid gap-3">
-                {leitosDisponiveis.map(leito => (
-                  <LeitoCard 
-                    key={leito.id}
-                    leito={leito}
-                    onSelecionar={handleSelecionarLeito}
-                    reserva={reserva}
-                  />
-                ))}
-              </div>
-            )}
+            {/* Lista de leitos disponíveis */}
+            <div className="space-y-3">
+              <h3 className="text-lg font-semibold">
+                Leitos Disponíveis ({leitosDisponiveis.length})
+              </h3>
+
+              {leitosDisponiveis.length === 0 ? (
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-muted-foreground">
+                      Nenhum leito disponível no momento.
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid gap-3">
+                  {leitosDisponiveis.map(leito => (
+                    <LeitoCard
+                      key={leito.id}
+                      leito={leito}
+                      reserva={reserva}
+                      onSolicitarReserva={abrirConfirmacaoReserva}
+                      disabled={reservando}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose} disabled={reservando}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={confirmacaoAberta}
+        onOpenChange={(open) => {
+          if (!open) {
+            if (reservando) return;
+            fecharConfirmacao();
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar reserva do leito</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deseja realmente reservar o leito {leitoParaConfirmar?.codigoLeito || leitoParaConfirmar?.codigo || 'selecionado'} para o paciente {reserva?.nomeCompleto}?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={reservando}
+              onClick={() => {
+                if (!reservando) {
+                  fecharConfirmacao();
+                }
+              }}
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={reservando}
+              onClick={async (event) => {
+                event.preventDefault();
+                await confirmarReserva();
+              }}
+            >
+              {reservando ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Reservando...
+                </>
+              ) : (
+                'Confirmar Reserva'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 };
 
-const LeitoCard = ({ leito, onSelecionar, reserva }) => {
+const LeitoCard = ({ leito, onSolicitarReserva, reserva, disabled }) => {
   // Verificar compatibilidade
   const isCompativel = () => {
     // Verificar contexto do quarto (coorte)
@@ -544,9 +662,9 @@ const LeitoCard = ({ leito, onSelecionar, reserva }) => {
             )}
           </div>
 
-          <Button 
-            onClick={() => onSelecionar(leito)}
-            disabled={!compativel}
+          <Button
+            onClick={() => onSolicitarReserva(leito)}
+            disabled={!compativel || disabled}
             size="sm"
           >
             Selecionar

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { IMaskInput } from 'react-imask';
 import {
   Dialog,
   DialogContent,
@@ -57,12 +58,34 @@ import {
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
 import { ESPECIALIDADES_MEDICAS, ESPECIALIDADES_ONCOLOGIA } from '@/lib/constants';
+import { cn } from '@/lib/utils';
 
 // Sub-modais
 import InformacoesReservaModal from './InformacoesReservaModal';
 import SelecionarLeitoModal from './SelecionarLeitoModal';
 import CancelarReservaExternaModal from './CancelarReservaExternaModal';
 import ConfirmarInternacaoExternaModal from './ConfirmarInternacaoExternaModal';
+
+const MaskedDateInput = React.forwardRef(({ className, onAccept, ...props }, ref) => (
+  <IMaskInput
+    {...props}
+    mask="00/00/0000"
+    inputRef={ref}
+    overwrite
+    lazy
+    placeholderChar="_"
+    onAccept={(value, ...args) => {
+      if (onAccept) {
+        onAccept(value, ...args);
+      }
+    }}
+    className={cn(
+      'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
+      className
+    )}
+  />
+));
+MaskedDateInput.displayName = 'MaskedDateInput';
 
 const ReservasLeitosModal = ({ isOpen, onClose }) => {
   const { toast } = useToast();
@@ -224,30 +247,16 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
     setErrosDatas(prev => ({ ...prev, [campo]: false }));
   }, []);
 
-  const aplicarMascaraData = useCallback((valor) => {
-    const digits = (valor || '').replace(/\D/g, '').slice(0, 8);
-
-    if (digits.length <= 2) {
-      return digits;
-    }
-
-    if (digits.length <= 4) {
-      return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-    }
-
-    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-  }, []);
-
   const handleInputData = useCallback((campo, valor) => {
-    const mascarado = aplicarMascaraData(valor);
-    const digits = mascarado.replace(/\D/g, '');
+    const limpo = (valor || '').toString().replace(/_/g, '');
+    const digits = limpo.replace(/\D/g, '');
 
     let dataValida = null;
-    let textoParaArmazenar = mascarado;
+    let textoParaArmazenar = limpo;
     let erro = false;
 
     if (digits.length === 8) {
-      const dataParseada = parse(mascarado, 'dd/MM/yyyy', new Date());
+      const dataParseada = parse(limpo, 'dd/MM/yyyy', new Date());
       if (isValid(dataParseada)) {
         dataValida = dataParseada;
         textoParaArmazenar = format(dataParseada, 'dd/MM/yyyy');
@@ -268,10 +277,10 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
       ...prev,
       [campo]: erro
     }));
-  }, [aplicarMascaraData]);
+  }, []);
 
   const handleBlurData = useCallback((campo) => {
-    const textoAtual = novaReserva[`${campo}Texto`] || '';
+    const textoAtual = (novaReserva[`${campo}Texto`] || '').replace(/_/g, '');
     const digits = textoAtual.replace(/\D/g, '');
 
     setErrosDatas(prev => ({
@@ -501,14 +510,15 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
                           onOpenChange={(open) => setCalendariosAbertos(prev => ({ ...prev, dataNascimento: open }))}
                         >
                           <PopoverTrigger asChild>
-                            <Input
+                            <MaskedDateInput
                               value={novaReserva.dataNascimentoTexto}
                               placeholder="dd/mm/aaaa"
                               onFocus={() => setCalendariosAbertos(prev => ({ ...prev, dataNascimento: true }))}
-                              onChange={(event) => handleInputData('dataNascimento', event.target.value)}
+                              onAccept={(value) => handleInputData('dataNascimento', value)}
                               onBlur={() => handleBlurData('dataNascimento')}
                               className={`pl-8 ${errosDatas.dataNascimento ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                               aria-invalid={errosDatas.dataNascimento || undefined}
+                              inputMode="numeric"
                             />
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
@@ -613,17 +623,18 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
                             open={calendariosAbertos.dataSolicitacao}
                             onOpenChange={(open) => setCalendariosAbertos(prev => ({ ...prev, dataSolicitacao: open }))}
                           >
-                            <PopoverTrigger asChild>
-                              <Input
-                                value={novaReserva.dataSolicitacaoTexto}
-                                placeholder="dd/mm/aaaa"
-                                onFocus={() => setCalendariosAbertos(prev => ({ ...prev, dataSolicitacao: true }))}
-                                onChange={(event) => handleInputData('dataSolicitacao', event.target.value)}
-                                onBlur={() => handleBlurData('dataSolicitacao')}
-                                className={`pl-8 ${errosDatas.dataSolicitacao ? 'border-destructive focus-visible:ring-destructive' : ''}`}
-                                aria-invalid={errosDatas.dataSolicitacao || undefined}
-                              />
-                            </PopoverTrigger>
+                          <PopoverTrigger asChild>
+                            <MaskedDateInput
+                              value={novaReserva.dataSolicitacaoTexto}
+                              placeholder="dd/mm/aaaa"
+                              onFocus={() => setCalendariosAbertos(prev => ({ ...prev, dataSolicitacao: true }))}
+                              onAccept={(value) => handleInputData('dataSolicitacao', value)}
+                              onBlur={() => handleBlurData('dataSolicitacao')}
+                              className={`pl-8 ${errosDatas.dataSolicitacao ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                              aria-invalid={errosDatas.dataSolicitacao || undefined}
+                              inputMode="numeric"
+                            />
+                          </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="start">
                               <Calendar
                                 mode="single"
@@ -681,17 +692,18 @@ const ReservasLeitosModal = ({ isOpen, onClose }) => {
                             open={calendariosAbertos.dataPrevistaInternacao}
                             onOpenChange={(open) => setCalendariosAbertos(prev => ({ ...prev, dataPrevistaInternacao: open }))}
                           >
-                            <PopoverTrigger asChild>
-                              <Input
-                                value={novaReserva.dataPrevistaInternacaoTexto}
-                                placeholder="dd/mm/aaaa"
-                                onFocus={() => setCalendariosAbertos(prev => ({ ...prev, dataPrevistaInternacao: true }))}
-                                onChange={(event) => handleInputData('dataPrevistaInternacao', event.target.value)}
-                                onBlur={() => handleBlurData('dataPrevistaInternacao')}
-                                className={`pl-8 ${errosDatas.dataPrevistaInternacao ? 'border-destructive focus-visible:ring-destructive' : ''}`}
-                                aria-invalid={errosDatas.dataPrevistaInternacao || undefined}
-                              />
-                            </PopoverTrigger>
+                          <PopoverTrigger asChild>
+                            <MaskedDateInput
+                              value={novaReserva.dataPrevistaInternacaoTexto}
+                              placeholder="dd/mm/aaaa"
+                              onFocus={() => setCalendariosAbertos(prev => ({ ...prev, dataPrevistaInternacao: true }))}
+                              onAccept={(value) => handleInputData('dataPrevistaInternacao', value)}
+                              onBlur={() => handleBlurData('dataPrevistaInternacao')}
+                              className={`pl-8 ${errosDatas.dataPrevistaInternacao ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                              aria-invalid={errosDatas.dataPrevistaInternacao || undefined}
+                              inputMode="numeric"
+                            />
+                          </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="start">
                               <Calendar
                                 mode="single"
