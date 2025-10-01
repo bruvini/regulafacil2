@@ -345,55 +345,61 @@ const ConfirmarInternacaoExternaModal = ({ isOpen, onClose, reserva, leito }) =>
       const duplicados = await getDocs(pacientesQuery);
 
       if (!duplicados.empty) {
-        const pacienteExistenteDoc = duplicados.docs[0];
-        const pacienteExistente = pacienteExistenteDoc.data();
+        const pacienteAtivoDoc = duplicados.docs.find((docSnapshot) => {
+          const status = docSnapshot.data()?.status;
+          return !status || status === 'Ativo';
+        });
 
-        let setorPaciente = 'Setor não informado';
-        let codigoLeitoPaciente = 'Não informado';
+        if (pacienteAtivoDoc) {
+          const pacienteExistente = pacienteAtivoDoc.data();
 
-        if (pacienteExistente?.leitoId) {
-          const leitoRefExistente = doc(getLeitosCollection(), pacienteExistente.leitoId);
-          const leitoSnapshot = await getDoc(leitoRefExistente);
-          if (leitoSnapshot.exists()) {
-            const leitoData = leitoSnapshot.data();
-            codigoLeitoPaciente = leitoData?.codigoLeito || codigoLeitoPaciente;
-            setorPaciente =
-              leitoData?.nomeSetor ||
-              leitoData?.setorNome ||
-              setorPaciente;
+          let setorPaciente = 'Setor não informado';
+          let codigoLeitoPaciente = 'Não informado';
 
-            if ((!setorPaciente || setorPaciente === 'Setor não informado') && leitoData?.setorId) {
-              const setorRef = doc(getSetoresCollection(), leitoData.setorId);
-              const setorSnapshot = await getDoc(setorRef);
-              if (setorSnapshot.exists()) {
-                const setorData = setorSnapshot.data();
-                setorPaciente =
-                  setorData?.nomeSetor ||
-                  setorData?.siglaSetor ||
-                  setorPaciente;
+          if (pacienteExistente?.leitoId) {
+            const leitoRefExistente = doc(getLeitosCollection(), pacienteExistente.leitoId);
+            const leitoSnapshot = await getDoc(leitoRefExistente);
+            if (leitoSnapshot.exists()) {
+              const leitoData = leitoSnapshot.data();
+              codigoLeitoPaciente = leitoData?.codigoLeito || codigoLeitoPaciente;
+              setorPaciente =
+                leitoData?.nomeSetor ||
+                leitoData?.setorNome ||
+                setorPaciente;
+
+              if ((!setorPaciente || setorPaciente === 'Setor não informado') && leitoData?.setorId) {
+                const setorRef = doc(getSetoresCollection(), leitoData.setorId);
+                const setorSnapshot = await getDoc(setorRef);
+                if (setorSnapshot.exists()) {
+                  const setorData = setorSnapshot.data();
+                  setorPaciente =
+                    setorData?.nomeSetor ||
+                    setorData?.siglaSetor ||
+                    setorPaciente;
+                }
               }
             }
           }
-        }
-
-        if ((setorPaciente === 'Setor não informado' || !setorPaciente) && pacienteExistente?.setorId) {
-          const setorRef = doc(getSetoresCollection(), pacienteExistente.setorId);
-          const setorSnapshot = await getDoc(setorRef);
-          if (setorSnapshot.exists()) {
-            const setorData = setorSnapshot.data();
-            setorPaciente =
-              setorData?.nomeSetor ||
-              setorData?.siglaSetor ||
-              setorPaciente;
           }
-        }
 
-        toast({
-          title: 'Paciente já internado',
-          description: `Paciente já internado. ${nomePaciente} consta no sistema. Localização: ${setorPaciente || 'Setor não informado'}, Leito: ${codigoLeitoPaciente || 'Não informado'}. Utilize a função 'Mover Paciente' para ajustes.`,
-          variant: 'destructive',
-        });
-        return;
+          if ((setorPaciente === 'Setor não informado' || !setorPaciente) && pacienteExistente?.setorId) {
+            const setorRef = doc(getSetoresCollection(), pacienteExistente.setorId);
+            const setorSnapshot = await getDoc(setorRef);
+            if (setorSnapshot.exists()) {
+              const setorData = setorSnapshot.data();
+              setorPaciente =
+                setorData?.nomeSetor ||
+                setorData?.siglaSetor ||
+                setorPaciente;
+            }
+          }
+          toast({
+            title: 'Paciente já internado',
+            description: `Paciente já internado. ${nomePaciente} consta no sistema. Localização: ${setorPaciente || 'Setor não informado'}, Leito: ${codigoLeitoPaciente || 'Não informado'}. Utilize a função 'Mover Paciente' para ajustes.`,
+            variant: 'destructive',
+          });
+          return;
+        }
       }
 
       let setorId = leito?.setorId || null;
