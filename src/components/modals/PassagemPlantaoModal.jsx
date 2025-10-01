@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/accordion";
 import { Loader2 } from "lucide-react";
 import { useDadosHospitalares } from "@/hooks/useDadosHospitalares";
+import { collection, db, onSnapshot } from "@/lib/firebase";
 
 const formatarMensagemRestricaoCoorte = (restricao) => {
   if (!restricao) {
@@ -32,6 +33,7 @@ const formatarMensagemRestricaoCoorte = (restricao) => {
 
 const PassagemPlantaoModal = ({ isOpen, onClose }) => {
   const [loading, setLoading] = useState(true);
+  const [reservasExternas, setReservasExternas] = useState([]);
   const {
     estrutura,
     infeccoes: infeccoesDados = [],
@@ -79,6 +81,18 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    const reservasExternasRef = collection(db, 'artifacts/regulafacil/public/data/reservasExternas');
+    const unsubscribe = onSnapshot(reservasExternasRef, (snapshot) => {
+      const listaReservas = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setReservasExternas(listaReservas);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
   const handleOpenChange = (open) => {
     if (!open) {
       onClose?.();
@@ -123,14 +137,66 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
       const setoresOrdenados = ordenarSetores(tipoSetor, setoresLista);
 
       const setoresProcessados = setoresOrdenados.map(setor => {
-        if (tipoSetor !== 'Enfermaria') {
+        if (tipoSetor !== 'Enfermaria' && tipoSetor !== 'UTI') {
           return { ...setor, dadosPlantao: null };
+        }
+
+        if (tipoSetor === 'UTI') {
+          const dadosPlantaoUTI = {
+            provaveisAltas: [],
+            altasDaUTI: [],
+            regulacoesEntrada: [],
+            regulacoesSaida: []
+          };
+
+          const leitosDoSetor = [
+            ...(setor.quartos || []).flatMap(q => q.leitos),
+            ...(setor.leitosSemQuarto || [])
+          ];
+
+          leitosDoSetor.forEach(leito => {
+            const paciente = leito.paciente;
+
+            if (paciente) {
+              if (paciente.provavelAlta) {
+                dadosPlantaoUTI.provaveisAltas.push(`${leito.codigoLeito} ${paciente.nomePaciente}`);
+              }
+              if (paciente.pedidoRemanejamento?.tipo === 'Alta do setor' && paciente.pedidoRemanejamento?.detalhe === 'UTI') {
+                dadosPlantaoUTI.altasDaUTI.push(`${leito.codigoLeito} ${paciente.nomePaciente}`);
+              }
+            }
+
+            if (leito.regulacaoEmAndamento) {
+              const infoReg = leito.regulacaoEmAndamento;
+              const tempo = infoReg.iniciadoEm?.toDate ? format(infoReg.iniciadoEm.toDate(), 'dd/MM HH:mm') : '';
+              if (infoReg.tipo === 'ORIGEM') {
+                dadosPlantaoUTI.regulacoesSaida.push(
+                  `${leito.codigoLeito} ${paciente?.nomePaciente || 'N/A'} -> PARA ${infoReg.leitoParceiroSetorNome} ${infoReg.leitoParceiroCodigo} (${tempo})`
+                );
+              }
+              if (infoReg.tipo === 'DESTINO') {
+                dadosPlantaoUTI.regulacoesEntrada.push(
+                  `${leito.codigoLeito} (Reservado para ${infoReg.pacienteNome}) <- DE ${infoReg.leitoParceiroSetorNome} ${infoReg.leitoParceiroCodigo} (${tempo})`
+                );
+              }
+            }
+          });
+
+          return { ...setor, dadosPlantao: dadosPlantaoUTI };
         }
 
         // INÍCIO DA LÓGICA CORRIGIDA
         const dadosPlantao = {
-          isolamentos: [], leitosRegulados: [], leitosVagos: [],
-          pedidosUTI: [], transferencias: [], observacoes: []
+          isolamentos: [],
+          leitosRegulados: [],
+          leitosVagos: [],
+          pedidosUTI: [],
+          transferencias: [],
+          observacoes: [],
+          provaveisAltas: [],
+          altasNoLeito: [],
+          reservasExternas: [],
+          listaEsperaOncologia: []
         };
 
         // A estrutura já contém os leitos dentro dos quartos ou como leitosSemQuarto
@@ -138,6 +204,8 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
           ...(setor.quartos || []).flatMap(q => q.leitos),
           ...(setor.leitosSemQuarto || [])
         ];
+
+        const leitosMap = new Map(todosOsLeitosDoSetor.map(leito => [leito.id, leito]));
 
         todosOsLeitosDoSetor.forEach(leito => {
           // --- ESTA É A CORREÇÃO PRINCIPAL ---
@@ -165,6 +233,15 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
 
           // 3. Processa dados APENAS se houver um paciente no leito
           if (paciente) {
+              if (paciente.provavelAlta) {
+                  dadosPlantao.provaveisAltas.push(`${leito.codigoLeito} ${paciente.nomePaciente}`);
+              }
+
+              if (paciente.altaNoLeito) {
+                  const motivo = paciente.altaNoLeito.motivo ? ` - Motivo: ${paciente.altaNoLeito.motivo}` : '';
+                  dadosPlantao.altasNoLeito.push(`${leito.codigoLeito} ${paciente.nomePaciente}${motivo}`);
+              }
+
               // Isolamentos
               if (paciente.isolamentos?.length > 0) {
                   const nomesIsolamentos = paciente.isolamentos.map(iso => {
@@ -197,6 +274,40 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
           }
         });
 
+        reservasExternas.forEach(reserva => {
+          if (reserva.status === 'Reservado' && reserva.leitoReservadoId) {
+            const leitoDaReserva = leitosMap.get(reserva.leitoReservadoId);
+            if (leitoDaReserva && leitoDaReserva.setorId === setor.id) {
+              dadosPlantao.reservasExternas.push(`${leitoDaReserva.codigoLeito} ${reserva.nomeCompleto}`);
+            }
+          }
+        });
+
+        if (setor.nomeSetor === 'UNID. ONCOLOGIA') {
+          const hoje = new Date();
+          hoje.setHours(0, 0, 0, 0);
+
+          dadosPlantao.listaEsperaOncologia = reservasExternas
+            .filter(r => r.origem === 'ONCOLOGIA' && r.status === 'Aguardando Leito')
+            .sort((a, b) => {
+              const dataA = a.dataPrevistaInternacao?.toDate ? a.dataPrevistaInternacao.toDate() : null;
+              const dataB = b.dataPrevistaInternacao?.toDate ? b.dataPrevistaInternacao.toDate() : null;
+              if (!dataA && !dataB) return 0;
+              if (!dataA) return 1;
+              if (!dataB) return -1;
+              return dataA - dataB;
+            })
+            .map(r => {
+              const dataPrevista = r.dataPrevistaInternacao?.toDate ? r.dataPrevistaInternacao.toDate() : null;
+              const isAtrasado = dataPrevista ? dataPrevista < hoje : false;
+              return {
+                id: r.id,
+                texto: `${r.nomeCompleto} (${r.especialidadeOncologia}) - Previsto para: ${dataPrevista ? format(dataPrevista, 'dd/MM/yyyy') : 'Sem data'}`,
+                atrasado: isAtrasado
+              };
+            });
+        }
+
         return { ...setor, dadosPlantao };
       });
 
@@ -215,7 +326,7 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
     const gruposExtras = tiposExtras.map((tipoSetor) => processarSetores(tipoSetor, estrutura[tipoSetor]));
 
     return [...gruposOrdenados, ...gruposExtras];
-  }, [estrutura, infeccoesDados]);
+  }, [estrutura, infeccoesDados, reservasExternas]);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
@@ -253,7 +364,53 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
                               <div key={setorKey} className="p-4 border rounded-md">
                                 <h4 className="font-medium text-md mb-3">{setor.nomeSetor}</h4>
 
-                                {setor.dadosPlantao ? (
+                                {setor.tipoSetor === 'UTI' && setor.dadosPlantao ? (
+                                  <div className="space-y-4 text-sm">
+                                    {setor.dadosPlantao.provaveisAltas.length > 0 && (
+                                      <div>
+                                        <h5 className="font-semibold text-gray-700 mb-1">Prováveis Altas:</h5>
+                                        <ul className="list-disc list-inside space-y-1 pl-2 text-gray-600">
+                                          {setor.dadosPlantao.provaveisAltas.map((item, index) => (
+                                            <li key={index}>{item}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+
+                                    {setor.dadosPlantao.altasDaUTI.length > 0 && (
+                                      <div>
+                                        <h5 className="font-semibold text-gray-700 mb-1">Altas da UTI:</h5>
+                                        <ul className="list-disc list-inside space-y-1 pl-2 text-gray-600">
+                                          {setor.dadosPlantao.altasDaUTI.map((item, index) => (
+                                            <li key={index}>{item}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+
+                                    {setor.dadosPlantao.regulacoesEntrada.length > 0 && (
+                                      <div>
+                                        <h5 className="font-semibold text-blue-700 mb-1">Regulações de Entrada:</h5>
+                                        <ul className="list-disc list-inside space-y-1 pl-2 text-blue-600">
+                                          {setor.dadosPlantao.regulacoesEntrada.map((item, index) => (
+                                            <li key={index}>{item}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+
+                                    {setor.dadosPlantao.regulacoesSaida.length > 0 && (
+                                      <div>
+                                        <h5 className="font-semibold text-orange-700 mb-1">Regulações de Saída:</h5>
+                                        <ul className="list-disc list-inside space-y-1 pl-2 text-orange-600">
+                                          {setor.dadosPlantao.regulacoesSaida.map((item, index) => (
+                                            <li key={index}>{item}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : setor.dadosPlantao ? (
                                   <div className="space-y-4 text-sm">
                                     {setor.dadosPlantao.isolamentos.length > 0 && (
                                       <div>
@@ -291,6 +448,39 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
                                       </div>
                                     )}
 
+                                    {setor.dadosPlantao.provaveisAltas.length > 0 && (
+                                      <div>
+                                        <h5 className="font-semibold text-gray-700 mb-1">Prováveis Altas:</h5>
+                                        <ul className="list-disc list-inside space-y-1 pl-2 text-gray-600">
+                                          {setor.dadosPlantao.provaveisAltas.map((item, index) => (
+                                            <li key={index}>{item}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+
+                                    {setor.dadosPlantao.altasNoLeito.length > 0 && (
+                                      <div>
+                                        <h5 className="font-semibold text-gray-700 mb-1">Altas no Leito:</h5>
+                                        <ul className="list-disc list-inside space-y-1 pl-2 text-gray-600">
+                                          {setor.dadosPlantao.altasNoLeito.map((item, index) => (
+                                            <li key={index}>{item}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+
+                                    {setor.dadosPlantao.reservasExternas.length > 0 && (
+                                      <div>
+                                        <h5 className="font-semibold text-blue-700 mb-1">Reservas Externas:</h5>
+                                        <ul className="list-disc list-inside space-y-1 pl-2 text-blue-600">
+                                          {setor.dadosPlantao.reservasExternas.map((item, index) => (
+                                            <li key={index}>{item}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+
                                     {setor.dadosPlantao.observacoes.length > 0 && (
                                       <div>
                                         <h5 className="font-semibold text-gray-700 mb-1">Observações Relevantes:</h5>
@@ -308,6 +498,19 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
                                             <li key={leito.id}>
                                               {leito.codigoLeito} ({leito.status})
                                               {leito.compatibilidade !== 'Livre' && ` - ${leito.compatibilidade}`}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+
+                                    {setor.nomeSetor === 'UNID. ONCOLOGIA' && setor.dadosPlantao.listaEsperaOncologia.length > 0 && (
+                                      <div>
+                                        <h5 className="font-semibold text-blue-700 mb-1">Lista de Espera (Oncologia):</h5>
+                                        <ul className="list-disc list-inside space-y-1 pl-2 text-blue-600">
+                                          {setor.dadosPlantao.listaEsperaOncologia.map(item => (
+                                            <li key={item.id} className={item.atrasado ? 'font-bold text-red-600' : ''}>
+                                              {item.texto}
                                             </li>
                                           ))}
                                         </ul>
