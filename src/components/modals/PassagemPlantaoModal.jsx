@@ -1,36 +1,44 @@
-import React, { useEffect, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
-
-const LOADING_MESSAGES = [
-  'Compilando dados...',
-  'Organizando informações...',
-  'Gerando relatório...'
-];
+import { useDadosHospitalares } from "@/hooks/useDadosHospitalares";
 
 const PassagemPlantaoModal = ({ isOpen, onClose }) => {
-  const [mensagemAtual, setMensagemAtual] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const { estrutura } = useDadosHospitalares();
 
   useEffect(() => {
-    if (!isOpen) {
-      return undefined;
+    let timeoutId;
+
+    if (isOpen) {
+      setLoading(true);
+      timeoutId = setTimeout(() => {
+        setLoading(false);
+      }, 2000);
+    } else {
+      setLoading(true);
     }
 
-    setMensagemAtual(0);
-
-    const intervalo = setInterval(() => {
-      setMensagemAtual((indice) => (indice + 1) % LOADING_MESSAGES.length);
-    }, 800);
-
-    const timeout = setTimeout(() => {
-      onClose?.();
-    }, 2600);
-
     return () => {
-      clearInterval(intervalo);
-      clearTimeout(timeout);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   const handleOpenChange = (open) => {
     if (!open) {
@@ -38,26 +46,70 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
     }
   };
 
+  const estruturaHospitalar = useMemo(() => Object.entries(estrutura || {}), [estrutura]);
+
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
-            Passagem de Plantão
-          </DialogTitle>
+          <DialogTitle>Relatório de Passagem de Plantão</DialogTitle>
         </DialogHeader>
 
-        <div className="flex flex-col items-center gap-6 py-8">
-          <div className="flex items-center gap-3 text-base font-medium text-muted-foreground">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            <span>{LOADING_MESSAGES[mensagemAtual]}</span>
-          </div>
-          <div className="space-y-1 text-center text-sm text-muted-foreground max-w-sm">
-            <p>Estamos preparando o relatório estratégico para o próximo plantão.</p>
-            <p>Mantenha o foco: em instantes o resumo corporativo estará disponível.</p>
-          </div>
+        <div className="max-h-[60vh] overflow-y-auto pr-1">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">
+                Gerando relatório de passagem de plantão...
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {estruturaHospitalar.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Nenhum setor disponível no momento.
+                </p>
+              ) : (
+                estruturaHospitalar.map(([tipoSetor, setoresDoTipo]) => (
+                  <Accordion
+                    key={tipoSetor}
+                    type="single"
+                    collapsible
+                    className="rounded-lg border"
+                  >
+                    <AccordionItem value={tipoSetor}>
+                      <AccordionTrigger className="px-4 text-left">
+                        <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                          {tipoSetor}
+                        </span>
+                      </AccordionTrigger>
+                      <AccordionContent className="px-4">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          {setoresDoTipo.map((setor) => (
+                            <Card key={setor?.idSetor ?? setor?.nomeSetor}>
+                              <CardHeader className="py-4">
+                                <CardTitle className="text-base font-medium">
+                                  {setor?.nomeSetor}
+                                </CardTitle>
+                              </CardHeader>
+                            </Card>
+                          ))}
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  </Accordion>
+                ))
+              )}
+            </div>
+          )}
         </div>
+
+        <DialogFooter className="pt-2">
+          <Button variant="outline" onClick={onClose}>
+            Fechar
+          </Button>
+          <Button disabled>Gerar PDF</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
