@@ -1,9 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Loader2, Search, History } from 'lucide-react';
-import { format } from 'date-fns';
+import { Calendar } from '@/components/ui/calendar';
+import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Loader2, Search, History, CalendarIcon, Filter } from 'lucide-react';
+import { format, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   getAuditoriaCollection,
@@ -55,10 +66,19 @@ const mergeAndSortLogs = (newLogs, existingLogs) => {
   });
 };
 
+const getDefaultFilters = () => ({
+  startDate: subDays(new Date(), 1),
+  endDate: new Date(),
+  user: 'all',
+  action: 'all',
+});
+
 const AuditoriaPage = () => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filters, setFilters] = useState(getDefaultFilters);
 
   useEffect(() => {
     setLoading(true);
@@ -114,20 +134,79 @@ const AuditoriaPage = () => {
     };
   }, []);
 
+  const uniqueUsers = useMemo(() => {
+    return [...new Set(logs.map((log) => log.userName).filter(Boolean))].sort();
+  }, [logs]);
+
+  const uniqueActions = useMemo(() => {
+    return [...new Set(logs.map((log) => log.action).filter(Boolean))].sort();
+  }, [logs]);
+
   const filteredLogs = useMemo(() => {
-    if (!searchTerm) {
-      return logs;
+    let result = logs;
+
+    if (filters.startDate && filters.endDate) {
+      result = result.filter((log) => {
+        const logTimestamp = log.timestamp;
+
+        if (!(logTimestamp instanceof Date) || Number.isNaN(logTimestamp.getTime())) {
+          return false;
+        }
+
+        return logTimestamp >= filters.startDate && logTimestamp <= filters.endDate;
+      });
     }
 
-    const lowercasedTerm = searchTerm.toLowerCase();
+    if (filters.user !== 'all') {
+      result = result.filter((log) => log.userName === filters.user);
+    }
 
-    return logs.filter(
-      (log) =>
-        log.userName?.toLowerCase().includes(lowercasedTerm) ||
-        log.action?.toLowerCase().includes(lowercasedTerm) ||
-        log.details?.toLowerCase().includes(lowercasedTerm)
-    );
-  }, [logs, searchTerm]);
+    if (filters.action !== 'all') {
+      result = result.filter((log) => log.action === filters.action);
+    }
+
+    if (searchTerm) {
+      const lowercasedTerm = searchTerm.toLowerCase();
+      result = result.filter(
+        (log) =>
+          log.userName?.toLowerCase().includes(lowercasedTerm) ||
+          log.action?.toLowerCase().includes(lowercasedTerm) ||
+          log.details?.toLowerCase().includes(lowercasedTerm)
+      );
+    }
+
+    return result;
+  }, [logs, searchTerm, filters]);
+
+  const handleDateChange = (key, date) => {
+    if (!date) return;
+
+    setFilters((prev) => {
+      const existing = prev[key];
+      const hours = existing ? existing.getHours() : 0;
+      const minutes = existing ? existing.getMinutes() : 0;
+      const updatedDate = new Date(date);
+      updatedDate.setHours(hours, minutes, 0, 0);
+
+      return { ...prev, [key]: updatedDate };
+    });
+  };
+
+  const handleTimeChange = (key, value) => {
+    if (!value) return;
+
+    const [hours, minutes] = value.split(':').map((num) => parseInt(num, 10));
+
+    setFilters((prev) => {
+      const base = prev[key] ? new Date(prev[key]) : new Date();
+      base.setHours(Number.isNaN(hours) ? 0 : hours, Number.isNaN(minutes) ? 0 : minutes, 0, 0);
+      return { ...prev, [key]: base };
+    });
+  };
+
+  const handleClearFilters = () => {
+    setFilters(getDefaultFilters());
+  };
 
   return (
     <div className="container mx-auto p-4 md:p-6 lg:p-8 space-y-6">
@@ -145,15 +224,151 @@ const AuditoriaPage = () => {
         </div>
       </header>
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-        <Input
-          type="search"
-          placeholder="Pesquisar por usuário, ação ou detalhes..."
-          className="w-full pl-10 h-12 text-base"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
+      <div className="space-y-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Pesquisar por usuário, ação ou detalhes..."
+            className="w-full pl-10 h-12 text-base"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            onClick={() => setFiltersOpen((prev) => !prev)}
+            className="flex items-center gap-2"
+          >
+            <Filter className="h-4 w-4" />
+            {filtersOpen ? 'Ocultar filtros' : 'Mostrar filtros'}
+          </Button>
+        </div>
+
+        <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <CollapsibleContent className="space-y-4 rounded-lg border border-dashed border-border bg-muted/30 p-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Início do período</p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="justify-start text-left font-normal flex-1"
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {filters.startDate
+                          ? format(filters.startDate, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })
+                          : 'Selecionar data'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={filters.startDate}
+                        onSelect={(date) => handleDateChange('startDate', date)}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <Input
+                    type="time"
+                    value={filters.startDate ? format(filters.startDate, 'HH:mm') : ''}
+                    onChange={(event) => handleTimeChange('startDate', event.target.value)}
+                    className="sm:w-32"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Fim do período</p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="justify-start text-left font-normal flex-1"
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {filters.endDate
+                          ? format(filters.endDate, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })
+                          : 'Selecionar data'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={filters.endDate}
+                        onSelect={(date) => handleDateChange('endDate', date)}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <Input
+                    type="time"
+                    value={filters.endDate ? format(filters.endDate, 'HH:mm') : ''}
+                    onChange={(event) => handleTimeChange('endDate', event.target.value)}
+                    className="sm:w-32"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Usuário</p>
+                <Select
+                  value={filters.user}
+                  onValueChange={(value) => setFilters((prev) => ({ ...prev, user: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todos os usuários" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os usuários</SelectItem>
+                    {uniqueUsers.map((user) => (
+                      <SelectItem key={user} value={user}>
+                        {user}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Ação</p>
+                <Select
+                  value={filters.action}
+                  onValueChange={(value) => setFilters((prev) => ({ ...prev, action: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todas as ações" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as ações</SelectItem>
+                    {uniqueActions.map((action) => (
+                      <SelectItem key={action} value={action}>
+                        {action}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button variant="secondary" onClick={() => setFiltersOpen(false)}>
+                Aplicar filtros
+              </Button>
+              <Button variant="outline" onClick={handleClearFilters}>
+                Limpar filtros
+              </Button>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       </div>
 
       {loading ? (
