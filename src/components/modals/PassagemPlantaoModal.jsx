@@ -34,8 +34,6 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
   const [loading, setLoading] = useState(true);
   const {
     estrutura,
-    pacientes: pacientesDados = [],
-    leitos: leitosDados = [],
     infeccoes: infeccoesDados = [],
   } = useDadosHospitalares();
 
@@ -90,13 +88,6 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
   const estruturaOrdenada = useMemo(() => {
     if (!estrutura) return [];
 
-    const dados = {
-      pacientes: pacientesDados || [],
-      leitos: leitosDados || [],
-    };
-
-    const pacientesMap = new Map(dados.pacientes.map(p => [p.id, p]));
-    const leitosMap = new Map(dados.leitos.map(l => [l.id, l]));
     const infeccoesMap = new Map(infeccoesDados.map(i => [i.id, i]));
 
     const ordenarSetores = (tipoSetor, setores) => {
@@ -136,118 +127,73 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
           return { ...setor, dadosPlantao: null };
         }
 
+        // INÍCIO DA LÓGICA CORRIGIDA
         const dadosPlantao = {
-          isolamentos: [],
-          leitosRegulados: [],
-          leitosVagos: [],
-          pedidosUTI: [],
-          transferencias: [],
-          observacoes: [],
+          isolamentos: [], leitosRegulados: [], leitosVagos: [],
+          pedidosUTI: [], transferencias: [], observacoes: []
         };
 
-        const setorId = setor.id ?? setor.idSetor;
-        const leitosDoSetor = dados.leitos.filter(l => {
-          const leitoSetorId = l.setorId ?? l.setor?.id ?? l.setor?.idSetor;
-          if (!setorId || !leitoSetorId) {
-            return false;
-          }
-          return String(leitoSetorId) === String(setorId);
-        });
+        // A estrutura já contém os leitos dentro dos quartos ou como leitosSemQuarto
+        const todosOsLeitosDoSetor = [
+          ...(setor.quartos || []).flatMap(q => q.leitos),
+          ...(setor.leitosSemQuarto || [])
+        ];
 
-        leitosDoSetor.forEach(leito => {
-          const paciente = leito.pacienteId ? pacientesMap.get(leito.pacienteId) || leitosMap.get(leito.id)?.paciente : null;
-          const codigoLeito = leito.codigoLeito || leitosMap.get(leito.id)?.codigoLeito || 'Leito sem código';
+        todosOsLeitosDoSetor.forEach(leito => {
+          // --- ESTA É A CORREÇÃO PRINCIPAL ---
+          const paciente = leito.paciente; // Acessa o paciente aninhado diretamente!
 
-          if (leito.status === 'Vago' && !leito.reservaExterna && !leito.regulacaoEmAndamento) {
-            const compatibilidade = formatarMensagemRestricaoCoorte(leito.restricaoCoorte) || 'Livre';
-            dadosPlantao.leitosVagos.push({
-              id: leito.id,
-              codigoLeito,
-              status: leito.status,
-              compatibilidade,
-            });
+          // 1. Leitos Vagos (agora com a coorte correta)
+          if (leito.status === 'Vago' || leito.status === 'Higienização') {
+              const compatibilidade = leito.status === 'Vago' 
+                ? (formatarMensagemRestricaoCoorte(leito.restricaoCoorte) || 'Livre') 
+                : 'N/A';
+              dadosPlantao.leitosVagos.push({
+                  id: leito.id, codigoLeito: leito.codigoLeito,
+                  status: leito.status, compatibilidade: compatibilidade
+              });
           }
 
-          if (leito.status === 'Higienização') {
-            dadosPlantao.leitosVagos.push({
-              id: leito.id,
-              codigoLeito,
-              status: leito.status,
-              compatibilidade: 'N/A',
-            });
-          }
-
+          // 2. Leitos Regulados (Reservados)
           if (leito.status === 'Reservado' && leito.regulacaoEmAndamento) {
-            const infoReg = leito.regulacaoEmAndamento;
-            const dataInicio = infoReg.iniciadoEm?.toDate
-              ? infoReg.iniciadoEm.toDate()
-              : infoReg.iniciadoEm instanceof Date
-                ? infoReg.iniciadoEm
-                : null;
-            const tempo = dataInicio ? format(dataInicio, 'dd/MM HH:mm') : '';
-            const setorParceiro = infoReg.leitoParceiroSetorNome || 'Setor não informado';
-            const codigoParceiro = infoReg.leitoParceiroCodigo || '';
-            const nomePacienteRegulado = infoReg.pacienteNome || 'Paciente não informado';
-            dadosPlantao.leitosRegulados.push(
-              `${codigoLeito} ${nomePacienteRegulado} / VEM DE ${setorParceiro} ${codigoParceiro} (${tempo})`,
-            );
+              const infoReg = leito.regulacaoEmAndamento;
+              const tempo = infoReg.iniciadoEm?.toDate ? format(infoReg.iniciadoEm.toDate(), 'dd/MM HH:mm') : '';
+              dadosPlantao.leitosRegulados.push(
+                  `${leito.codigoLeito} ${infoReg.pacienteNome} / VEM DE ${infoReg.leitoParceiroSetorNome} ${infoReg.leitoParceiroCodigo} (${tempo})`
+              );
           }
 
+          // 3. Processa dados APENAS se houver um paciente no leito
           if (paciente) {
-            const nomePaciente = paciente.nomePaciente || paciente.nome || 'Paciente sem identificação';
-            if (paciente.isolamentos && paciente.isolamentos.length > 0) {
-              const nomesIsolamentos = paciente.isolamentos
-                .map(iso => {
-                  const infeccaoId = typeof iso.infeccaoId === 'object' ? iso.infeccaoId?.id : iso.infeccaoId;
-                  const infeccao = infeccoesMap.get(infeccaoId);
-                  return infeccao?.siglaInfeccao || infeccao?.sigla || 'Desconhecido';
-                })
-                .join(', ');
-              dadosPlantao.isolamentos.push(`${codigoLeito} ${nomePaciente}: ${nomesIsolamentos}`);
-            }
-
-            if (paciente.pedidoUTI) {
-              dadosPlantao.pedidosUTI.push(`${codigoLeito} ${nomePaciente}`);
-            }
-
-            if (paciente.pedidoTransferenciaExterna) {
-              const ped = paciente.pedidoTransferenciaExterna;
-              let ultimaAtualizacao = '';
-              if (ped.historicoStatus && ped.historicoStatus.length > 0) {
-                const ultimoStatus = ped.historicoStatus[ped.historicoStatus.length - 1];
-                ultimaAtualizacao = ultimoStatus?.texto ? ` | Última Info: ${ultimoStatus.texto}` : '';
+              // Isolamentos
+              if (paciente.isolamentos?.length > 0) {
+                  const nomesIsolamentos = paciente.isolamentos.map(iso => {
+                      const infeccao = infeccoesMap.get(iso.infeccaoId);
+                      return infeccao?.siglaInfeccao || infeccao?.sigla || 'Desconhecido';
+                  }).join(', ');
+                  dadosPlantao.isolamentos.push(`${leito.codigoLeito} ${paciente.nomePaciente}: ${nomesIsolamentos}`);
               }
-              const motivo = ped.motivo || 'Motivo não informado';
-              const destino = ped.destino || 'Destino não informado';
-              dadosPlantao.transferencias.push(
-                `${codigoLeito} ${nomePaciente} | Motivo: ${motivo} | Destino: ${destino}${ultimaAtualizacao}`,
-              );
-            }
 
-            if (paciente.observacoes && paciente.observacoes.length > 0) {
-              const obsMaisRecente = [...paciente.observacoes]
-                .sort((a, b) => {
-                  const dataA = a.timestamp?.toMillis
-                    ? a.timestamp.toMillis()
-                    : a.timestamp instanceof Date
-                      ? a.timestamp.getTime()
-                      : typeof a.timestamp === 'number'
-                        ? a.timestamp
-                        : 0;
-                  const dataB = b.timestamp?.toMillis
-                    ? b.timestamp.toMillis()
-                    : b.timestamp instanceof Date
-                      ? b.timestamp.getTime()
-                      : typeof b.timestamp === 'number'
-                        ? b.timestamp
-                        : 0;
-                  return dataB - dataA;
-                })[0];
-
-              if (obsMaisRecente?.texto) {
-                dadosPlantao.observacoes.push(`${codigoLeito} ${nomePaciente}: ${obsMaisRecente.texto}`);
+              // Pedidos de UTI
+              if (paciente.pedidoUTI) {
+                  dadosPlantao.pedidosUTI.push(`${leito.codigoLeito} ${paciente.nomePaciente}`);
               }
-            }
+
+              // Transferências Externas
+              if (paciente.pedidoTransferenciaExterna) {
+                  const ped = paciente.pedidoTransferenciaExterna;
+                  const ultimoStatus = ped.historicoStatus?.slice(-1)[0];
+                  const ultimaAtualizacao = ultimoStatus ? ` | Última Info: ${ultimoStatus.texto}` : '';
+                  dadosPlantao.transferencias.push(
+                      `${leito.codigoLeito} ${paciente.nomePaciente} | Motivo: ${ped.motivo} | Destino: ${ped.destino}${ultimaAtualizacao}`
+                  );
+              }
+
+              // Observações
+              if (paciente.observacoes?.length > 0) {
+                  const obsMaisRecente = [...paciente.observacoes].sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis())[0];
+                  dadosPlantao.observacoes.push(`${leito.codigoLeito} ${paciente.nomePaciente}: ${obsMaisRecente.texto}`);
+              }
           }
         });
 
@@ -269,7 +215,7 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
     const gruposExtras = tiposExtras.map((tipoSetor) => processarSetores(tipoSetor, estrutura[tipoSetor]));
 
     return [...gruposOrdenados, ...gruposExtras];
-  }, [estrutura, pacientesDados, leitosDados, infeccoesDados]);
+  }, [estrutura, infeccoesDados]);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
