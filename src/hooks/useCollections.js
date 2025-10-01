@@ -1,23 +1,31 @@
 // src/hooks/useCollections.js
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { onSnapshot } from 'firebase/firestore';
+import { 
+  getPacientesCollection, 
+  getLeitosCollection, 
+  getSetoresCollection, 
+  getInfeccoesCollection 
+} from '@/lib/firebase';
 
-const useCollection = (path) => {
+const useCollection = (getCollectionRef) => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, path), (snapshot) => {
+    const collectionRef = getCollectionRef();
+    const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setData(list);
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [path]);
+  }, [getCollectionRef]);
+  
   return { data, loading };
 };
 
-export const usePacientes = () => useCollection('artifacts/regulafacil/public/data/pacientes');
-export const useLeitos = () => useCollection('artifacts/regulafacil/public/data/leitos');
-export const useSetores = () => useCollection('artifacts/regulafacil/public/data/setores');
-export const useInfeccoes = () => useCollection('artifacts/regulafacil/public/data/infeccoes');
+export const usePacientes = () => useCollection(getPacientesCollection);
+export const useLeitos = () => useCollection(getLeitosCollection);
+export const useSetores = () => useCollection(getSetoresCollection);
+export const useInfeccoes = () => useCollection(getInfeccoesCollection);
