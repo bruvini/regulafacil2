@@ -380,7 +380,6 @@ const ConfirmarInternacaoExternaModal = ({ isOpen, onClose, reserva, leito }) =>
               }
             }
           }
-          }
 
           if ((setorPaciente === 'Setor não informado' || !setorPaciente) && pacienteExistente?.setorId) {
             const setorRef = doc(getSetoresCollection(), pacienteExistente.setorId);
