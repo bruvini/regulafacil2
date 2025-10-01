@@ -2,15 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader, ClipboardCopy, CheckCircle, Pencil, XCircle, FileText, MoreHorizontal } from "lucide-react";
+import { Loader, Copy, CheckCircle, Pencil, XCircle, FileText } from "lucide-react";
 import { intervalToDuration, differenceInMinutes } from 'date-fns';
 import { 
   getSetoresCollection, 
@@ -594,32 +587,74 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
           </div>
           <div className="text-xs font-medium text-muted-foreground">{tempoRegulacao}</div>
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuItem onSelect={() => handleCopiarTexto(paciente)}>
-              <ClipboardCopy className="mr-2 h-4 w-4" />
-              Copiar texto personalizado
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => setModalConcluir({ open: true, paciente })}>
-              <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
-              Concluir regulação
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setModalAlterar({ isOpen: true, regulacao: paciente })}>
-              <Pencil className="mr-2 h-4 w-4 text-blue-600" />
-              Alterar regulação
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setModalCancelar({ open: true, paciente })}>
-              <XCircle className="mr-2 h-4 w-4 text-destructive" />
-              Cancelar regulação
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <TooltipProvider>
+          <div className="flex items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 text-muted-foreground"
+                  onClick={() => handleCopiarTexto(paciente)}
+                  aria-label="Copiar mensagem"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Copiar mensagem</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 text-green-600/90 hover:text-green-600"
+                  onClick={() => setModalConcluir({ open: true, paciente })}
+                  aria-label="Concluir regulação"
+                >
+                  <CheckCircle className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Concluir regulação</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 text-blue-600/90 hover:text-blue-600"
+                  onClick={() => setModalAlterar({ isOpen: true, regulacao: paciente })}
+                  aria-label="Alterar regulação"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Alterar regulação</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 text-destructive"
+                  onClick={() => setModalCancelar({ open: true, paciente })}
+                  aria-label="Cancelar regulação"
+                >
+                  <XCircle className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Cancelar regulação</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </TooltipProvider>
       </div>
     );
   };

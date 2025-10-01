@@ -18,7 +18,6 @@ import {
   getSetoresCollection,
   getLeitosCollection,
   getPacientesCollection,
-  getInfeccoesCollection,
   onSnapshot,
   writeBatch,
   doc,
@@ -30,6 +29,7 @@ import RegularPacienteModal from '@/components/modals/RegularPacienteModal';
 import { useToast } from '@/hooks/use-toast';
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDadosHospitalares } from '@/hooks/useDadosHospitalares';
 
 const extrairIsolamentosAtivos = (isolamentos) => {
   if (!isolamentos) return [];
@@ -57,7 +57,6 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
   const [setores, setSetores] = useState([]);
   const [pacientes, setPacientes] = useState([]);
   const [leitos, setLeitos] = useState([]);
-  const [infeccoes, setInfeccoes] = useState([]);
   const [modalRegularAberto, setModalRegularAberto] = useState(false);
   const [pacienteSelecionado, setPacienteSelecionado] = useState(null);
   const [pacienteAlta, setPacienteAlta] = useState(null);
@@ -65,6 +64,11 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
   const [processandoAlta, setProcessandoAlta] = useState(false);
   const { toast } = useToast();
   const { currentUser } = useAuth();
+  const { infeccoes } = useDadosHospitalares();
+
+  const infeccoesMap = useMemo(() => {
+    return new Map((infeccoes || []).map((infeccao) => [infeccao.id, infeccao]));
+  }, [infeccoes]);
 
   useEffect(() => {
     const unsubscribeSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
@@ -93,19 +97,10 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
       setLeitos(leitosData);
     });
 
-    const unsubscribeInfeccoes = onSnapshot(getInfeccoesCollection(), (snapshot) => {
-      const infeccoesData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setInfeccoes(infeccoesData);
-    });
-
     return () => {
       unsubscribeSetores();
       unsubscribePacientes();
       unsubscribeLeitos();
-      unsubscribeInfeccoes();
     };
   }, []);
 
@@ -450,18 +445,36 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
 
           {isolamentosAtivos.length > 0 && (
             <div className="flex flex-wrap gap-1">
-              {isolamentosAtivos.map((iso, index) => (
-                <Badge
-                  key={`${paciente.id || paciente.nomePaciente || 'paciente'}-${
-                    typeof iso === 'string' ? iso : iso?.sigla || iso?.nome || 'iso'
-                  }-${index}`}
-                  variant="destructive"
-                  className="text-xs flex items-center gap-1"
-                >
-                  <Shield className="h-3 w-3" />
-                  {typeof iso === 'string' ? iso : iso?.sigla || iso?.nome || 'Isolamento'}
-                </Badge>
-              ))}
+              {isolamentosAtivos.map((iso, index) => {
+                const infeccao =
+                  typeof iso === 'object' && iso?.infeccaoId
+                    ? infeccoesMap.get(iso.infeccaoId)
+                    : null;
+                const badgeTexto =
+                  typeof iso === 'string'
+                    ? iso
+                    : [
+                        iso?.sigla,
+                        iso?.siglaInfeccao,
+                        infeccao?.siglaInfeccao,
+                        infeccao?.sigla,
+                        iso?.nome,
+                        infeccao?.nomeInfeccao,
+                      ].find((valor) => valor && String(valor).trim().length > 0) || 'Isolamento';
+
+                return (
+                  <Badge
+                    key={`${paciente.id || paciente.nomePaciente || 'paciente'}-${
+                      typeof badgeTexto === 'string' ? badgeTexto : 'iso'
+                    }-${index}`}
+                    variant="destructive"
+                    className="text-xs flex items-center gap-1"
+                  >
+                    <Shield className="h-3 w-3" />
+                    {badgeTexto}
+                  </Badge>
+                );
+              })}
             </div>
           )}
 

@@ -62,6 +62,7 @@ import {
   getAuditoriaCollection,
   getInfeccoesCollection,
   getReservasExternasCollection,
+  getHistoricoRegulacoesCollection,
   onSnapshot,
   query,
   orderBy,
@@ -491,6 +492,7 @@ const HomePage = ({ onNavigate, currentUser }) => {
   const [todosLogs, setTodosLogs] = useState([]);
   const [reservas, setReservas] = useState([]);
   const [infeccoes, setInfeccoes] = useState([]);
+  const [historicoRegulacoes, setHistoricoRegulacoes] = useState([]);
   const { hasPermission } = useAuth();
 
   useEffect(() => {
@@ -525,6 +527,25 @@ const HomePage = ({ onNavigate, currentUser }) => {
   }, []);
 
   useEffect(() => {
+    const historicoQuery = query(
+      getHistoricoRegulacoesCollection(),
+      orderBy('dataInicio', 'desc'),
+      limit(10)
+    );
+
+    const unsubscribe = onSnapshot(historicoQuery, (snapshot) => {
+      const registros = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      setHistoricoRegulacoes(registros);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
     const auditoriaQuery = query(
       getAuditoriaCollection(),
       orderBy('timestamp', 'desc'),
@@ -547,6 +568,14 @@ const HomePage = ({ onNavigate, currentUser }) => {
     if (valor === undefined || valor === null) return '';
     return String(valor).toLowerCase();
   }, []);
+
+  const normalizarSemAcento = useCallback(
+    (valor) =>
+      normalizar(valor)
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, ''),
+    [normalizar]
+  );
 
   const matchesAction = useCallback(
     (log, actions = [], keywords = []) => {
@@ -644,13 +673,83 @@ const HomePage = ({ onNavigate, currentUser }) => {
     return log?.userName || log?.usuario || 'Usuário';
   }, []);
 
-  const regulacaoLogs = useMemo(
-    () =>
-      limitarLogs(
-        auditoriaEventos.filter((log) => matchesAction(log, REGULACAO_ACTIONS, REGULACAO_KEYWORDS))
-      ),
-    [auditoriaEventos, matchesAction, limitarLogs]
+  const construirMensagemHistoricoRegulacao = useCallback(
+    (registro) => {
+      if (!registro) return 'Atualização de regulação registrada.';
+
+      const paciente = registro.pacienteNome || registro.nomePaciente || 'paciente';
+      const statusBruto = registro.statusFinal || registro.status || registro.resultado || '';
+      const tipoBruto =
+        registro.tipo ||
+        registro.tipoRegulacao ||
+        registro.modalidade ||
+        registro.modo ||
+        registro.categoria ||
+        '';
+
+      const statusNormalizado = normalizar(statusBruto);
+      const statusSemAcento = normalizarSemAcento(statusBruto);
+      const tipoSemAcento = normalizarSemAcento(tipoBruto);
+
+      if (statusSemAcento === 'concluida') {
+        return `Regulação concluída para ${paciente}.`;
+      }
+
+      if (statusSemAcento === 'cancelada') {
+        const motivo = registro.motivoCancelamento || registro.motivo || registro.justificativa;
+        const detalheMotivo = motivo ? ` (motivo: ${motivo})` : '';
+        return `Regulação cancelada para ${paciente}${detalheMotivo}.`;
+      }
+
+      if (statusSemAcento === 'alterada') {
+        return `Regulação alterada para ${paciente}.`;
+      }
+
+      if (tipoSemAcento === 'internacao') {
+        return `Internação iniciada para ${paciente}.`;
+      }
+
+      if (tipoSemAcento === 'transferencia externa') {
+        return `Transferência externa iniciada para ${paciente}.`;
+      }
+
+      if (tipoSemAcento === 'transferencia interna' || tipoSemAcento === 'remanejamento') {
+        return `Regulação iniciada para ${paciente}.`;
+      }
+
+      if (statusNormalizado === 'em andamento' || statusSemAcento === 'em andamento' || !statusBruto) {
+        return `Regulação iniciada para ${paciente}.`;
+      }
+
+      return `Atualização de regulação para ${paciente}.`;
+    },
+    [normalizar, normalizarSemAcento]
   );
+
+  const regulacaoLogs = useMemo(() => {
+    const logs = (historicoRegulacoes || []).map((registro) => {
+      const statusBruto = registro.statusFinal || registro.status || registro.resultado || '';
+      const statusSemAcento = normalizarSemAcento(statusBruto);
+
+      const dataReferencia =
+        registro.dataAtualizacao ||
+        registro.dataAtualizadoEm ||
+        (statusSemAcento === 'concluida' && registro.dataConclusao) ||
+        (statusSemAcento === 'cancelada' && registro.dataCancelamento) ||
+        registro.dataInicio;
+
+      return {
+        ...registro,
+        type: 'regulacao',
+        module: 'Regulação de Leitos',
+        action: statusBruto || registro.tipo || 'Regulação',
+        mensagemFeed: construirMensagemHistoricoRegulacao(registro),
+        eventTimestamp: dataReferencia || registro.dataInicio || null,
+      };
+    });
+
+    return limitarLogs(logs);
+  }, [historicoRegulacoes, construirMensagemHistoricoRegulacao, limitarLogs, normalizarSemAcento]);
 
   const isolamentoLogs = useMemo(
     () =>
@@ -715,6 +814,10 @@ const HomePage = ({ onNavigate, currentUser }) => {
 
   const formatRegulacaoMensagem = useCallback(
     (log) => {
+      if (log?.mensagemFeed) {
+        return log.mensagemFeed;
+      }
+
       const detalhes = getDetalhesObjeto(log);
       const usuario = getNomeUsuario(log);
       const paciente = detalhes.pacienteNome || detalhes.paciente || '';
