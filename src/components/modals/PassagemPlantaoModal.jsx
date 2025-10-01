@@ -71,22 +71,48 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
   const estruturaOrdenada = useMemo(() => {
     if (!estrutura) return [];
 
-    return ORDEM_TIPO_SETOR.map((tipoSetor) => {
-      const setoresDoTipo = estrutura[tipoSetor] || [];
+    const ordenarSetores = (tipoSetor, setores) => {
       const ordemParaTipo = ORDEM_SETORES[tipoSetor] || [];
 
-      const setoresOrdenados = [...setoresDoTipo].sort((a, b) => {
+      return [...setores].sort((a, b) => {
         const indexA = ordemParaTipo.indexOf(a.nomeSetor);
         const indexB = ordemParaTipo.indexOf(b.nomeSetor);
+
+        if (ordemParaTipo.length === 0) {
+          return a.nomeSetor.localeCompare(b.nomeSetor);
+        }
+
+        if (indexA === -1 && indexB === -1) {
+          return a.nomeSetor.localeCompare(b.nomeSetor);
+        }
 
         if (indexA === -1) return 1;
         if (indexB === -1) return -1;
 
         return indexA - indexB;
       });
+    };
 
-      return { tipoSetor, setores: setoresOrdenados };
-    }).filter((grupo) => grupo.setores.length > 0);
+    const tiposEstrutura = Object.keys(estrutura);
+
+    const gruposOrdenados = ORDEM_TIPO_SETOR.filter(
+      (tipoSetor) => Array.isArray(estrutura[tipoSetor]) && estrutura[tipoSetor].length > 0,
+    ).map((tipoSetor) => ({
+      tipoSetor,
+      setores: ordenarSetores(tipoSetor, estrutura[tipoSetor]),
+    }));
+
+    const tiposExtras = tiposEstrutura
+      .filter((tipoSetor) => !ORDEM_TIPO_SETOR.includes(tipoSetor))
+      .filter((tipoSetor) => Array.isArray(estrutura[tipoSetor]) && estrutura[tipoSetor].length > 0)
+      .sort((a, b) => a.localeCompare(b));
+
+    const gruposExtras = tiposExtras.map((tipoSetor) => ({
+      tipoSetor,
+      setores: ordenarSetores(tipoSetor, estrutura[tipoSetor]),
+    }));
+
+    return [...gruposOrdenados, ...gruposExtras];
   }, [estrutura]);
 
   return (
