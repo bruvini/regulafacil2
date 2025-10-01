@@ -84,6 +84,7 @@ import GestaoIsolamentosPage from './GestaoIsolamentosPage';
 import CentralHigienizacaoPage from './CentralHigienizacaoPage';
 import GestaoUsuariosPage from './GestaoUsuariosPage';
 import GestaoEstrategicaPage from '../pages/GestaoEstrategicaPage';
+import AuditoriaPage from '../pages/AuditoriaPage';
 import GestaoPacientesPage from './GestaoPacientesPage';
 
 // Dados de navegação
@@ -1504,17 +1505,7 @@ const RegulaFacilApp = () => {
             case "gestao-estrategica":
               return <GestaoEstrategicaPage />;
             case "auditoria":
-              return (
-                <div className="p-8 text-center">
-                  <Construction className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                  <h2 className="text-xl font-semibold text-foreground mb-2">
-                    Auditoria
-                  </h2>
-                  <p className="text-muted-foreground">
-                    Este módulo está em desenvolvimento.
-                  </p>
-                </div>
-              );
+              return <AuditoriaPage />;
             case "gestao-pacientes":
               return <GestaoPacientesPage />;
             default:
