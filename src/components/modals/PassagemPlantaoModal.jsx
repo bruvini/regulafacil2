@@ -13,13 +13,35 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import { useDadosHospitalares } from "@/hooks/useDadosHospitalares";
 
 const PassagemPlantaoModal = ({ isOpen, onClose }) => {
   const [loading, setLoading] = useState(true);
   const { estrutura } = useDadosHospitalares();
+
+  const ORDEM_TIPO_SETOR = ["Enfermaria", "UTI", "Centro Cirúrgico", "Emergência"];
+
+  const ORDEM_SETORES = {
+    Enfermaria: [
+      "UNID. JS ORTOPEDIA",
+      "UNID. INT. GERAL - UIG",
+      "UNID. DE AVC - INTEGRAL",
+      "UNID. NEFROLOGIA TRANSPLANTE",
+      "UNID. CIRURGICA",
+      "UNID. ONCOLOGIA",
+      "UNID. CLINICA MEDICA",
+    ],
+    UTI: ["UTI"],
+    "Centro Cirúrgico": ["CC - RECUPERAÇÃO", "CC - SALAS CIRURGICAS"],
+    Emergência: [
+      "UNID. AVC AGUDO",
+      "SALA DE EMERGENCIA",
+      "SALA LARANJA",
+      "PS DECISÃO CIRURGICA",
+      "PS DECISão CLINICA",
+    ],
+  };
 
   useEffect(() => {
     let timeoutId;
@@ -46,11 +68,30 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
     }
   };
 
-  const estruturaHospitalar = useMemo(() => Object.entries(estrutura || {}), [estrutura]);
+  const estruturaOrdenada = useMemo(() => {
+    if (!estrutura) return [];
+
+    return ORDEM_TIPO_SETOR.map((tipoSetor) => {
+      const setoresDoTipo = estrutura[tipoSetor] || [];
+      const ordemParaTipo = ORDEM_SETORES[tipoSetor] || [];
+
+      const setoresOrdenados = [...setoresDoTipo].sort((a, b) => {
+        const indexA = ordemParaTipo.indexOf(a.nomeSetor);
+        const indexB = ordemParaTipo.indexOf(b.nomeSetor);
+
+        if (indexA === -1) return 1;
+        if (indexB === -1) return -1;
+
+        return indexA - indexB;
+      });
+
+      return { tipoSetor, setores: setoresOrdenados };
+    }).filter((grupo) => grupo.setores.length > 0);
+  }, [estrutura]);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-5xl">
         <DialogHeader>
           <DialogTitle>Relatório de Passagem de Plantão</DialogTitle>
         </DialogHeader>
@@ -65,40 +106,34 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
             </div>
           ) : (
             <div className="space-y-4">
-              {estruturaHospitalar.length === 0 ? (
+              {estruturaOrdenada.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   Nenhum setor disponível no momento.
                 </p>
               ) : (
-                estruturaHospitalar.map(([tipoSetor, setoresDoTipo]) => (
-                  <Accordion
-                    key={tipoSetor}
-                    type="single"
-                    collapsible
-                    className="rounded-lg border"
-                  >
-                    <AccordionItem value={tipoSetor}>
-                      <AccordionTrigger className="px-4 text-left">
-                        <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                          {tipoSetor}
-                        </span>
+                <Accordion type="multiple" className="w-full space-y-4">
+                  {estruturaOrdenada.map(({ tipoSetor, setores }) => (
+                    <AccordionItem key={tipoSetor} value={tipoSetor}>
+                      <AccordionTrigger className="text-xl font-semibold">
+                        {tipoSetor}
                       </AccordionTrigger>
-                      <AccordionContent className="px-4">
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          {setoresDoTipo.map((setor) => (
-                            <Card key={setor?.idSetor ?? setor?.nomeSetor}>
-                              <CardHeader className="py-4">
-                                <CardTitle className="text-base font-medium">
-                                  {setor?.nomeSetor}
-                                </CardTitle>
-                              </CardHeader>
-                            </Card>
+                      <AccordionContent>
+                        <div className="flex flex-col space-y-2 pt-2">
+                          {setores.map((setor) => (
+                            <div
+                              key={setor?.idSetor ?? setor?.id ?? setor?.nomeSetor}
+                              className="w-full rounded-md border p-4"
+                            >
+                              <h4 className="text-md font-medium">
+                                {setor?.nomeSetor}
+                              </h4>
+                            </div>
                           ))}
                         </div>
                       </AccordionContent>
                     </AccordionItem>
-                  </Accordion>
-                ))
+                  ))}
+                </Accordion>
               )}
             </div>
           )}
