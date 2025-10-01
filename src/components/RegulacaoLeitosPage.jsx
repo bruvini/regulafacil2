@@ -44,7 +44,7 @@ const RegulacaoLeitosPage = () => {
   const [regularModalAberto, setRegularModalAberto] = useState(false);
   const [pacienteSugestao, setPacienteSugestao] = useState(null);
   const [leitoSugestao, setLeitoSugestao] = useState(null);
-  const [isPassagemPlantaoModalOpen, setPassagemPlantaoModalOpen] = useState(false);
+  const [isPassagemPlantaoOpen, setPassagemPlantaoOpen] = useState(false);
 
   const handleFecharRegularModal = () => {
     setRegularModalAberto(false);
@@ -92,7 +92,7 @@ const RegulacaoLeitosPage = () => {
               <Button
                 variant="outline"
                 className="flex items-center gap-2"
-                onClick={() => setPassagemPlantaoModalOpen(true)}
+                onClick={() => setPassagemPlantaoOpen(true)}
               >
                 <BookUser className="h-4 w-4" />
                 Passagem de Plantão
@@ -196,8 +196,8 @@ const RegulacaoLeitosPage = () => {
         />
       )}
       <PassagemPlantaoModal
-        isOpen={isPassagemPlantaoModalOpen}
-        onClose={() => setPassagemPlantaoModalOpen(false)}
+        isOpen={isPassagemPlantaoOpen}
+        onClose={() => setPassagemPlantaoOpen(false)}
       />
     </div>
   );
