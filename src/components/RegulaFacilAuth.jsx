@@ -748,8 +748,14 @@ const HomePage = ({ onNavigate, currentUser }) => {
       };
     });
 
-    return limitarLogs(logs);
-  }, [historicoRegulacoes, construirMensagemHistoricoRegulacao, limitarLogs, normalizarSemAcento]);
+    return limitarLogs(ordenarPorDataDesc(logs));
+  }, [
+    historicoRegulacoes,
+    construirMensagemHistoricoRegulacao,
+    limitarLogs,
+    normalizarSemAcento,
+    ordenarPorDataDesc,
+  ]);
 
   const isolamentoLogs = useMemo(
     () =>
