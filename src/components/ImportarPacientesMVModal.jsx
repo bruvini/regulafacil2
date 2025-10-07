@@ -43,6 +43,7 @@ import { writeBatch } from 'firebase/firestore';
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { adicionarConclusaoRegulacaoAoBatch } from '@/lib/regulacao';
 
 const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
   const [currentStep, setCurrentStep] = useState('instructions'); // instructions, processing, validation, confirmation, completed
@@ -535,6 +536,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     });
 
     const leitosNaoEncontrados = Array.from(errosLeitosMap.values());
+    const logsRegulacoes = [];
 
     const totalOperacoes =
       (processedData.altas?.length || 0) +
@@ -551,6 +553,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     try {
       const batch = writeBatch(db);
       const leitosParaAtualizar = new Set();
+      const pacientesFinais = {};
 
       // Executar altas (deletar pacientes)
       processedData.altas.forEach(paciente => {
@@ -597,66 +600,60 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
 
       // EXECUTAR CONCLUSÕES AUTOMÁTICAS DE REGULAÇÕES
       if (processedData.regulacoesProcessadas && processedData.regulacoesProcessadas.concluidas) {
+        const montarInfoLeito = (leitoDoc) => {
+          if (!leitoDoc) return null;
+          const setorLeito = setoresPorId[leitoDoc.setorId] || null;
+
+          return {
+            id: leitoDoc.id,
+            codigo: leitoDoc.codigoLeito || leitoDoc.codigo,
+            codigoLeito: leitoDoc.codigoLeito || leitoDoc.codigo,
+            siglaSetor: setorLeito?.siglaSetor,
+            nomeSetor: setorLeito?.nomeSetor,
+            setorId: leitoDoc.setorId || setorLeito?.id
+          };
+        };
+
         processedData.regulacoesProcessadas.concluidas.forEach(({ paciente, leitoDestino, leitoOriginalmente }) => {
-          const pacienteRef = doc(db, PATIENTS_COLLECTION_PATH, paciente.id);
+          const leitoOrigemDoc = processedData.leitos[`__ID__${paciente.regulacaoAtiva.leitoOrigemId}`];
+          const infoLeitoOrigem = montarInfoLeito(leitoOrigemDoc);
+          const infoLeitoDestino = montarInfoLeito(leitoDestino);
+          const infoLeitoOriginal = leitoOriginalmente ? montarInfoLeito(leitoOriginalmente) : null;
+          const setorDestinoInfo = infoLeitoDestino?.setorId ? setoresPorId[infoLeitoDestino.setorId] : null;
 
-          // Remover regulacaoAtiva e atualizar posição do paciente
-          batch.update(pacienteRef, {
-            regulacaoAtiva: deleteField(),
-            leitoId: leitoDestino.id,
-            setorId: leitoDestino.setorId
+          const resultado = adicionarConclusaoRegulacaoAoBatch({
+            batch,
+            paciente,
+            currentUser,
+            leitoOrigem: infoLeitoOrigem,
+            leitoDestino: infoLeitoDestino,
+            setorDestino: setorDestinoInfo,
+            liberarLeitosAdicionais: infoLeitoOriginal && infoLeitoOriginal.id !== infoLeitoDestino?.id
+              ? [infoLeitoOriginal]
+              : []
           });
 
-          // Se o paciente tinha pedido de UTI e foi para UTI, remover o pedido
-          const setorDestino = processedData.setores[Object.keys(processedData.setores).find(k =>
-            processedData.setores[k].id === leitoDestino.setorId
-          )];
-
-          if (paciente.pedidoUTI && setorDestino?.tipoSetor === 'UTI') {
-            batch.update(pacienteRef, {
-              pedidoUTI: deleteField()
-            });
+          if (resultado.destinoLeitoId) {
+            pacientesFinais[resultado.destinoLeitoId] = true;
           }
 
-          // Atualizar leito de origem (liberá-lo)
-          const leitoOrigemRef = doc(db, BEDS_COLLECTION_PATH, paciente.regulacaoAtiva.leitoOrigemId);
-          batch.update(leitoOrigemRef, {
-            regulacaoEmAndamento: deleteField(),
-            status: 'Higienização',
-            historico: arrayUnion({
-              status: 'Higienização',
-              timestamp: serverTimestamp()
-            })
-          });
-
-          // Atualizar leito de destino (ocupá-lo)
-          const leitoDestinoRef = doc(db, BEDS_COLLECTION_PATH, leitoDestino.id);
-          batch.update(leitoDestinoRef, {
-            regulacaoEmAndamento: deleteField(),
-            status: 'Ocupado',
-            historico: arrayUnion({
-              status: 'Ocupado',
-              timestamp: serverTimestamp()
-            })
-          });
-
-          // Se foi regulação por aproximação, liberar leito originalmente destinado
-          if (leitoOriginalmente && leitoOriginalmente.id !== leitoDestino.id) {
-            const leitoOriginalRef = doc(db, BEDS_COLLECTION_PATH, leitoOriginalmente.id);
-            batch.update(leitoOriginalRef, {
-              regulacaoEmAndamento: deleteField(),
-              status: 'Vago',
-              historico: arrayUnion({
-                status: 'Vago',
-                timestamp: serverTimestamp()
-              })
-            });
+          if (paciente.regulacaoAtiva?.leitoOrigemId) {
+            pacientesFinais[paciente.regulacaoAtiva.leitoOrigemId] = false;
           }
+
+          if (infoLeitoOriginal && infoLeitoOriginal.id !== resultado.destinoLeitoId) {
+            pacientesFinais[infoLeitoOriginal.id] = false;
+          }
+
+          resultado.leitosEnvolvidos.forEach((leitoId) => {
+            if (leitoId && leitosIdSet.has(leitoId)) {
+              leitosParaAtualizar.add(leitoId);
+            }
+          });
+
+          logsRegulacoes.push(...resultado.logEntries);
         });
       }
-
-      // Atualizar status dos leitos afetados
-      const pacientesFinais = {};
 
       movimentacoesValidas.forEach(({ dadosNovos }) => {
         pacientesFinais[dadosNovos.leitoId] = true;
@@ -685,6 +682,12 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       // Executar batch
       await batch.commit();
 
+      if (logsRegulacoes.length > 0) {
+        for (const message of logsRegulacoes) {
+          await logAction('Regulação de Leitos', message, currentUser);
+        }
+      }
+
       // Log de auditoria
       let logMessage = `Sincronização via MV concluída: ${syncSummary.altas} altas, ${syncSummary.movimentacoes} movimentações, ${syncSummary.internacoes} internações`;
 
@@ -702,16 +705,21 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
 
       setCurrentStep('completed');
 
+      const conclusoesAutomaticas = syncSummary.regulacoesConcluidas || 0;
+      const conclusoesTexto = conclusoesAutomaticas > 0
+        ? ` ${conclusoesAutomaticas} regulação${conclusoesAutomaticas > 1 ? 'es' : ''} concluída${conclusoesAutomaticas > 1 ? 's' : ''} automaticamente.`
+        : '';
+
       if (leitosNaoEncontrados.length > 0) {
         const detalhes = leitosNaoEncontrados
           .map(({ nomePaciente, codigoLeito }) => `${nomePaciente} (Leito ${codigoLeito || 'não informado'})`)
           .join(', ');
 
         toast.success(
-          `Sincronização concluída. Atenção: Os seguintes pacientes não foram importados pois seus leitos não foram encontrados: ${detalhes}.`
+          `Sincronização concluída.${conclusoesTexto} Atenção: Os seguintes pacientes não foram importados pois seus leitos não foram encontrados: ${detalhes}.`
         );
       } else {
-        toast.success('Sincronização concluída com sucesso!');
+        toast.success(`Sincronização concluída com sucesso!${conclusoesTexto}`);
       }
 
     } catch (error) {
