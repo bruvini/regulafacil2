@@ -1,6 +1,8 @@
 // src/hooks/useDadosHospitalares.js
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { usePacientes, useLeitos, useSetores, useInfeccoes } from './useCollections';
+import { useAuth } from '@/contexts/AuthContext';
+import { verificarEFinalizarPedidosUTIAtendidos } from '@/lib/utiUtils';
 
 // Função interna para processar e enriquecer os dados
 const processarDados = (pacientes, leitos, setores, infeccoes) => {
@@ -222,6 +224,7 @@ export const useDadosHospitalares = () => {
   const { data: leitos, loading: loadingLeitos } = useLeitos();
   const { data: setores, loading: loadingSetores } = useSetores();
   const { data: infeccoes, loading: loadingInfeccoes } = useInfeccoes();
+  const { currentUser } = useAuth();
 
   const isLoading = loadingPacientes || loadingLeitos || loadingSetores || loadingInfeccoes;
 
@@ -229,6 +232,22 @@ export const useDadosHospitalares = () => {
     if (isLoading) return { estrutura: {}, pacientesEnriquecidos: [], infeccoesMap: new Map() };
     return processarDados(pacientes, leitos, setores, infeccoes);
   }, [pacientes, leitos, setores, infeccoes, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+
+    const finalizarPedidos = async () => {
+      try {
+        await verificarEFinalizarPedidosUTIAtendidos(pacientes, leitos, setores, currentUser);
+      } catch (error) {
+        console.error('Não foi possível finalizar automaticamente pedidos de UTI atendidos:', error);
+      }
+    };
+
+    finalizarPedidos();
+  }, [isLoading, pacientes, leitos, setores, currentUser]);
 
   return {
     ...dadosProcessados,
