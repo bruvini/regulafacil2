@@ -864,7 +864,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
                   Acessar Painel <ExternalLink className="h-3 w-3" />
                 </a>
               </li>
-              <li><strong>Login:</strong> <code>NIR</code>, <strong>Senha:</strong> <code>nir@2025</code></li>
+              <li><strong>Login:</strong> <code>nir</code>, <strong>Senha:</strong> <code>nir</code></li>
               <li>Em "Indicadores", localize o painel <strong>"NIR - Ocupação Setores"</strong></li>
               <li>Clique no ícone de banco de dados, depois em <strong>"Exportar"</strong></li>
               <li>Selecione o formato <strong>"XLS"</strong> e clique no ícone de disquete para salvar</li>
