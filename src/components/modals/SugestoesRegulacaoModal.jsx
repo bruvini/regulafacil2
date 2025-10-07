@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,11 +11,83 @@ import {
   AlertDescription,
   AlertTitle,
 } from "@/components/ui/alert";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { useDadosHospitalares } from "@/hooks/useDadosHospitalares";
 
 const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
+  const { setores = [], leitos = [] } = useDadosHospitalares();
+
+  const setoresEnfermariaDisponiveis = useMemo(() => {
+    if (!setores.length || !leitos.length) {
+      return [];
+    }
+
+    const statusPermitidos = new Set(["Vago", "Higienização"]);
+    const leitosPorSetor = new Map();
+
+    leitos.forEach((leito) => {
+      const setorId = leito?.setorId;
+      if (!setorId || !statusPermitidos.has(leito?.status)) {
+        return;
+      }
+
+      if (!leitosPorSetor.has(setorId)) {
+        leitosPorSetor.set(setorId, []);
+      }
+
+      leitosPorSetor.get(setorId).push(leito);
+    });
+
+    return setores
+      .filter((setor) => (setor?.tipoSetor || "").toLowerCase() === "enfermaria")
+      .map((setor) => {
+        const leitosDisponiveis = leitosPorSetor.get(setor.id) || [];
+
+        if (!leitosDisponiveis.length) {
+          return null;
+        }
+
+        const nomeSetor =
+          setor?.nomeSetor || setor?.nome || setor?.siglaSetor || "Setor sem nome";
+
+        const leitosOrdenados = [...leitosDisponiveis]
+          .sort((a, b) =>
+            String(a?.codigoLeito || "").localeCompare(String(b?.codigoLeito || ""))
+          )
+          .map((leito) => {
+            const identificadorBase =
+              leito?.codigoLeito || leito?.nomeLeito || leito?.nome || String(leito?.id || "");
+            const label = identificadorBase
+              ? (identificadorBase.toLowerCase().startsWith("leito")
+                  ? identificadorBase
+                  : `Leito ${identificadorBase}`)
+              : "Leito sem código";
+
+            return {
+              id: leito.id,
+              label,
+              status: leito?.status || "Sem status",
+            };
+          });
+
+        return {
+          id: setor.id,
+          nome: nomeSetor,
+          leitos: leitosOrdenados,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [setores, leitos]);
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
+      <DialogContent className="max-w-5xl">
         <DialogHeader>
           <DialogTitle>Sugestões de Regulação</DialogTitle>
           <DialogDescription>
@@ -53,9 +125,43 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
               </div>
             </AlertDescription>
           </Alert>
-          <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
-            A lista de pacientes e leitos sugeridos será exibida aqui em breve.
-          </div>
+          {setoresEnfermariaDisponiveis.length ? (
+            <Accordion type="multiple" className="space-y-4">
+              {setoresEnfermariaDisponiveis.map((setor) => (
+                <AccordionItem key={setor.id} value={String(setor.id)}>
+                  <AccordionTrigger>{setor.nome}</AccordionTrigger>
+                  <AccordionContent>
+                    <Accordion type="multiple" className="space-y-2">
+                      {setor.leitos.map((leito) => (
+                        <AccordionItem
+                          key={leito.id}
+                          value={`${setor.id}-${leito.id}`}
+                        >
+                          <AccordionTrigger>
+                            <div className="flex w-full items-center justify-between text-left">
+                              <span>{leito.label}</span>
+                              <span className="text-xs font-medium text-muted-foreground">
+                                {leito.status}
+                              </span>
+                            </div>
+                          </AccordionTrigger>
+                          <AccordionContent>
+                            <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                              A lista de pacientes compatíveis será exibida aqui.
+                            </div>
+                          </AccordionContent>
+                        </AccordionItem>
+                      ))}
+                    </Accordion>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          ) : (
+            <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
+              Nenhum leito de enfermaria disponível no momento.
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>
