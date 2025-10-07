@@ -1466,20 +1466,25 @@ const MapaLeitosPanel = () => {
         return false;
       }
 
-      const isolamentosPacienteIds = new Set(
-        (leito.paciente.isolamentos || [])
-          .map(iso => iso.infeccaoId)
-          .filter(Boolean)
-      );
+      const isolamentosAtivosPaciente = (leito.paciente.isolamentos || [])
+        .filter(iso => iso?.statusConsideradoAtivo)
+        .map(iso => {
+          const id = iso?.infeccaoId?.id ?? iso?.infeccaoId ?? iso?.infeccao?.id ?? iso?.idInfeccao ?? iso?.id;
+          return id !== undefined && id !== null ? String(id) : null;
+        })
+        .filter(Boolean);
 
-      const isolamentosFiltroIds = new Set(filtros.isolamentosSelecionados);
+      const isolamentosFiltroIds = filtros.isolamentosSelecionados.map(id => String(id));
 
-      if (isolamentosPacienteIds.size !== isolamentosFiltroIds.size) {
+      if (isolamentosAtivosPaciente.length !== isolamentosFiltroIds.length) {
         return false;
       }
 
-      for (const idFiltro of isolamentosFiltroIds) {
-        if (!isolamentosPacienteIds.has(idFiltro)) {
+      const idsPacienteOrdenados = [...isolamentosAtivosPaciente].sort();
+      const idsFiltroOrdenados = [...isolamentosFiltroIds].sort();
+
+      for (let index = 0; index < idsFiltroOrdenados.length; index += 1) {
+        if (idsPacienteOrdenados[index] !== idsFiltroOrdenados[index]) {
           return false;
         }
       }
