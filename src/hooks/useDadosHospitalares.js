@@ -1,6 +1,6 @@
 // src/hooks/useDadosHospitalares.js
 import { useMemo } from 'react';
-import { usePacientes, useLeitos, useSetores, useInfeccoes, useQuartos } from './useCollections';
+import { usePacientes, useLeitos, useSetores, useInfeccoes } from './useCollections';
 
 // Função interna para processar e enriquecer os dados
 const processarDados = (pacientes, leitos, setores, infeccoes) => {
@@ -215,9 +215,8 @@ export const useDadosHospitalares = () => {
   const { data: leitos, loading: loadingLeitos } = useLeitos();
   const { data: setores, loading: loadingSetores } = useSetores();
   const { data: infeccoes, loading: loadingInfeccoes } = useInfeccoes();
-  const { data: quartos, loading: loadingQuartos } = useQuartos();
 
-  const isLoading = loadingPacientes || loadingLeitos || loadingSetores || loadingInfeccoes || loadingQuartos;
+  const isLoading = loadingPacientes || loadingLeitos || loadingSetores || loadingInfeccoes;
 
   const dadosProcessados = useMemo(() => {
     if (isLoading) return { estrutura: {}, pacientesEnriquecidos: [], infeccoesMap: new Map() };
@@ -230,7 +229,6 @@ export const useDadosHospitalares = () => {
     leitos,
     setores,
     infeccoes,
-    quartos,
     loading: isLoading,
   };
 };
