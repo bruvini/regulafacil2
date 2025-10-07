@@ -21,6 +21,7 @@ import PanoramaDatePickerModal from './modals/PanoramaDatePickerModal';
 import PanoramaRegulacoesModal from './modals/PanoramaRegulacoesModal';
 import RegularPacienteModal from './modals/RegularPacienteModal';
 import PassagemPlantaoModal from './modals/PassagemPlantaoModal';
+import SugestoesRegulacaoModal from './modals/SugestoesRegulacaoModal';
 import IndicadoresPrincipais from './IndicadoresPrincipais';
 
 const filtrosIniciais = {
@@ -46,6 +47,7 @@ const RegulacaoLeitosPage = () => {
   const [pacienteSugestao, setPacienteSugestao] = useState(null);
   const [leitoSugestao, setLeitoSugestao] = useState(null);
   const [isPassagemPlantaoModalOpen, setPassagemPlantaoModalOpen] = useState(false);
+  const [isSugestoesModalOpen, setIsSugestoesModalOpen] = useState(false);
 
   const handleFecharRegularModal = () => {
     setRegularModalAberto(false);
@@ -98,8 +100,8 @@ const RegulacaoLeitosPage = () => {
               </Button>
               <Button
                 variant="outline"
-                className="flex items-center gap-2 opacity-60 cursor-not-allowed"
-                disabled
+                className="flex items-center gap-2"
+                onClick={() => setIsSugestoesModalOpen(true)}
               >
                 <Sparkles className="h-4 w-4" />
                 Sugestões de Regulação
@@ -197,6 +199,10 @@ const RegulacaoLeitosPage = () => {
       <PassagemPlantaoModal
         isOpen={isPassagemPlantaoModalOpen}
         onClose={() => setPassagemPlantaoModalOpen(false)}
+      />
+      <SugestoesRegulacaoModal
+        isOpen={isSugestoesModalOpen}
+        onClose={() => setIsSugestoesModalOpen(false)}
       />
     </div>
   );
