@@ -21,6 +21,7 @@ import PanoramaDatePickerModal from './modals/PanoramaDatePickerModal';
 import PanoramaRegulacoesModal from './modals/PanoramaRegulacoesModal';
 import RegularPacienteModal from './modals/RegularPacienteModal';
 import PassagemPlantaoModal from './modals/PassagemPlantaoModal';
+import IndicadoresPrincipais from './IndicadoresPrincipais';
 
 const filtrosIniciais = {
   searchTerm: '',
@@ -65,9 +66,7 @@ const RegulacaoLeitosPage = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground">
-              Métricas e KPIs serão exibidos aqui.
-            </p>
+            <IndicadoresPrincipais />
           </CardContent>
         </Card>
 
