@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { ROOMS_COLLECTION_PATH, PATIENTS_COLLECTION_PATH, BEDS_COLLECTION_PATH, SECTORS_COLLECTION_PATH, INFECTIONS_COLLECTION_PATH } from '@/lib/firebase-constants';
 
 const useCollection = (path) => {
   const [data, setData] = useState([]);
@@ -17,7 +18,8 @@ const useCollection = (path) => {
   return { data, loading };
 };
 
-export const usePacientes = () => useCollection('artifacts/regulafacil/public/data/pacientes');
-export const useLeitos = () => useCollection('artifacts/regulafacil/public/data/leitos');
-export const useSetores = () => useCollection('artifacts/regulafacil/public/data/setores');
-export const useInfeccoes = () => useCollection('artifacts/regulafacil/public/data/infeccoes');
+export const usePacientes = () => useCollection(PATIENTS_COLLECTION_PATH);
+export const useLeitos = () => useCollection(BEDS_COLLECTION_PATH);
+export const useSetores = () => useCollection(SECTORS_COLLECTION_PATH);
+export const useInfeccoes = () => useCollection(INFECTIONS_COLLECTION_PATH);
+export const useQuartos = () => useCollection(ROOMS_COLLECTION_PATH);
