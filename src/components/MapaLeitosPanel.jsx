@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
   ChevronDown,
@@ -406,13 +407,35 @@ const LeitoCard = ({
               <StickyNote className="h-4 w-4 mr-2" />
               OBSERVAÇÕES
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => onSolicitarUTI(leito.paciente)}
-              disabled={leito.setor?.tipoSetor === 'UTI'}
-            >
-              <AlertTriangle className="h-4 w-4 mr-2" />
-              {leito.paciente?.pedidoUTI ? 'REMOVER PEDIDO UTI' : 'SOLICITAR UTI'}
-            </DropdownMenuItem>
+            {(() => {
+              const estaEmSetorUTI = (leito.tipoSetor || '').toUpperCase() === 'UTI';
+              const item = (
+                <DropdownMenuItem
+                  onClick={() => onSolicitarUTI(leito.paciente)}
+                  disabled={estaEmSetorUTI}
+                >
+                  <AlertTriangle className="h-4 w-4 mr-2" />
+                  {leito.paciente?.pedidoUTI ? 'REMOVER PEDIDO UTI' : 'SOLICITAR UTI'}
+                </DropdownMenuItem>
+              );
+
+              if (!estaEmSetorUTI) {
+                return item;
+              }
+
+              return (
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="w-full">{item}</span>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p>Paciente já está em um setor de UTI</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            })()}
             <DropdownMenuItem onClick={() => onSolicitarRemanejamento(leito.paciente)}>
               <ArrowRightLeft className="h-4 w-4 mr-2" />
               SOLICITAR REMANEJAMENTO
