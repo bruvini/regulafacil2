@@ -554,6 +554,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       const batch = writeBatch(db);
       const leitosParaAtualizar = new Set();
       const pacientesFinais = {};
+      const leitosComStatusPersonalizado = new Map();
 
       // Executar altas (deletar pacientes)
       processedData.altas.forEach(paciente => {
@@ -637,8 +638,10 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
             pacientesFinais[resultado.destinoLeitoId] = true;
           }
 
-          if (paciente.regulacaoAtiva?.leitoOrigemId) {
-            pacientesFinais[paciente.regulacaoAtiva.leitoOrigemId] = false;
+          const leitoOrigemId = paciente.regulacaoAtiva?.leitoOrigemId || infoLeitoOrigem?.id;
+          if (leitoOrigemId) {
+            pacientesFinais[leitoOrigemId] = false;
+            leitosComStatusPersonalizado.set(leitoOrigemId, 'Higienização');
           }
 
           if (infoLeitoOriginal && infoLeitoOriginal.id !== resultado.destinoLeitoId) {
@@ -668,6 +671,10 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
         if (!leitosIdSet.has(leitoId)) {
           return;
         }
+        if (leitosComStatusPersonalizado.has(leitoId)) {
+          return;
+        }
+
         const leitoRef = doc(db, BEDS_COLLECTION_PATH, leitoId);
         const novoStatus = pacientesFinais[leitoId] ? 'Ocupado' : 'Vago';
         batch.update(leitoRef, {
