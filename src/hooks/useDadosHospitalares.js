@@ -1,5 +1,5 @@
 // src/hooks/useDadosHospitalares.js
-import { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { usePacientes, useLeitos, useSetores, useInfeccoes } from './useCollections';
 import { useAuth } from '@/contexts/AuthContext';
 import { verificarEFinalizarPedidosUTIAtendidos } from '@/lib/utiUtils';
