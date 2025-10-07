@@ -26,14 +26,47 @@ const calcularIdade = (dataNascimento) => {
   return idade;
 };
 
+const extrairIdInfeccao = (iso) => {
+  if (!iso) return null;
+
+  const infeccaoId = iso.infeccaoId;
+  if (typeof infeccaoId === 'object' && infeccaoId !== null) {
+    if (typeof infeccaoId.id !== 'undefined' && infeccaoId.id !== null) {
+      return infeccaoId.id;
+    }
+  } else if (typeof infeccaoId !== 'undefined' && infeccaoId !== null) {
+    return infeccaoId;
+  }
+
+  if (iso.infeccao && typeof iso.infeccao.id !== 'undefined' && iso.infeccao.id !== null) {
+    return iso.infeccao.id;
+  }
+
+  if (typeof iso.idInfeccao !== 'undefined' && iso.idInfeccao !== null) {
+    return iso.idInfeccao;
+  }
+
+  if (typeof iso.id !== 'undefined' && iso.id !== null) {
+    return iso.id;
+  }
+
+  return null;
+};
+
 const getChavesIsolamentoAtivo = (paciente) => {
   if (!paciente || !Array.isArray(paciente.isolamentos)) return new Set();
-  return new Set(
-    paciente.isolamentos
-      .filter(iso => iso.statusConsideradoAtivo)
-      .map(iso => (iso.siglaInfeccao || iso.sigla || '').toLowerCase())
-      .filter(Boolean)
-  );
+  const ids = new Set();
+
+  paciente.isolamentos
+    .filter(iso => iso.statusConsideradoAtivo)
+    .forEach(iso => {
+      const id = extrairIdInfeccao(iso);
+      if (id !== null && id !== undefined) {
+        ids.add(String(id));
+      }
+    });
+
+  return ids;
 };
 
 const SETORES_PS_ABERTOS = new Set([
@@ -216,8 +249,10 @@ export const encontrarLeitosCompativeis = (pacienteAlvo, hospitalData, modo = 'e
 
   const leitosCompativeis = [];
 
+  const statusLivre = new Set(['Vago', 'Higienização']);
+
   const avaliarLeito = (leito, leitosDoQuarto = [leito]) => {
-    if (!['Vago', 'Higienização'].includes(leito.status)) return;
+    if (!statusLivre.has(leito.status)) return;
 
     if (modo === 'uti') {
       leitosCompativeis.push(leito);
@@ -242,27 +277,40 @@ export const encontrarLeitosCompativeis = (pacienteAlvo, hospitalData, modo = 'e
       // Se for elegível, a função continua para as próximas verificações (coorte, sexo, etc.).
     }
 
-    // Regras de Coorte (Sexo e Isolamento)
-    const coorte = leito.restricaoCoorte;
     const outrosLeitosDoQuarto = (leitosDoQuarto || []).filter((outro) => outro?.id !== leito.id);
-    const quartoDisponivelParaIsolamento = outrosLeitosDoQuarto.every((outro) =>
-      ['Vago', 'Higienização'].includes(outro?.status)
-    );
+    const todosLivres = outrosLeitosDoQuarto.every((outro) => statusLivre.has(outro?.status) || !outro?.paciente);
 
-    if (coorte) { // Quarto ocupado
-      if (pacienteAlvo.sexo !== coorte.sexo) return; // Rejeita por sexo
-      const isolamentosCoorte = new Set(coorte.isolamentos || []);
+    if (todosLivres) {
+      leitosCompativeis.push(leito);
+      return;
+    }
 
-      if (chavesPaciente.size > 0) {
-        const todosIsolamentosCompativeis = [...chavesPaciente].every((c) => isolamentosCoorte.has(c));
-        if (!todosIsolamentosCompativeis) {
-          return; // Rejeita por isolamento incompatível
-        }
-      } else if (isolamentosCoorte.size > 0) {
-        return; // Paciente sem isolamento não pode entrar em quarto com isolamento ativo
-      }
-    } else if (chavesPaciente.size > 0 && !quartoDisponivelParaIsolamento) {
-      return; // Rejeita se paciente tem isolamento e quarto não está completamente vazio
+    const ocupantes = outrosLeitosDoQuarto
+      .map(outro => outro?.paciente)
+      .filter(Boolean);
+
+    if (!ocupantes.length) {
+      // Existem leitos não livres, mas sem paciente registrado: rejeitar por segurança.
+      return;
+    }
+
+    if (!pacienteAlvo?.sexo) {
+      return;
+    }
+
+    const sexosCompativeis = ocupantes.every(ocupante => (ocupante?.sexo || null) === pacienteAlvo.sexo);
+    if (!sexosCompativeis) {
+      return;
+    }
+
+    const isolamentosPaciente = chavesPaciente;
+    const coorteValida = ocupantes.every(ocupante => {
+      const isolamentosOcupante = getChavesIsolamentoAtivo(ocupante);
+      return conjuntosIguais(isolamentosOcupante, isolamentosPaciente);
+    });
+
+    if (!coorteValida) {
+      return;
     }
 
     leitosCompativeis.push(leito);

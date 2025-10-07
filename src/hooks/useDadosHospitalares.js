@@ -155,15 +155,21 @@ const processarDados = (pacientes, leitos, setores, infeccoes) => {
         }
 
         const sexos = new Set(ocupantes.map(o => o.sexo).filter(Boolean));
-        const isolamentosAtivos = new Set();
+        const isolamentosAtivosIds = new Set();
+        const isolamentosAtivosRotulos = new Set();
 
         ocupantes.forEach(o => {
           (o.isolamentos || [])
             .filter(iso => iso.statusConsideradoAtivo)
             .forEach(iso => {
-              const chave = (iso.siglaInfeccao || iso.sigla || '').toLowerCase();
-              if (chave) {
-                isolamentosAtivos.add(chave);
+              const id = iso?.infeccaoId?.id ?? iso?.infeccaoId ?? iso?.infeccao?.id ?? iso?.idInfeccao ?? iso?.id;
+              if (id !== undefined && id !== null) {
+                isolamentosAtivosIds.add(String(id));
+              }
+
+              const rotulo = (iso.siglaInfeccao || iso.sigla || iso.nome || '').toUpperCase();
+              if (rotulo) {
+                isolamentosAtivosRotulos.add(rotulo);
               }
             });
         });
@@ -171,7 +177,8 @@ const processarDados = (pacientes, leitos, setores, infeccoes) => {
         if (sexos.size === 1) {
           const restricao = {
             sexo: [...sexos][0],
-            isolamentos: [...isolamentosAtivos],
+            isolamentos: [...isolamentosAtivosRotulos],
+            isolamentosIds: [...isolamentosAtivosIds],
           };
 
           quarto.leitos.forEach(leito => {
