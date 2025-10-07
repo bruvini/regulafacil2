@@ -36,6 +36,172 @@ const getChavesIsolamentoAtivo = (paciente) => {
   );
 };
 
+const SETORES_PS_ABERTOS = new Set([
+  'PS DECISÃO CLINICA',
+  'PS DECISÃO CIRURGICA',
+].map(nome => nome.toUpperCase()));
+
+const normalizarTexto = (valor) => (valor || '').toString().trim();
+
+const textoUpper = (valor) => normalizarTexto(valor).toUpperCase();
+
+const conjuntosIguais = (setA, setB) => {
+  if (setA.size !== setB.size) return false;
+  for (const valor of setA) {
+    if (!setB.has(valor)) return false;
+  }
+  return true;
+};
+
+export const TIPOS_RISCO_CONTAMINACAO = {
+  SETOR_ABERTO: 'setor_aberto',
+  FALTA_COHORTE: 'falta_coorte',
+  COORTE_INCOMPATIVEL: 'coorte_incompativel',
+};
+
+const criarMensagemRisco = (tipo, contexto = {}) => {
+  const { setorNome, quartoNome } = contexto;
+  switch (tipo) {
+    case TIPOS_RISCO_CONTAMINACAO.SETOR_ABERTO:
+      return `Paciente com isolamento em setor aberto (${setorNome || 'Setor não identificado'})`;
+    case TIPOS_RISCO_CONTAMINACAO.FALTA_COHORTE:
+      return `Paciente isolado compartilhando quarto com paciente não isolado (${setorNome || 'Setor'}, ${quartoNome || 'Quarto'})`;
+    case TIPOS_RISCO_CONTAMINACAO.COORTE_INCOMPATIVEL:
+      return `Pacientes com isolamentos diferentes no mesmo quarto (${setorNome || 'Setor'}, ${quartoNome || 'Quarto'})`;
+    default:
+      return 'Risco de contaminação cruzada identificado';
+  }
+};
+
+const adicionarRisco = (mapa, paciente, tipo, contexto = {}, contextoId = null) => {
+  if (!paciente?.id) return;
+  const listaAtual = mapa.get(paciente.id) || [];
+  const chaveContexto = contextoId || `${tipo}-${contexto?.setorId || ''}-${contexto?.quartoId || ''}`;
+  if (listaAtual.some(item => item.tipo === tipo && item.chaveContexto === chaveContexto)) {
+    return;
+  }
+
+  const entrada = {
+    tipo,
+    mensagem: criarMensagemRisco(tipo, contexto),
+    contexto,
+    chaveContexto,
+  };
+
+  mapa.set(paciente.id, [...listaAtual, entrada]);
+};
+
+export const identificarRiscosContaminacao = (hospitalData = {}) => {
+  const riscosPorPaciente = new Map();
+  const { estrutura = {}, pacientesEnriquecidos = [] } = hospitalData;
+
+  if (!estrutura || !pacientesEnriquecidos.length) {
+    return riscosPorPaciente;
+  }
+
+  const setores = Array.isArray(estrutura)
+    ? estrutura
+    : Object.values(estrutura).flat().filter(Boolean);
+
+  const obterContextoLeito = (setor, quarto, leito) => ({
+    setorId: setor?.id || null,
+    setorNome: normalizarTexto(setor?.nomeSetor || setor?.nome || setor?.siglaSetor || ''),
+    setorTipo: textoUpper(setor?.tipoSetor),
+    quartoId: quarto?.id || null,
+    quartoNome: normalizarTexto(quarto?.nomeQuarto || ''),
+    leitoId: leito?.id || null,
+    leitoCodigo: normalizarTexto(leito?.codigoLeito || ''),
+  });
+
+  setores.forEach(setor => {
+    const setorNomeUpper = textoUpper(setor?.nomeSetor || setor?.nome || setor?.siglaSetor);
+    const tipoSetorUpper = textoUpper(setor?.tipoSetor);
+
+    const processarLeitos = (leitos, quarto = null) => {
+      (leitos || []).forEach(leito => {
+        const paciente = leito?.paciente;
+        if (!paciente) return;
+        const chavesPaciente = getChavesIsolamentoAtivo(paciente);
+        if (!chavesPaciente.size) return;
+
+        if (SETORES_PS_ABERTOS.has(setorNomeUpper)) {
+          adicionarRisco(
+            riscosPorPaciente,
+            paciente,
+            TIPOS_RISCO_CONTAMINACAO.SETOR_ABERTO,
+            obterContextoLeito(setor, quarto, leito),
+            `ps-${paciente.id}-${setor?.id || setorNomeUpper}`,
+          );
+        }
+      });
+    };
+
+    (setor?.quartos || []).forEach(quarto => {
+      processarLeitos(quarto?.leitos || [], quarto);
+    });
+
+    processarLeitos(setor?.leitosSemQuarto || [], null);
+
+    if (tipoSetorUpper !== 'ENFERMARIA') {
+      return;
+    }
+
+    (setor?.quartos || []).forEach(quarto => {
+      const leitosQuarto = quarto?.leitos || [];
+      if (!leitosQuarto.length) return;
+
+      const ocupantes = leitosQuarto
+        .map(leito => leito?.paciente)
+        .filter(Boolean);
+
+      if (ocupantes.length <= 1) {
+        return;
+      }
+
+      const ocupantesInfo = ocupantes.map(paciente => ({
+        paciente,
+        chaves: getChavesIsolamentoAtivo(paciente),
+      }));
+
+      const isolados = ocupantesInfo.filter(info => info.chaves.size > 0);
+      if (!isolados.length) {
+        return;
+      }
+
+      const existeNaoIsolado = ocupantesInfo.some(info => info.chaves.size === 0);
+      if (existeNaoIsolado) {
+        isolados.forEach(info => {
+          adicionarRisco(
+            riscosPorPaciente,
+            info.paciente,
+            TIPOS_RISCO_CONTAMINACAO.FALTA_COHORTE,
+            obterContextoLeito(setor, quarto, leitosQuarto.find(l => l?.paciente?.id === info.paciente.id)),
+            `falta-coorte-${quarto?.id || quarto?.nomeQuarto || ''}`,
+          );
+        });
+      }
+
+      if (isolados.length >= 2) {
+        const chavesReferencia = isolados[0].chaves;
+        const todosIguais = isolados.every(info => conjuntosIguais(info.chaves, chavesReferencia));
+        if (!todosIguais) {
+          ocupantesInfo.forEach(info => {
+            adicionarRisco(
+              riscosPorPaciente,
+              info.paciente,
+              TIPOS_RISCO_CONTAMINACAO.COORTE_INCOMPATIVEL,
+              obterContextoLeito(setor, quarto, leitosQuarto.find(l => l?.paciente?.id === info.paciente.id)),
+              `coorte-incompativel-${quarto?.id || quarto?.nomeQuarto || ''}`,
+            );
+          });
+        }
+      }
+    });
+  });
+
+  return riscosPorPaciente;
+};
+
 export const encontrarLeitosCompativeis = (pacienteAlvo, hospitalData, modo = 'enfermaria') => {
   const { estrutura } = hospitalData;
   if (!pacienteAlvo || !estrutura) return [];
