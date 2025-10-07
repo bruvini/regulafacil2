@@ -27,6 +27,25 @@ const TITULOS = {
   confirmacao: 'Confirmar alteração da regulação',
 };
 
+const gerarMensagemAlteracao = (resumo, data = new Date()) => {
+  if (!resumo) return '';
+
+  const dataHoraFormatada = data.toLocaleString('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  });
+
+  return (
+    `*✅ REGULAÇÃO ALTERADA*\n\n` +
+    `*Paciente:* _${resumo.pacienteNome}_\n` +
+    `*Origem:* _${resumo.origemDescricao}_\n` +
+    `*Destino Anterior:* _${resumo.destinoAnteriorDescricao}_\n` +
+    `*Novo Destino:* _${resumo.novoDestinoDescricao}_\n\n` +
+    `*Justificativa:* _${resumo.justificativa}_\n\n` +
+    `_${dataHoraFormatada}_`
+  );
+};
+
 const AlterarRegulacaoModal = ({ isOpen, onClose, regulacao }) => {
   const { paciente: pacienteBase, leitoOrigem: leitoOrigemBase, leitoDestino: leitoDestinoBase } = regulacao || {};
   const { estrutura, pacientesEnriquecidos, leitos = [], setores = [], loading } = useDadosHospitalares();
@@ -205,6 +224,7 @@ const AlterarRegulacaoModal = ({ isOpen, onClose, regulacao }) => {
     try {
       const batch = writeBatch(db);
       const ts = serverTimestamp();
+      const timestampHistorico = new Date();
       const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
       const justificativaTexto = justificativaNormalizada;
 
@@ -235,7 +255,7 @@ const AlterarRegulacaoModal = ({ isOpen, onClose, regulacao }) => {
           status: 'Vago',
           historico: arrayUnion({
             status: 'Vago',
-            timestamp: ts,
+            timestamp: timestampHistorico,
             origem: 'alteracao-regulacao',
             pacienteId: pacienteAtual.id,
           }),
@@ -257,7 +277,7 @@ const AlterarRegulacaoModal = ({ isOpen, onClose, regulacao }) => {
         status: 'Reservado',
         historico: arrayUnion({
           status: 'Reservado',
-          timestamp: ts,
+          timestamp: timestampHistorico,
           origem: 'alteracao-regulacao',
           pacienteId: pacienteAtual.id,
         }),
@@ -292,7 +312,7 @@ const AlterarRegulacaoModal = ({ isOpen, onClose, regulacao }) => {
           justificativaUltimaAlteracao: justificativaTexto,
           alteracoes: arrayUnion({
             tipo: 'alteracao',
-            timestamp: ts,
+            timestamp: timestampHistorico,
             realizadoPor: nomeUsuario,
             justificativa: justificativaTexto,
             deLeitoId: destinoAnteriorId || null,
@@ -316,10 +336,28 @@ const AlterarRegulacaoModal = ({ isOpen, onClose, regulacao }) => {
         currentUser
       );
 
-      toast({
-        title: 'Regulação alterada',
-        description: 'O novo leito foi reservado e a regulação atualizada com sucesso.',
-      });
+      const mensagemResumo = gerarMensagemAlteracao(resumoConfirmacao, new Date());
+
+      try {
+        if (!navigator?.clipboard?.writeText) {
+          throw new Error('Clipboard API não suportada.');
+        }
+
+        if (mensagemResumo) {
+          await navigator.clipboard.writeText(mensagemResumo);
+        }
+
+        toast({
+          title: 'Regulação alterada e mensagem copiada para a área de transferência!',
+        });
+      } catch (clipboardError) {
+        console.error('Não foi possível copiar a mensagem de alteração:', clipboardError);
+        toast({
+          title: 'Regulação alterada',
+          description:
+            'O novo leito foi reservado, mas não foi possível copiar a mensagem automaticamente.',
+        });
+      }
 
       fechar();
     } catch (error) {
