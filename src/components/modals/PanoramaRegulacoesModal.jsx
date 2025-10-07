@@ -25,8 +25,27 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+const STATUS_CONFIG = {
+  concluida: {
+    label: 'Concluída',
+    className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  },
+  cancelada: {
+    label: 'Cancelada',
+    className: 'border-destructive/40 bg-destructive/10 text-destructive',
+  },
+  em_andamento: {
+    label: 'Em andamento',
+    className: 'border-amber-200 bg-amber-50 text-amber-700',
+  },
+  alterada: {
+    label: 'Alterada',
+    className: 'border-sky-200 bg-sky-50 text-sky-700',
+  },
+};
+
 const formatMinutesToHours = (minutes) => {
-  if (!Number.isFinite(minutes) || minutes < 0) return 'Não informado';
+  if (!Number.isFinite(minutes) || minutes < 0) return null;
   if (minutes === 0) return '0 min';
   const horas = Math.floor(minutes / 60);
   const mins = Math.round(minutes % 60);
@@ -38,6 +57,7 @@ const formatMinutesToHours = (minutes) => {
 
 const parseDate = (value) => {
   if (!value) return null;
+  if (value instanceof Date) return value;
   if (typeof value.toDate === 'function') {
     return value.toDate();
   }
@@ -45,385 +65,456 @@ const parseDate = (value) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
-const normalizarTexto = (texto) => (texto || '').toString().trim().toLowerCase();
-
 const formatDateTime = (date) => {
   if (!date) return 'Não informado';
   return format(date, 'dd/MM/yyyy HH:mm', { locale: ptBR });
 };
 
-const formatMillisecondsToHHMM = (ms) => {
-  if (!Number.isFinite(ms) || ms <= 0) {
-    return '00:00';
-  }
-  const totalMinutes = Math.floor(ms / 60000);
-  const horas = Math.floor(totalMinutes / 60);
-  const minutos = totalMinutes % 60;
-  return `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}`;
+const normalizarStatus = (valor) => {
+  if (!valor) return '';
+  return String(valor)
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim();
 };
 
-const sanitizarTrecho = (valor) => {
-  if (!valor) return null;
-  return valor.replace(/^['"]|['"]$/g, '').trim();
+const normalizarPeriodo = (periodo) => {
+  if (!periodo) return { inicio: null, fim: null };
+  const inicio = periodo.inicio instanceof Date ? periodo.inicio : periodo?.inicio ? new Date(periodo.inicio) : null;
+  const fim = periodo.fim instanceof Date ? periodo.fim : periodo?.fim ? new Date(periodo.fim) : null;
+  return { inicio, fim };
 };
 
-const extrairNomePaciente = (texto = '') => {
-  const padroes = [
-    /paciente\s+['"]([^'"]+)['"]/i,
-    /paciente\s+([^'"\(]+?)(?:\(|foi|que|\.|$)/i,
-  ];
+const estaNoPeriodo = (periodo, datas) => {
+  if (!periodo?.inicio && !periodo?.fim) return true;
+  const inicioMs = periodo?.inicio?.getTime() ?? null;
+  const fimMs = periodo?.fim?.getTime() ?? null;
 
-  for (const regex of padroes) {
-    const resultado = texto.match(regex);
-    if (resultado?.[1]) {
-      return resultado[1].trim();
-    }
-  }
-  return null;
+  return datas.some((data) => {
+    if (!data) return false;
+    const time = data.getTime();
+    if (inicioMs && time < inicioMs) return false;
+    if (fimMs && time > fimMs) return false;
+    return true;
+  });
 };
 
-const extrairOrigemDestino = (texto = '') => {
-  const padroes = [
-    /do leito\s+['"]([^'"]+)['"]\s+para o leito\s+['"]([^'"]+)['"]/i,
-    /do leito\s+['"]([^'"]+)['"]\s+para\s+['"]([^'"]+)['"]/i,
-    /do leito\s+([^\)]+?)\s+para\s+([^\)]+?)\)/i,
-    /do leito\s+([^\.,]+?)\s+para\s+([^\.,]+?)(?:\.|$)/i,
-  ];
+const resolveLocal = ({
+  leitosMap,
+  setoresMap,
+  leitoId,
+  setorId,
+  fallbackLeito,
+  fallbackSetorSigla,
+  fallbackSetorNome,
+}) => {
+  const leito = leitoId ? leitosMap.get(leitoId) : null;
+  const setorFromLeito = leito?.setorId ? setoresMap.get(leito.setorId) : null;
+  const setor = setorId ? setoresMap.get(setorId) || setorFromLeito : setorFromLeito;
 
-  for (const regex of padroes) {
-    const resultado = texto.match(regex);
-    if (resultado?.[1] || resultado?.[2]) {
-      return {
-        origem: sanitizarTrecho(resultado[1]),
-        destino: sanitizarTrecho(resultado[2]),
-      };
-    }
-  }
+  const setorDescricao =
+    setor?.siglaSetor ||
+    setor?.nomeSetor ||
+    fallbackSetorSigla ||
+    fallbackSetorNome ||
+    (setorId ? String(setorId) : null) ||
+    'Setor não informado';
 
-  return { origem: null, destino: null };
-};
-
-const extrairMotivo = (texto = '') => {
-  const resultado = texto.match(/Motivo:\s*['"]([^'"]+)['"]/i);
-  return resultado?.[1] ? resultado[1].trim() : null;
-};
-
-const analisarLogRegulacao = (acao = '') => {
-  const texto = acao || '';
-  const lower = texto.toLowerCase();
-
-  if (!lower.includes('regulação')) return null;
-
-  let tipo = null;
-  if (lower.includes('regulação iniciada')) {
-    tipo = 'inicio';
-  } else if (lower.includes('foi alterada') || lower.includes('regulação alterada')) {
-    tipo = 'alteracao';
-  } else if (lower.includes('foi concluída') || lower.includes('regulação concluída')) {
-    tipo = 'conclusao';
-  } else if (lower.includes('foi cancelada') || lower.includes('regulação cancelada')) {
-    tipo = 'cancelamento';
-  }
-
-  if (!tipo) return null;
-
-  const nomePaciente = extrairNomePaciente(texto);
-  const { origem, destino } = extrairOrigemDestino(texto);
-  const motivo = extrairMotivo(texto);
+  const leitoDescricao =
+    leito?.codigoLeito ||
+    leito?.codigo ||
+    fallbackLeito ||
+    (leitoId ? String(leitoId) : null) ||
+    'Leito não informado';
 
   return {
-    tipo,
-    nomePaciente,
-    origem,
-    destino,
-    motivo,
+    setor: setorDescricao,
+    leito: leitoDescricao,
+    setorId: setor?.id || setorId || null,
+    leitoId: leito?.id || leitoId || null,
   };
 };
 
-const identificarPacienteLog = (log, detalhes, pacientesPorId, pacientesPorNome) => {
-  const possiveisIds = [
-    log?.pacienteId,
-    log?.paciente?.id,
-    log?.contexto?.pacienteId,
-    log?.context?.pacienteId,
-    log?.dados?.pacienteId,
-    log?.meta?.pacienteId,
-  ].filter(Boolean);
+const mapAlteracoes = (alteracoes, { leitosMap, setoresMap }) => {
+  if (!Array.isArray(alteracoes)) return [];
 
-  for (const id of possiveisIds) {
-    if (pacientesPorId.has(id)) {
-      const paciente = pacientesPorId.get(id);
+  return alteracoes
+    .map((alteracao, index) => {
+      const timestamp = parseDate(
+        alteracao?.timestamp || alteracao?.data || alteracao?.ocorreuEm || alteracao?.atualizadoEm
+      );
+
+      const origem = resolveLocal({
+        leitosMap,
+        setoresMap,
+        leitoId:
+          alteracao?.deLeitoId ||
+          alteracao?.leitoAnteriorId ||
+          alteracao?.leitoOrigemId ||
+          alteracao?.leitoAnterior?.id ||
+          null,
+        setorId: alteracao?.deSetorId || alteracao?.setorAnteriorId || alteracao?.setorOrigemId || null,
+        fallbackLeito:
+          alteracao?.deLeitoCodigo ||
+          alteracao?.leitoAnteriorCodigo ||
+          alteracao?.leitoAnterior ||
+          alteracao?.origemDescricao ||
+          null,
+        fallbackSetorSigla: alteracao?.deSetorSigla || alteracao?.setorAnteriorSigla || null,
+        fallbackSetorNome: alteracao?.deSetorNome || alteracao?.setorAnteriorNome || null,
+      });
+
+      const destino = resolveLocal({
+        leitosMap,
+        setoresMap,
+        leitoId:
+          alteracao?.paraLeitoId ||
+          alteracao?.leitoDestinoId ||
+          alteracao?.leitoDestino?.id ||
+          null,
+        setorId: alteracao?.paraSetorId || alteracao?.setorDestinoId || alteracao?.setorDestino?.id || null,
+        fallbackLeito:
+          alteracao?.paraLeitoCodigo ||
+          alteracao?.leitoDestinoCodigo ||
+          alteracao?.leitoDestino ||
+          alteracao?.destinoDescricao ||
+          null,
+        fallbackSetorSigla: alteracao?.paraSetorSigla || null,
+        fallbackSetorNome: alteracao?.paraSetorNome || null,
+      });
+
       return {
-        pacienteId: id,
-        pacienteNome: paciente?.nomePaciente || detalhes?.nomePaciente || 'Paciente',
+        id: `${index}-${timestamp?.getTime() ?? 'sem-data'}`,
+        timestamp,
+        justificativa: alteracao?.justificativa || alteracao?.motivo || alteracao?.motivoAlteracao || null,
+        realizadoPor: alteracao?.realizadoPor || alteracao?.usuario || alteracao?.usuarioNome || null,
+        origem,
+        destino,
       };
-    }
-  }
-
-  if (detalhes?.nomePaciente) {
-    const chave = normalizarTexto(detalhes.nomePaciente);
-    if (pacientesPorNome.has(chave)) {
-      const paciente = pacientesPorNome.get(chave)[0];
-      return {
-        pacienteId: paciente.id,
-        pacienteNome: paciente.nomePaciente || detalhes.nomePaciente,
-      };
-    }
-    return {
-      pacienteId: null,
-      pacienteNome: detalhes.nomePaciente,
-    };
-  }
-
-  return {
-    pacienteId: null,
-    pacienteNome: 'Paciente não identificado',
-  };
+    })
+    .sort((a, b) => (a.timestamp?.getTime() ?? 0) - (b.timestamp?.getTime() ?? 0));
 };
 
-const processarDadosRelatorio = (dados, periodo) => {
+const criarChaveRegulacao = (registro) => {
+  const pacienteRef = registro?.pacienteId || registro?.pacienteNome || 'paciente';
+  const inicio = registro?.dataInicio ? registro.dataInicio.toISOString() : 'sem-inicio';
+  return `${pacienteRef}-${inicio}`;
+};
+
+const construirEventosLinhaTempo = (registro) => {
+  const eventos = [];
+
+  if (registro.dataInicio) {
+    eventos.push({
+      tipo: 'inicio',
+      titulo: 'Regulação iniciada',
+      data: registro.dataInicio,
+      descricao: `${registro.origem.setor} · ${registro.origem.leito} → ${registro.destino.setor} · ${registro.destino.leito}`,
+    });
+  }
+
+  registro.alteracoes.forEach((alteracao) => {
+    eventos.push({
+      tipo: 'alteracao',
+      titulo: 'Alteração de destino',
+      data: alteracao.timestamp,
+      descricao: `De ${alteracao.origem.setor} · ${alteracao.origem.leito} para ${alteracao.destino.setor} · ${alteracao.destino.leito}`,
+      justificativa: alteracao.justificativa || null,
+      realizadoPor: alteracao.realizadoPor || null,
+    });
+  });
+
+  if (registro.status === 'concluida' && registro.dataConclusao) {
+    eventos.push({
+      tipo: 'conclusao',
+      titulo: 'Regulação concluída',
+      data: registro.dataConclusao,
+      descricao: `Tempo total: ${registro.tempoTotalFormatado || 'Não informado'}. Destino final: ${registro.destinoFinal.setor} · ${registro.destinoFinal.leito}`,
+    });
+  }
+
+  if (registro.status === 'cancelada' && registro.dataCancelamento) {
+    eventos.push({
+      tipo: 'cancelamento',
+      titulo: 'Regulação cancelada',
+      data: registro.dataCancelamento,
+      descricao: registro.motivoCancelamento
+        ? `Motivo: ${registro.motivoCancelamento}`
+        : 'Motivo não informado',
+    });
+  }
+
+  return eventos.sort((a, b) => (a.data?.getTime() ?? 0) - (b.data?.getTime() ?? 0));
+};
+
+const montarPanoramaRegulacoes = (dados, periodo) => {
   if (!dados || dados.loading) {
     return {
-      pendentes: [],
-      pendentesPorOrigem: [],
-      historicoRegulacoes: [],
-      resumoPeriodo: {
+      registros: [],
+      resumo: {
         total: 0,
         concluidas: 0,
         canceladas: 0,
-        pendentes: 0,
-        alteradas: 0,
+        emAndamento: 0,
+        comAlteracao: 0,
       },
     };
   }
 
-  const periodoInicio = periodo?.inicio ? new Date(periodo.inicio) : null;
-  const periodoFim = periodo?.fim ? new Date(periodo.fim) : null;
+  const periodoNormalizado = normalizarPeriodo(periodo);
 
-  const leitosMap = new Map(dados.leitos.map((leito) => [leito.id, leito]));
-  const setoresMap = new Map(dados.setores.map((setor) => [setor.id, setor]));
-  const pacientesMap = new Map(dados.pacientes.map((paciente) => [paciente.id, paciente]));
-  const pacientesPorId = new Map(dados.pacientes.map((paciente) => [paciente.id, paciente]));
+  const leitosMap = new Map(dados.leitos.map((item) => [item.id, item]));
+  const setoresMap = new Map(dados.setores.map((item) => [item.id, item]));
+  const pacientesMap = new Map(dados.pacientes.map((item) => [item.id, item]));
 
-  const pacientesPorNome = new Map();
-  dados.pacientes.forEach((paciente) => {
-    const chave = normalizarTexto(paciente.nomePaciente);
-    if (!chave) return;
-    if (!pacientesPorNome.has(chave)) {
-      pacientesPorNome.set(chave, []);
+  const registros = [];
+  const chavesRegistradas = new Set();
+
+  (dados.historicoRegulacoes || []).forEach((registro) => {
+    const dataInicio = parseDate(
+      registro?.dataInicio || registro?.iniciadoEm || registro?.criadoEm || registro?.createdAt
+    );
+    const dataConclusao = parseDate(
+      registro?.dataConclusao || registro?.concluidoEm || registro?.finalizadoEm || registro?.finalizadoEm
+    );
+    const dataCancelamento = parseDate(registro?.dataCancelamento || registro?.canceladoEm);
+
+    if (!estaNoPeriodo(periodoNormalizado, [dataInicio, dataConclusao, dataCancelamento])) {
+      return;
     }
-    pacientesPorNome.get(chave).push(paciente);
-  });
 
-  const pendentes = dados.pacientes
-    .filter((paciente) => paciente.regulacaoAtiva)
-    .map((paciente) => {
-      const { regulacaoAtiva } = paciente;
-      const leitoOrigem = regulacaoAtiva?.leitoOrigemId
-        ? leitosMap.get(regulacaoAtiva.leitoOrigemId)
-        : null;
-      const leitoDestino = regulacaoAtiva?.leitoDestinoId
-        ? leitosMap.get(regulacaoAtiva.leitoDestinoId)
-        : null;
-      const setorOrigem = leitoOrigem?.setorId ? setoresMap.get(leitoOrigem.setorId) : null;
-      const setorDestino = regulacaoAtiva?.setorDestinoId
-        ? setoresMap.get(regulacaoAtiva.setorDestinoId)
-        : leitoDestino?.setorId
-          ? setoresMap.get(leitoDestino.setorId)
-          : null;
-      const inicio = regulacaoAtiva?.iniciadoEm ? parseDate(regulacaoAtiva.iniciadoEm) : null;
-      const tempoEsperaMs = inicio ? Math.max(Date.now() - inicio.getTime(), 0) : 0;
+    const paciente = registro?.pacienteId ? pacientesMap.get(registro.pacienteId) : null;
+    const pacienteNome =
+      registro?.pacienteNome ||
+      paciente?.nomePaciente ||
+      paciente?.nomeCompleto ||
+      paciente?.nome ||
+      'Paciente não identificado';
 
-      return {
-        paciente,
-        regulacao: regulacaoAtiva,
-        leitoOrigem,
-        leitoDestino,
-        setorOrigem,
-        setorDestino,
-        inicio,
-        tempoEsperaMs,
-        tempoEsperaTexto: formatMillisecondsToHHMM(tempoEsperaMs),
-      };
-    })
-    .sort((a, b) => b.tempoEsperaMs - a.tempoEsperaMs);
-
-  const pendentesPorOrigemMapa = new Map();
-  pendentes.forEach((item) => {
-    const setorId = item.setorOrigem?.id || 'sem-setor';
-    if (!pendentesPorOrigemMapa.has(setorId)) {
-      pendentesPorOrigemMapa.set(setorId, {
-        setor: item.setorOrigem,
-        regulacoes: [],
-      });
-    }
-    pendentesPorOrigemMapa.get(setorId).regulacoes.push(item);
-  });
-
-  const historicoRegulacoes = (dados.historicoRegulacoes || [])
-    .map((registro) => {
-      // Garante a leitura do campo correto retornado pelo Firestore
-      const dataInicio = parseDate(registro.dataInicio);
-      const dataFim = parseDate(registro.dataConclusao || registro.dataCancelamento || null);
-      const pacienteDoc = pacientesMap.get(registro.pacienteId);
-      const pacienteNome =
-        pacienteDoc?.nomePaciente ||
-        registro.pacienteNome ||
-        'Paciente não identificado';
-      const leitoDestino = registro.leitoDestino || null;
-      const leitoAnterior = registro.leitoAnterior || null;
-
-      const leitoOrigemId =
-        registro.leitoOrigemId ||
-        registro.leitoAnteriorId ||
-        leitoAnterior?.id ||
-        null;
-      const leitoDestinoId = registro.leitoDestinoId || leitoDestino?.id || null;
-      const leitoDestinoFinalId = registro.leitoDestinoFinalId || registro.leitoDestinoFinal?.id || null;
-
-      const setorOrigemId =
-        registro.setorOrigemId ||
-        leitosMap.get(leitoOrigemId || '')?.setorId ||
-        registro.setorOrigem?.id ||
-        null;
-      const setorDestinoId =
-        registro.setorDestinoId ||
-        leitosMap.get(leitoDestinoId || '')?.setorId ||
-        registro.setorDestino?.id ||
-        null;
-      const setorDestinoFinalId =
-        registro.setorDestinoFinalId ||
-        leitosMap.get(leitoDestinoFinalId || '')?.setorId ||
-        registro.setorDestinoFinal?.id ||
-        null;
-
-      const leitoOrigemNome =
-        (leitoOrigemId && (leitosMap.get(leitoOrigemId)?.codigoLeito || leitoOrigemId)) ||
-        leitoAnterior?.codigoLeito ||
-        registro.origemDescricao ||
-        leitoOrigemId ||
-        'Não informado';
-      const leitoDestinoNome =
-        (leitoDestinoId && (leitosMap.get(leitoDestinoId)?.codigoLeito || leitoDestinoId)) ||
-        leitoDestino?.codigoLeito ||
-        registro.destinoDescricao ||
-        leitoDestinoId ||
-        'Não informado';
-      const leitoDestinoFinalNome =
-        (leitoDestinoFinalId && (leitosMap.get(leitoDestinoFinalId)?.codigoLeito || leitoDestinoFinalId)) ||
-        registro.leitoDestinoFinal?.codigoLeito ||
-        leitoDestinoFinalId ||
-        'Não informado';
-
-      const setorOrigemSigla =
-        (setorOrigemId &&
-          (setoresMap.get(setorOrigemId)?.siglaSetor ||
-            setoresMap.get(setorOrigemId)?.nomeSetor ||
-            setorOrigemId)) ||
-        registro.setorOrigem?.siglaSetor ||
-        registro.setorOrigem?.nomeSetor ||
-        setorOrigemId ||
-        'Setor origem não informado';
-      const setorDestinoSigla =
-        (setorDestinoId &&
-          (setoresMap.get(setorDestinoId)?.siglaSetor ||
-            setoresMap.get(setorDestinoId)?.nomeSetor ||
-            setorDestinoId)) ||
-        registro.setorDestino?.siglaSetor ||
-        registro.setorDestino?.nomeSetor ||
-        setorDestinoId ||
-        'Setor destino não informado';
-      const setorDestinoFinalSigla =
-        (setorDestinoFinalId &&
-          (setoresMap.get(setorDestinoFinalId)?.siglaSetor ||
-            setoresMap.get(setorDestinoFinalId)?.nomeSetor ||
-            setorDestinoFinalId)) ||
-        registro.setorDestinoFinal?.siglaSetor ||
-        registro.setorDestinoFinal?.nomeSetor ||
-        setorDestinoFinalId ||
-        'Setor destino não informado';
-
-      const usuarioRegistro = registro.usuario || {};
-      const usuarioNome =
-        usuarioRegistro.displayName ||
-        usuarioRegistro.nome ||
-        usuarioRegistro.nomeCompleto ||
-        registro.usuarioNome ||
-        'Usuário não informado';
-      const statusFinal = registro.status || registro.statusFinal || registro.resultado || null;
-      let tempoRegulacaoMinutos = registro.tempoRegulacaoMinutos;
-
-      // Se não houver tempo pré-calculado, calcula manualmente
-      if (!Number.isFinite(tempoRegulacaoMinutos)) {
-        const dataFimCalculo = parseDate(registro.dataConclusao || registro.dataCancelamento || null);
-        if (dataInicio && dataFimCalculo) {
-          const diffMs = dataFimCalculo.getTime() - dataInicio.getTime();
-          tempoRegulacaoMinutos = Math.round(diffMs / 60000);
-        }
-      }
-      const alteracoes = Array.isArray(registro.alteracoes) ? registro.alteracoes : [];
-
-      return {
-        id: registro.id,
-        paciente: pacienteDoc,
-        pacienteNome,
-        dataInicio,
-        dataFim,
-        destinoDescricao: leitoDestinoNome,
-        origemDescricao: leitoOrigemNome,
-        leitoDestino,
-        leitoAnterior,
-        tipo: registro.tipo || 'Tipo não informado',
-        usuario: usuarioRegistro,
-        usuarioNome,
-        statusFinal,
-        alteracoes,
-        motivoCancelamento: registro.motivoCancelamento || registro.motivo || null,
-        leitoOrigemId,
-        leitoDestinoId,
-        leitoDestinoFinalId,
-        setorOrigemId,
-        setorDestinoId,
-        setorDestinoFinalId,
-        leitoOrigemNome,
-        setorOrigemSigla,
-        leitoDestinoNome,
-        setorDestinoSigla,
-        leitoDestinoFinalNome,
-        setorDestinoFinalSigla,
-        tempoRegulacaoMinutos: Number.isFinite(tempoRegulacaoMinutos)
-          ? Math.max(Math.round(tempoRegulacaoMinutos), 0)
-          : null,
-        tempoTotalFormatado: formatMinutesToHours(tempoRegulacaoMinutos),
-      };
-    })
-    .sort((a, b) => {
-      const aTime = a.dataInicio ? a.dataInicio.getTime() : 0;
-      const bTime = b.dataInicio ? b.dataInicio.getTime() : 0;
-      return aTime - bTime;
+    const origem = resolveLocal({
+      leitosMap,
+      setoresMap,
+      leitoId:
+        registro?.leitoOrigemId ||
+        registro?.leitoAnteriorId ||
+        registro?.leitoOrigem?.id ||
+        registro?.leitoAnterior?.id ||
+        null,
+      setorId: registro?.setorOrigemId || registro?.setorOrigem?.id || null,
+      fallbackLeito:
+        registro?.origemDescricao ||
+        registro?.leitoOrigem?.codigoLeito ||
+        registro?.leitoAnterior?.codigoLeito ||
+        registro?.leitoOrigemNome ||
+        null,
+      fallbackSetorSigla: registro?.setorOrigem?.siglaSetor || null,
+      fallbackSetorNome: registro?.setorOrigem?.nomeSetor || null,
     });
 
-  const resumoPeriodo = {
-    total: historicoRegulacoes.length,
-    pendentes: historicoRegulacoes.filter(
-      (item) => normalizarTexto(item.statusFinal) === 'pendente'
-    ).length,
-    concluidas: historicoRegulacoes.filter(
-      (item) => normalizarTexto(item.statusFinal) === 'concluída'
-    ).length,
-    canceladas: historicoRegulacoes.filter(
-      (item) => normalizarTexto(item.statusFinal) === 'cancelada'
-    ).length,
-    alteradas: historicoRegulacoes.filter(
-      (item) => normalizarTexto(item.statusFinal) === 'alterada'
-    ).length,
+    const destinoPrimario = resolveLocal({
+      leitosMap,
+      setoresMap,
+      leitoId: registro?.leitoDestinoId || registro?.leitoDestino?.id || null,
+      setorId: registro?.setorDestinoId || registro?.setorDestino?.id || null,
+      fallbackLeito:
+        registro?.destinoDescricao ||
+        registro?.leitoDestino?.codigoLeito ||
+        registro?.leitoDestinoNome ||
+        null,
+      fallbackSetorSigla: registro?.setorDestino?.siglaSetor || null,
+      fallbackSetorNome: registro?.setorDestino?.nomeSetor || null,
+    });
+
+    const destinoFinal = resolveLocal({
+      leitosMap,
+      setoresMap,
+      leitoId:
+        registro?.leitoDestinoFinalId ||
+        registro?.leitoDestinoFinal?.id ||
+        registro?.leitoDestinoId ||
+        registro?.leitoDestino?.id ||
+        null,
+      setorId:
+        registro?.setorDestinoFinalId ||
+        registro?.setorDestinoFinal?.id ||
+        registro?.setorDestinoId ||
+        registro?.setorDestino?.id ||
+        null,
+      fallbackLeito:
+        registro?.leitoDestinoFinal?.codigoLeito ||
+        registro?.leitoDestinoFinalNome ||
+        registro?.leitoDestino?.codigoLeito ||
+        registro?.destinoDescricao ||
+        null,
+      fallbackSetorSigla:
+        registro?.setorDestinoFinal?.siglaSetor ||
+        registro?.setorDestino?.siglaSetor ||
+        null,
+      fallbackSetorNome:
+        registro?.setorDestinoFinal?.nomeSetor ||
+        registro?.setorDestino?.nomeSetor ||
+        null,
+    });
+
+    const alteracoes = mapAlteracoes(registro?.alteracoes, { leitosMap, setoresMap });
+    const temAlteracao = alteracoes.length > 0;
+
+    const statusNormalizado = normalizarStatus(
+      registro?.statusFinal || registro?.status || registro?.resultado || registro?.statusAtual
+    );
+
+    let status = 'em_andamento';
+    if (dataCancelamento || statusNormalizado.includes('cancel')) {
+      status = 'cancelada';
+    } else if (dataConclusao || statusNormalizado.includes('conclu')) {
+      status = 'concluida';
+    } else if (statusNormalizado.includes('alter')) {
+      status = temAlteracao ? 'alterada' : 'em_andamento';
+    }
+
+    if (status === 'alterada' && (dataConclusao || statusNormalizado.includes('conclu'))) {
+      status = 'concluida';
+    }
+
+    const tempoTotalMinutos =
+      status === 'concluida' && dataInicio && dataConclusao
+        ? Math.max(Math.round((dataConclusao.getTime() - dataInicio.getTime()) / 60000), 0)
+        : null;
+
+    const tempoDecorridoMinutos =
+      status === 'em_andamento' && dataInicio
+        ? Math.max(Math.round((Date.now() - dataInicio.getTime()) / 60000), 0)
+        : null;
+
+    const registroPanorama = {
+      id: registro?.id || `${registro?.pacienteId || 'sem-id'}-${dataInicio?.getTime() || 'sem-data'}`,
+      chave: `${registro?.id || registro?.pacienteId || 'sem-id'}-${dataInicio?.getTime() || 'sem-data'}`,
+      pacienteId: registro?.pacienteId || paciente?.id || null,
+      pacienteNome,
+      nomeSocial: paciente?.nomeSocial || registro?.pacienteNomeSocial || null,
+      status,
+      statusLabel: STATUS_CONFIG[status]?.label || (registro?.statusFinal || 'Status não informado'),
+      statusBadgeClass: STATUS_CONFIG[status]?.className || STATUS_CONFIG.em_andamento.className,
+      dataInicio,
+      dataConclusao,
+      dataCancelamento,
+      tempoTotalMinutos,
+      tempoTotalFormatado: tempoTotalMinutos != null ? formatMinutesToHours(tempoTotalMinutos) : null,
+      tempoDecorridoMinutos,
+      tempoDecorridoFormatado: tempoDecorridoMinutos != null ? formatMinutesToHours(tempoDecorridoMinutos) : null,
+      origem,
+      destino: destinoPrimario,
+      destinoFinal,
+      alteracoes,
+      temAlteracao,
+      motivoCancelamento:
+        registro?.motivoCancelamento || registro?.motivo || registro?.justificativaCancelamento || null,
+      usuarioResponsavel:
+        registro?.usuarioNome ||
+        registro?.usuario?.displayName ||
+        registro?.usuario?.nome ||
+        registro?.usuario?.nomeCompleto ||
+        registro?.usuarioResponsavel ||
+        null,
+    };
+
+    registroPanorama.eventos = construirEventosLinhaTempo(registroPanorama);
+
+    const chave = criarChaveRegulacao(registroPanorama);
+    chavesRegistradas.add(chave);
+    registros.push(registroPanorama);
+  });
+
+  (dados.pacientes || [])
+    .filter((paciente) => paciente?.regulacaoAtiva)
+    .forEach((paciente) => {
+      const regulacao = paciente.regulacaoAtiva;
+      const dataInicio = parseDate(regulacao?.iniciadoEm || regulacao?.criadoEm);
+
+      if (!estaNoPeriodo(periodoNormalizado, [dataInicio])) {
+        return;
+      }
+
+      const origem = resolveLocal({
+        leitosMap,
+        setoresMap,
+        leitoId: regulacao?.leitoOrigemId || null,
+        setorId: regulacao?.setorOrigemId || null,
+        fallbackLeito: regulacao?.leitoOrigemCodigo || regulacao?.leitoOrigemNome || null,
+        fallbackSetorSigla: regulacao?.setorOrigemSigla || null,
+        fallbackSetorNome: regulacao?.setorOrigemNome || null,
+      });
+
+      const destino = resolveLocal({
+        leitosMap,
+        setoresMap,
+        leitoId: regulacao?.leitoDestinoId || null,
+        setorId: regulacao?.setorDestinoId || null,
+        fallbackLeito: regulacao?.leitoDestinoCodigo || regulacao?.leitoDestinoNome || null,
+        fallbackSetorSigla: regulacao?.setorDestinoSigla || null,
+        fallbackSetorNome: regulacao?.setorDestinoNome || null,
+      });
+
+      const tempoDecorridoMinutos = dataInicio
+        ? Math.max(Math.round((Date.now() - dataInicio.getTime()) / 60000), 0)
+        : null;
+
+      const registroPanorama = {
+        id: `ativo-${paciente.id}`,
+        chave: `${paciente.id}-${dataInicio?.getTime() || 'sem-data'}`,
+        pacienteId: paciente.id,
+        pacienteNome: paciente?.nomePaciente || paciente?.nomeCompleto || paciente?.nome || 'Paciente',
+        nomeSocial: paciente?.nomeSocial || null,
+        status: 'em_andamento',
+        statusLabel: STATUS_CONFIG.em_andamento.label,
+        statusBadgeClass: STATUS_CONFIG.em_andamento.className,
+        dataInicio,
+        dataConclusao: null,
+        dataCancelamento: null,
+        tempoTotalMinutos: null,
+        tempoTotalFormatado: null,
+        tempoDecorridoMinutos,
+        tempoDecorridoFormatado: tempoDecorridoMinutos != null ? formatMinutesToHours(tempoDecorridoMinutos) : null,
+        origem,
+        destino,
+        destinoFinal: destino,
+        alteracoes: [],
+        temAlteracao: false,
+        motivoCancelamento: null,
+        usuarioResponsavel: regulacao?.usuarioResponsavel || regulacao?.registradoPor || null,
+      };
+
+      registroPanorama.eventos = construirEventosLinhaTempo(registroPanorama);
+
+      const chave = criarChaveRegulacao(registroPanorama);
+      if (chave && !chavesRegistradas.has(chave)) {
+        registros.push(registroPanorama);
+      }
+    });
+
+  const registrosOrdenados = registros.sort((a, b) => {
+    const aTime = a.dataInicio ? a.dataInicio.getTime() : 0;
+    const bTime = b.dataInicio ? b.dataInicio.getTime() : 0;
+    if (aTime === bTime) {
+      const aFinal = a.dataConclusao || a.dataCancelamento || null;
+      const bFinal = b.dataConclusao || b.dataCancelamento || null;
+      return (bFinal?.getTime() ?? 0) - (aFinal?.getTime() ?? 0);
+    }
+    return bTime - aTime;
+  });
+
+  const resumo = {
+    total: registrosOrdenados.length,
+    concluidas: registrosOrdenados.filter((item) => item.status === 'concluida').length,
+    canceladas: registrosOrdenados.filter((item) => item.status === 'cancelada').length,
+    emAndamento: registrosOrdenados.filter((item) => item.status === 'em_andamento').length,
+    comAlteracao: registrosOrdenados.filter((item) => item.temAlteracao).length,
   };
 
   return {
-    pendentes,
-    pendentesPorOrigem: Array.from(pendentesPorOrigemMapa.values()),
-    historicoRegulacoes,
-    resumoPeriodo,
+    registros: registrosOrdenados,
+    resumo,
   };
 };
 
@@ -451,16 +542,40 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
         const periodoInicio = periodo.inicio instanceof Date ? periodo.inicio : new Date(periodo.inicio);
         const periodoFim = periodo.fim instanceof Date ? periodo.fim : new Date(periodo.fim);
 
-        const historicoQuery = query(
-          getHistoricoRegulacoesCollection(),
+        const historicoCollection = getHistoricoRegulacoesCollection();
+
+        const historicoPorInicioQuery = query(
+          historicoCollection,
           where('dataInicio', '>=', periodoInicio),
           where('dataInicio', '<=', periodoFim),
-          // Manter 'desc' para pegar os mais recentes primeiro, a ordenação visual será feita depois.
-          orderBy('dataInicio', 'desc'),
+          orderBy('dataInicio', 'asc')
         );
 
-        const [historicoSnapshot, pacientesSnapshot, leitosSnapshot, setoresSnapshot] = await Promise.all([
-          getDocs(historicoQuery),
+        const historicoPorConclusaoQuery = query(
+          historicoCollection,
+          where('dataConclusao', '>=', periodoInicio),
+          where('dataConclusao', '<=', periodoFim),
+          orderBy('dataConclusao', 'asc')
+        );
+
+        const historicoPorCancelamentoQuery = query(
+          historicoCollection,
+          where('dataCancelamento', '>=', periodoInicio),
+          where('dataCancelamento', '<=', periodoFim),
+          orderBy('dataCancelamento', 'asc')
+        );
+
+        const [
+          historicoInicioSnapshot,
+          historicoConclusaoSnapshot,
+          historicoCancelamentoSnapshot,
+          pacientesSnapshot,
+          leitosSnapshot,
+          setoresSnapshot,
+        ] = await Promise.all([
+          getDocs(historicoPorInicioQuery),
+          getDocs(historicoPorConclusaoQuery),
+          getDocs(historicoPorCancelamentoQuery),
           getDocs(getPacientesCollection()),
           getDocs(getLeitosCollection()),
           getDocs(getSetoresCollection()),
@@ -468,10 +583,13 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
 
         if (!ativo) return;
 
-        const historicoRegulacoes = historicoSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
+        const historicoMap = new Map();
+
+        [historicoInicioSnapshot, historicoConclusaoSnapshot, historicoCancelamentoSnapshot].forEach((snapshot) => {
+          snapshot?.docs?.forEach((doc) => {
+            historicoMap.set(doc.id, { id: doc.id, ...doc.data() });
+          });
+        });
 
         const pacientes = pacientesSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         const leitos = leitosSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -479,7 +597,7 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
 
         setDados({
           loading: false,
-          historicoRegulacoes,
+          historicoRegulacoes: Array.from(historicoMap.values()),
           pacientes,
           leitos,
           setores,
@@ -488,7 +606,14 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
       } catch (error) {
         console.error('Erro ao carregar panorama de regulações:', error);
         if (!ativo) return;
-        setDados((prev) => ({ ...prev, loading: false, error }));
+        setDados({
+          loading: false,
+          historicoRegulacoes: [],
+          pacientes: [],
+          leitos: [],
+          setores: [],
+          error,
+        });
       }
     };
 
@@ -499,354 +624,293 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
     };
   }, [isOpen, periodo]);
 
-  const dadosProcessados = useMemo(
-    () => processarDadosRelatorio(dados, periodo),
-    [dados, periodo]
-  );
+  const panorama = useMemo(() => montarPanoramaRegulacoes(dados, periodo), [dados, periodo]);
 
   const periodoInicioFormatado = periodo?.inicio
-    ? format(periodo.inicio, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+    ? format(periodo.inicio instanceof Date ? periodo.inicio : new Date(periodo.inicio), "dd/MM/yyyy 'às' HH:mm", {
+        locale: ptBR,
+      })
     : '-';
+
   const periodoFimFormatado = periodo?.fim
-    ? format(periodo.fim, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+    ? format(periodo.fim instanceof Date ? periodo.fim : new Date(periodo.fim), "dd/MM/yyyy 'às' HH:mm", {
+        locale: ptBR,
+      })
     : '-';
 
   const copiarPanorama = async () => {
-    const { historicoRegulacoes, resumoPeriodo } = dadosProcessados;
-
-    const periodoInicioTexto = formatDateTime(periodo?.inicio ? new Date(periodo.inicio) : null);
-    const periodoFimTexto = formatDateTime(periodo?.fim ? new Date(periodo.fim) : null);
+    const periodoInicioTexto = periodo?.inicio
+      ? formatDateTime(periodo.inicio instanceof Date ? periodo.inicio : new Date(periodo.inicio))
+      : 'Não informado';
+    const periodoFimTexto = periodo?.fim
+      ? formatDateTime(periodo.fim instanceof Date ? periodo.fim : new Date(periodo.fim))
+      : 'Não informado';
 
     const linhas = [
       'PANORAMA DE REGULAÇÕES',
       `Período: ${periodoInicioTexto} - ${periodoFimTexto}`,
       '',
-      `Total de regulações: ${resumoPeriodo.total}`,
-      '',
-      `Pendentes: ${resumoPeriodo.pendentes}`,
-      `Concluídas: ${resumoPeriodo.concluidas}`,
-      `Canceladas: ${resumoPeriodo.canceladas}`,
-      `Alteradas: ${resumoPeriodo.alteradas}`,
-      '',
-      'Histórico do período',
+      `Total de regulações: ${panorama.resumo.total}`,
+      `Concluídas: ${panorama.resumo.concluidas}`,
+      `Canceladas: ${panorama.resumo.canceladas}`,
+      `Em andamento: ${panorama.resumo.emAndamento}`,
+      `Com alteração: ${panorama.resumo.comAlteracao}`,
       '',
     ];
 
-    if (historicoRegulacoes.length === 0) {
-      linhas.push('Nenhum registro encontrado para o período.');
+    if (panorama.registros.length === 0) {
+      linhas.push('Nenhuma regulação registrada no período.');
     } else {
-      historicoRegulacoes.forEach((item, index) => {
-        const statusNormalizado = normalizarTexto(item.statusFinal);
-        const origemSigla = item.setorOrigemSigla || 'Setor origem não informado';
-        const leitoOrigem = item.leitoOrigemNome || 'Leito origem não informado';
-        const destinoSigla = item.setorDestinoSigla || 'Setor destino não informado';
-        const leitoDestino = item.leitoDestinoNome || 'Leito destino não informado';
-        const destinoFinalSigla = item.setorDestinoFinalSigla || destinoSigla;
-        const leitoDestinoFinal = item.leitoDestinoFinalNome || leitoDestino;
-        const destinoLinha =
-          statusNormalizado === 'alterada'
-            ? `${origemSigla} ${leitoOrigem} → ${destinoSigla} ${leitoDestino} → **${destinoFinalSigla} ${leitoDestinoFinal}**`
-            : `${origemSigla} ${leitoOrigem} → ${destinoSigla} ${leitoDestino}`;
-        if (index > 0) {
-          linhas.push('');
+      linhas.push('DETALHAMENTO:');
+      panorama.registros.forEach((registro, index) => {
+        linhas.push(`${index + 1}. ${registro.pacienteNome} — ${registro.statusLabel}`);
+        if (registro.nomeSocial) {
+          linhas.push(`   Nome social: ${registro.nomeSocial}`);
         }
-
-        linhas.push(`${item.pacienteNome || 'Paciente não identificado'}`);
-        linhas.push(destinoLinha);
-        linhas.push(`Início: ${item.dataInicio ? formatDateTime(item.dataInicio) : 'Não informado'}`);
-        linhas.push(`Status: ${item.statusFinal || 'Não informado'}`);
-        linhas.push(`Tempo total: ${item.tempoTotalFormatado || 'Não informado'}`);
-
-        if (statusNormalizado === 'cancelada' && item.motivoCancelamento) {
-          linhas.push(`Motivo do cancelamento: ${item.motivoCancelamento}`);
+        if (registro.dataInicio) {
+          linhas.push(`   Início: ${formatDateTime(registro.dataInicio)}`);
         }
-
-        linhas.push('---');
+        if (registro.status === 'concluida' && registro.dataConclusao) {
+          linhas.push(`   Conclusão: ${formatDateTime(registro.dataConclusao)}`);
+          if (registro.tempoTotalFormatado) {
+            linhas.push(`   Duração: ${registro.tempoTotalFormatado}`);
+          }
+        }
+        if (registro.status === 'cancelada') {
+          if (registro.dataCancelamento) {
+            linhas.push(`   Cancelamento: ${formatDateTime(registro.dataCancelamento)}`);
+          }
+          if (registro.motivoCancelamento) {
+            linhas.push(`   Motivo: ${registro.motivoCancelamento}`);
+          }
+        }
+        if (registro.status === 'em_andamento' && registro.tempoDecorridoFormatado) {
+          linhas.push(`   Em andamento há: ${registro.tempoDecorridoFormatado}`);
+        }
+        linhas.push(
+          `   Origem: ${registro.origem.setor} · ${registro.origem.leito}`
+        );
+        linhas.push(
+          `   Destino atual: ${registro.destinoFinal.setor} · ${registro.destinoFinal.leito}`
+        );
+        if (registro.temAlteracao) {
+          linhas.push('   Alterações:');
+          registro.alteracoes.forEach((alteracao, idx) => {
+            const dataTexto = alteracao.timestamp ? formatDateTime(alteracao.timestamp) : 'Data não informada';
+            linhas.push(
+              `     ${idx + 1}) ${dataTexto} — de ${alteracao.origem.setor} · ${alteracao.origem.leito} para ${alteracao.destino.setor} · ${alteracao.destino.leito}`
+            );
+            if (alteracao.justificativa) {
+              linhas.push(`        Justificativa: ${alteracao.justificativa}`);
+            }
+            if (alteracao.realizadoPor) {
+              linhas.push(`        Responsável: ${alteracao.realizadoPor}`);
+            }
+          });
+        }
+        linhas.push('');
       });
     }
 
+    const texto = linhas.join('\n').trimEnd();
+
     try {
-      if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
-        throw new Error('Clipboard API indisponível');
+      if (!navigator?.clipboard?.writeText) {
+        throw new Error('Clipboard API não disponível');
       }
-      await navigator.clipboard.writeText(linhas.join('\n'));
-      toast({
-        title: 'Panorama copiado',
-        description: 'Resumo copiado para a área de transferência.',
-      });
+      await navigator.clipboard.writeText(texto);
+      toast({ title: 'Panorama copiado para a área de transferência.' });
     } catch (error) {
+      console.error('Erro ao copiar panorama de regulações:', error);
       toast({
-        title: 'Erro ao copiar',
-        description: 'Não foi possível copiar o panorama.',
+        title: 'Não foi possível copiar o panorama.',
+        description: 'Copie manualmente as informações exibidas.',
         variant: 'destructive',
       });
     }
   };
 
+  const renderConteudo = () => {
+    if (dados.loading) {
+      return (
+        <div className="flex h-[60vh] flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          Carregando panorama de regulações...
+        </div>
+      );
+    }
+
+    if (dados.error) {
+      return (
+        <div className="flex h-[60vh] flex-col items-center justify-center gap-3 text-center text-sm text-destructive">
+          <AlertCircle className="h-6 w-6" />
+          <p>Não foi possível carregar as informações de regulação no período selecionado.</p>
+        </div>
+      );
+    }
+
+    return (
+      <ScrollArea className="h-[70vh] pr-4">
+        <div className="space-y-6">
+          <section className="space-y-2">
+            <h3 className="text-lg font-semibold uppercase tracking-wide">Resumo do Período</h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Total</p>
+                <p className="text-2xl font-semibold">{panorama.resumo.total}</p>
+              </div>
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Concluídas</p>
+                <p className="text-2xl font-semibold text-emerald-600">{panorama.resumo.concluidas}</p>
+              </div>
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Canceladas</p>
+                <p className="text-2xl font-semibold text-destructive">{panorama.resumo.canceladas}</p>
+              </div>
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Em andamento</p>
+                <p className="text-2xl font-semibold text-amber-600">{panorama.resumo.emAndamento}</p>
+              </div>
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Com alteração</p>
+                <p className="text-2xl font-semibold text-sky-600">{panorama.resumo.comAlteracao}</p>
+              </div>
+            </div>
+          </section>
+
+          <Separator />
+
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold uppercase tracking-wide">Detalhamento do Período</h3>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Users className="h-4 w-4" />
+                <span>{panorama.registros.length} registros encontrados</span>
+              </div>
+            </div>
+
+            {panorama.registros.length === 0 ? (
+              <p className="rounded-lg border border-dashed bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+                Nenhuma regulação registrada neste período.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {panorama.registros.map((registro) => (
+                  <Card key={registro.chave} className="border">
+                    <CardHeader className="space-y-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <CardTitle className="text-base font-semibold">{registro.pacienteNome}</CardTitle>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline" className={registro.statusBadgeClass}>
+                            {registro.statusLabel}
+                          </Badge>
+                          {registro.temAlteracao && registro.status === 'concluida' && (
+                            <Badge variant="outline" className={STATUS_CONFIG.alterada.className}>
+                              Alterada durante o processo
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-1 text-xs text-muted-foreground">
+                        {registro.nomeSocial && <p>Nome social: {registro.nomeSocial}</p>}
+                        {registro.usuarioResponsavel && <p>Responsável: {registro.usuarioResponsavel}</p>}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4 text-sm">
+                      <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                        <MapPin className="h-4 w-4" />
+                        <span>
+                          {registro.origem.setor} · {registro.origem.leito}
+                        </span>
+                        <span className="text-muted-foreground">→</span>
+                        <span>
+                          {registro.destinoFinal.setor} · {registro.destinoFinal.leito}
+                        </span>
+                      </div>
+
+                      <div className="grid gap-3 text-muted-foreground sm:grid-cols-2">
+                        <div className="flex items-center gap-2">
+                          <CalendarRange className="h-4 w-4" />
+                          <span>Início: {registro.dataInicio ? formatDateTime(registro.dataInicio) : 'Não informado'}</span>
+                        </div>
+                        {registro.status === 'concluida' && registro.dataConclusao && (
+                          <div className="flex items-center gap-2">
+                            <CalendarRange className="h-4 w-4" />
+                            <span>Conclusão: {formatDateTime(registro.dataConclusao)}</span>
+                          </div>
+                        )}
+                        {registro.status === 'cancelada' && registro.dataCancelamento && (
+                          <div className="flex items-center gap-2">
+                            <CalendarRange className="h-4 w-4" />
+                            <span>Cancelamento: {formatDateTime(registro.dataCancelamento)}</span>
+                          </div>
+                        )}
+                        {registro.status === 'em_andamento' && registro.tempoDecorridoFormatado && (
+                          <div className="flex items-center gap-2">
+                            <Clock className="h-4 w-4" />
+                            <span>Em andamento há {registro.tempoDecorridoFormatado}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {registro.status === 'concluida' && registro.tempoTotalFormatado && (
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Clock className="h-4 w-4" />
+                          <span>Tempo total: {registro.tempoTotalFormatado}</span>
+                        </div>
+                      )}
+
+                      {registro.status === 'cancelada' && registro.motivoCancelamento && (
+                        <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-destructive">
+                          Motivo do cancelamento: {registro.motivoCancelamento}
+                        </div>
+                      )}
+
+                      {registro.eventos.length > 0 && (
+                        <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+                          <p className="text-xs font-semibold uppercase text-muted-foreground">Linha do tempo</p>
+                          <div className="space-y-3">
+                            {registro.eventos.map((evento, index) => (
+                              <div key={`${registro.chave}-${evento.tipo}-${index}`} className="space-y-1 text-muted-foreground">
+                                <p className="font-medium text-foreground">
+                                  {evento.titulo}
+                                  {evento.data ? ` — ${formatDateTime(evento.data)}` : ''}
+                                </p>
+                                {evento.descricao && <p>{evento.descricao}</p>}
+                                {evento.justificativa && <p>Justificativa: {evento.justificativa}</p>}
+                                {evento.realizadoPor && <p>Responsável: {evento.realizadoPor}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      </ScrollArea>
+    );
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-7xl">
-        <DialogHeader>
-          <DialogTitle className="text-2xl font-semibold">
-            Panorama de Regulações
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-h-[85vh] max-w-5xl">
+        <DialogHeader className="space-y-2">
+          <DialogTitle className="flex flex-col gap-2 text-2xl font-semibold sm:flex-row sm:items-center sm:justify-between">
+            <span>Panorama de Regulações</span>
+            <Button variant="outline" size="sm" onClick={copiarPanorama} disabled={dados.loading}>
+              <Copy className="mr-2 h-4 w-4" /> Copiar resumo
+            </Button>
           </DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Período selecionado: {periodoInicioFormatado} — {periodoFimFormatado}
+            Período selecionado: {periodoInicioFormatado} - {periodoFimFormatado}
           </p>
         </DialogHeader>
 
-        {dados.loading ? (
-          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-            <Loader2 className="mb-3 h-8 w-8 animate-spin" />
-            <p>Carregando informações do período...</p>
-          </div>
-        ) : dados.error ? (
-          <div className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-destructive">
-            <AlertCircle className="mt-1 h-5 w-5" />
-            <div>
-              <p className="font-medium">Não foi possível carregar o panorama.</p>
-              <p className="text-sm opacity-90">Tente novamente em instantes.</p>
-            </div>
-          </div>
-        ) : (
-          <ScrollArea className="max-h-[80vh] pr-2">
-            <div className="space-y-8">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <CalendarRange className="h-4 w-4" />
-                  <span>
-                    {periodoInicioFormatado} até {periodoFimFormatado}
-                  </span>
-                </div>
-                <Button variant="outline" onClick={copiarPanorama} className="flex items-center gap-2">
-                  <Copy className="h-4 w-4" />
-                  Copiar panorama
-                </Button>
-              </div>
-
-              <section className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold uppercase tracking-wide">
-                    Regulações Pendentes
-                  </h3>
-                  {dadosProcessados.pendentesPorOrigem.length > 0 && (
-                    <div className="text-xs text-muted-foreground">
-                      Atualizado em {format(new Date(), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
-                    </div>
-                  )}
-                </div>
-
-                {dadosProcessados.pendentes.length === 0 ? (
-                  <p className="rounded-lg border border-dashed bg-muted/40 p-6 text-center text-sm text-muted-foreground">
-                    Sem regulações pendentes.
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-1 lg:grid-cols-1 gap-4">
-                    {dadosProcessados.pendentesPorOrigem.map((setorInfo, index) => {
-                      const setor = setorInfo.setor;
-                      const setorTitulo = setor?.siglaSetor || setor?.nomeSetor || 'Setor não identificado';
-
-                      return (
-                        <Card key={`${setorTitulo}-${index}`} className="border">
-                          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                              <CardTitle className="text-base font-semibold">
-                                {setorTitulo}
-                              </CardTitle>
-                              <p className="text-xs text-muted-foreground">
-                                {setor?.nomeSetor && setor?.siglaSetor
-                                  ? `${setor.siglaSetor} · ${setor.nomeSetor}`
-                                  : setor?.nomeSetor || 'Origem não informada'}
-                              </p>
-                            </div>
-                            <Badge variant="secondary">{setorInfo.regulacoes.length}</Badge>
-                          </CardHeader>
-                          <CardContent className="space-y-3">
-                            {setorInfo.regulacoes.map((item) => {
-                              const destino = item.setorDestino?.siglaSetor || item.setorDestino?.nomeSetor || 'Destino não informado';
-                              const origem = item.setorOrigem?.siglaSetor || item.setorOrigem?.nomeSetor || 'Origem não informada';
-                              const leitoOrigem = item.leitoOrigem?.codigoLeito || 'Leito origem?';
-                              const leitoDestino = item.leitoDestino?.codigoLeito || 'Leito destino?';
-                              return (
-                                <div
-                                  key={item.paciente?.id || `${origem}-${destino}-${leitoOrigem}`}
-                                  className="rounded-lg border bg-muted/30 p-3 text-sm"
-                                >
-                                  <div className="flex flex-col gap-1">
-                                    <span className="font-semibold">{item.paciente?.nomePaciente || 'Paciente'}</span>
-                                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                      <MapPin className="h-3 w-3" />
-                                      <span>{origem} · {leitoOrigem}</span>
-                                      <span className="text-muted-foreground">→</span>
-                                      <span>{destino} · {leitoDestino}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                      <Clock className="h-3 w-3" />
-                                      <span>Tempo de espera: {item.tempoEsperaTexto}</span>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
-
-              <Separator />
-
-              <section className="space-y-4">
-                <h3 className="text-lg font-semibold uppercase tracking-wide">Resumo do Período</h3>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="rounded-lg border bg-muted/40 p-4">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground">Total</p>
-                    <p className="text-2xl font-semibold">{dadosProcessados.resumoPeriodo.total}</p>
-                  </div>
-                  <div className="rounded-lg border bg-muted/40 p-4">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground">Concluídas</p>
-                    <p className="text-2xl font-semibold text-emerald-600">
-                      {dadosProcessados.resumoPeriodo.concluidas}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border bg-muted/40 p-4">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground">Canceladas</p>
-                    <p className="text-2xl font-semibold text-destructive">
-                      {dadosProcessados.resumoPeriodo.canceladas}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border bg-muted/40 p-4">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground">Pendentes</p>
-                    <p className="text-2xl font-semibold text-amber-600">
-                      {dadosProcessados.resumoPeriodo.pendentes}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border bg-muted/40 p-4 sm:col-span-2 lg:col-span-4">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground">Alteradas</p>
-                    <p className="text-2xl font-semibold">
-                      {dadosProcessados.resumoPeriodo.alteradas}
-                    </p>
-                  </div>
-                </div>
-              </section>
-
-              <Separator />
-
-              <section className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold uppercase tracking-wide">Detalhamento do Período</h3>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Users className="h-4 w-4" />
-                    <span>{dadosProcessados.historicoRegulacoes.length} registros encontrados</span>
-                  </div>
-                </div>
-
-                {dadosProcessados.historicoRegulacoes.length === 0 ? (
-                  <p className="rounded-lg border border-dashed bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-                    Nenhuma regulação registrada neste período.
-                  </p>
-                ) : (
-                  <div className="space-y-4">
-                    {dadosProcessados.historicoRegulacoes.map((item) => {
-                      const statusNormalizado = normalizarTexto(item.statusFinal);
-                      const origemSigla = item.setorOrigemSigla || 'Setor origem não informado';
-                      const leitoOrigem = item.leitoOrigemNome || 'Leito origem não informado';
-                      const destinoSigla = item.setorDestinoSigla || 'Setor destino não informado';
-                      const leitoDestino = item.leitoDestinoNome || 'Leito destino não informado';
-                      const destinoFinalSigla = item.setorDestinoFinalSigla || destinoSigla;
-                      const leitoDestinoFinal = item.leitoDestinoFinalNome || leitoDestino;
-                      const destinoLinha =
-                        statusNormalizado === 'alterada' ? (
-                          <>
-                            <span>
-                              {origemSigla} {leitoOrigem}
-                            </span>
-                            <span className="text-muted-foreground">→</span>
-                            <span>
-                              {destinoSigla} {leitoDestino}
-                            </span>
-                            <span className="text-muted-foreground">→</span>
-                            <span className="font-semibold text-foreground">
-                              {destinoFinalSigla} {leitoDestinoFinal}
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <span>
-                              {origemSigla} {leitoOrigem}
-                            </span>
-                            <span className="text-muted-foreground">→</span>
-                            <span>
-                              {destinoSigla} {leitoDestino}
-                            </span>
-                          </>
-                        );
-                      return (
-                        <Card key={item.id} className="border">
-                          <CardHeader className="space-y-1">
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                              <CardTitle className="text-base font-semibold">
-                                {item.pacienteNome}
-                              </CardTitle>
-                            </div>
-                            <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-                              {item.paciente?.nomeSocial && (
-                                <span>Nome social: {item.paciente.nomeSocial}</span>
-                              )}
-                              {item.statusFinal && <span>Status: {item.statusFinal}</span>}
-                            </div>
-                          </CardHeader>
-                          <CardContent className="space-y-3 text-sm">
-                            <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-                              <MapPin className="h-4 w-4" />
-                              {destinoLinha}
-                            </div>
-                            <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                              <div className="flex items-center gap-2">
-                                <CalendarRange className="h-4 w-4" />
-                                <span>
-                                  Início:{' '}
-                                  {item.dataInicio ? formatDateTime(item.dataInicio) : 'Não informado'}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Clock className="h-4 w-4" />
-                                <span>Tempo total: {item.tempoTotalFormatado}</span>
-                              </div>
-                            </div>
-                            {statusNormalizado === 'cancelada' && item.motivoCancelamento && (
-                              <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
-                                Motivo do cancelamento: {item.motivoCancelamento}
-                              </div>
-                            )}
-                            {item.alteracoes.length > 0 && (
-                              <div className="space-y-2 rounded-md border bg-muted/30 p-3 text-xs">
-                                <p className="font-semibold uppercase text-muted-foreground">Alterações registradas</p>
-                                {item.alteracoes.map((alteracao, index) => (
-                                  <div key={index} className="space-y-1">
-                                    <p className="font-medium text-foreground">
-                                      {alteracao.destinoDescricao || 'Destino não informado'}
-                                    </p>
-                                    <div className="flex flex-wrap gap-2 text-muted-foreground">
-                                      <span>{alteracao.timestamp ? formatDateTime(alteracao.timestamp) : 'Data não informada'}</span>
-                                      {alteracao.motivo && <span>· Motivo: {alteracao.motivo}</span>}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
-            </div>
-          </ScrollArea>
-        )}
+        {renderConteudo()}
       </DialogContent>
     </Dialog>
   );
