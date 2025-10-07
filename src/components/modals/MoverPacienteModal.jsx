@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Search } from 'lucide-react';
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const MoverPacienteModal = ({ isOpen, onClose, onMove, paciente, leito, dadosEstruturados }) => {
   const [busca, setBusca] = useState('');
@@ -113,62 +114,64 @@ const MoverPacienteModal = ({ isOpen, onClose, onMove, paciente, leito, dadosEst
           </div>
 
           {/* Lista de leitos disponíveis */}
-          <div className="flex-1 overflow-y-auto space-y-4">
-            {Object.entries(leitosPorSetor).map(([nomeSetor, leitosDoSetor]) => (
-              <div key={nomeSetor} className="space-y-2">
-                <h4 className="font-medium text-sm text-gray-700 sticky top-0 bg-background py-1">
-                  {nomeSetor} ({leitosDoSetor.length} disponível{leitosDoSetor.length !== 1 ? 'eis' : ''})
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                  {leitosDoSetor.map(leitoItem => (
-                    <Card 
-                      key={leitoItem.id}
-                      className={`cursor-pointer transition-all ${
-                        leitoSelecionado?.id === leitoItem.id 
-                          ? 'ring-2 ring-primary bg-primary/5' 
-                          : 'hover:shadow-md'
-                      }`}
-                      onClick={() => setLeitoSelecionado(leitoItem)}
-                    >
-                      <CardContent className="p-3">
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium text-sm">{leitoItem.codigoLeito}</span>
-                            <Badge 
-                              variant="outline" 
-                              className={
-                                leitoItem.status === 'Vago' 
-                                  ? 'bg-green-100 text-green-800' 
-                                  : 'bg-yellow-100 text-yellow-800'
-                              }
-                            >
-                              {leitoItem.status}
-                            </Badge>
+          <ScrollArea className="h-[450px] pr-2">
+            <div className="space-y-4">
+              {Object.entries(leitosPorSetor).map(([nomeSetor, leitosDoSetor]) => (
+                <div key={nomeSetor} className="space-y-2">
+                  <h4 className="font-medium text-sm text-gray-700 sticky top-0 bg-background py-1">
+                    {nomeSetor} ({leitosDoSetor.length} disponível{leitosDoSetor.length !== 1 ? 'eis' : ''})
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {leitosDoSetor.map(leitoItem => (
+                      <Card
+                        key={leitoItem.id}
+                        className={`cursor-pointer transition-all ${
+                          leitoSelecionado?.id === leitoItem.id
+                            ? 'ring-2 ring-primary bg-primary/5'
+                            : 'hover:shadow-md'
+                        }`}
+                        onClick={() => setLeitoSelecionado(leitoItem)}
+                      >
+                        <CardContent className="p-3">
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium text-sm">{leitoItem.codigoLeito}</span>
+                              <Badge
+                                variant="outline"
+                                className={
+                                  leitoItem.status === 'Vago'
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-yellow-100 text-yellow-800'
+                                }
+                              >
+                                {leitoItem.status}
+                              </Badge>
+                            </div>
+                            {leitoItem.nomeQuarto && (
+                              <p className="text-xs text-muted-foreground">
+                                Quarto: {leitoItem.nomeQuarto}
+                              </p>
+                            )}
+                            {leitoItem.isPCP && (
+                              <Badge variant="secondary" className="text-xs">
+                                PCP
+                              </Badge>
+                            )}
                           </div>
-                          {leitoItem.nomeQuarto && (
-                            <p className="text-xs text-muted-foreground">
-                              Quarto: {leitoItem.nomeQuarto}
-                            </p>
-                          )}
-                          {leitoItem.isPCP && (
-                            <Badge variant="secondary" className="text-xs">
-                              PCP
-                            </Badge>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
 
-          {leitosFiltrados.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground">
-              {busca ? 'Nenhum leito encontrado para a busca.' : 'Nenhum leito disponível no momento.'}
+              {leitosFiltrados.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  {busca ? 'Nenhum leito encontrado para a busca.' : 'Nenhum leito disponível no momento.'}
+                </div>
+              )}
             </div>
-          )}
+          </ScrollArea>
         </div>
 
         <DialogFooter>
