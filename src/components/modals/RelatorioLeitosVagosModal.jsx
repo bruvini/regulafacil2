@@ -261,7 +261,7 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
 
       const leitosVagos = [...quartosComLeitos.flatMap(quarto => quarto.leitos), ...leitosSemQuarto]
         .filter(leito =>
-          leito.status === 'Vago' &&
+          ['Vago', 'Higienização'].includes(leito.status) &&
           !leito.paciente &&
           !leito.reservaExterna &&
           !leito.regulacaoEmAndamento &&
