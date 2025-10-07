@@ -209,14 +209,70 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
 
   // Função para obter informações do leito
   const obterInfoLeito = (leitoId) => {
-    const leito = leitos.find(l => l.id === leitoId);
-    if (!leito) return { codigo: 'N/A', siglaSetor: 'N/A' };
-    
-    const setor = setores.find(s => s.id === leito.setorId);
+    if (!leitoId) {
+      return {
+        id: null,
+        codigo: 'N/A',
+        codigoLeito: 'N/A',
+        siglaSetor: 'N/A',
+        nomeSetor: 'Setor não informado',
+        setorId: null,
+        status: 'Indefinido',
+      };
+    }
+
+    const leito = leitos.find((l) => l.id === leitoId);
+    if (!leito) {
+      return {
+        id: leitoId,
+        codigo: 'N/A',
+        codigoLeito: 'N/A',
+        siglaSetor: 'N/A',
+        nomeSetor: 'Setor não informado',
+        setorId: null,
+        status: 'Indisponível',
+      };
+    }
+
+    const setor = setores.find((s) => s.id === leito.setorId);
+
     return {
+      id: leito.id,
       codigo: leito.codigoLeito || 'N/A',
-      siglaSetor: setor?.siglaSetor || 'N/A'
+      codigoLeito: leito.codigoLeito || 'N/A',
+      siglaSetor: setor?.siglaSetor || leito.siglaSetor || 'N/A',
+      nomeSetor: setor?.nomeSetor || leito.nomeSetor || 'Setor não informado',
+      setorId: leito.setorId || setor?.id || null,
+      status: leito.status || 'Indefinido',
+      dadosCompletos: leito,
     };
+  };
+
+  const montarContextoAlteracao = (paciente) => {
+    if (!paciente?.regulacaoAtiva) {
+      return null;
+    }
+
+    return {
+      paciente,
+      leitoOrigem: obterInfoLeito(paciente.regulacaoAtiva.leitoOrigemId),
+      leitoDestino: obterInfoLeito(paciente.regulacaoAtiva.leitoDestinoId),
+    };
+  };
+
+  const abrirModalAlterar = (paciente) => {
+    const contexto = montarContextoAlteracao(paciente);
+
+    if (!contexto) {
+      toast({
+        title: 'Não foi possível abrir a alteração',
+        description: 'Os dados da regulação ativa não foram encontrados para este paciente.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setModalAlterar({ isOpen: true, regulacao: contexto });
   };
 
   // Função para copiar texto personalizado
@@ -627,7 +683,7 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 shrink-0 text-blue-600/90 hover:text-blue-600"
-                  onClick={() => setModalAlterar({ isOpen: true, regulacao: paciente })}
+                  onClick={() => abrirModalAlterar(paciente)}
                   aria-label="Alterar regulação"
                 >
                   <Pencil className="h-4 w-4" />
