@@ -4,9 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Loader, Copy, CheckCircle, Pencil, XCircle, FileText } from "lucide-react";
-import { intervalToDuration, differenceInMinutes } from 'date-fns';
-import { 
-  getSetoresCollection, 
+import { intervalToDuration } from 'date-fns';
+import {
+  getSetoresCollection,
   getLeitosCollection,
   getPacientesCollection,
   getInfeccoesCollection,
@@ -27,6 +27,7 @@ import ConcluirRegulacaoModal from './modals/ConcluirRegulacaoModal';
 import CancelarRegulacaoModal from './modals/CancelarRegulacaoModal';
 import AlterarRegulacaoModal from './modals/AlterarRegulacaoModal';
 import ResumoRegulacoesModal from './modals/ResumoRegulacoesModal';
+import { adicionarConclusaoRegulacaoAoBatch } from '@/lib/regulacao';
 
 const normalizarTexto = (texto) =>
   String(texto || '')
@@ -432,88 +433,20 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
       const batch = writeBatch(db);
       const destinoSetorId = regulacaoAtiva.setorDestinoId || leitos.find(l => l.id === regulacaoAtiva.leitoDestinoId)?.setorId;
       const setorDestino = setores.find(s => s.id === destinoSetorId);
-      const historicoRef = doc(getHistoricoRegulacoesCollection(), paciente.id);
-      const nomeUsuario = currentUser?.nomeCompleto || 'Usuário do Sistema';
-      const inicioRegulacaoDate = regulacaoAtiva.iniciadoEm?.toDate?.() || new Date(regulacaoAtiva.iniciadoEm);
-      const tempoRegulacao = Number.isNaN(inicioRegulacaoDate?.getTime?.())
-        ? null
-        : differenceInMinutes(new Date(), inicioRegulacaoDate);
 
-      // 1. Atualizar documento do paciente
-      const pacienteRef = doc(getPacientesCollection(), paciente.id);
-      const updatesPaciente = {
-        regulacaoAtiva: deleteField(),
-        leitoId: regulacaoAtiva.leitoDestinoId,
-        setorId: destinoSetorId
-      };
-
-      // Verificar se é UTI e remover pedidoUTI se necessário
-      if (setorDestino?.tipoSetor === 'UTI' && paciente.pedidoUTI) {
-        updatesPaciente.pedidoUTI = deleteField();
-      }
-      
-      // Remover pedidoRemanejamento se existir (parte do requisito)
-      if (paciente.pedidoRemanejamento) {
-        updatesPaciente.pedidoRemanejamento = deleteField();
-      }
-      
-      batch.update(pacienteRef, updatesPaciente);
-      
-      // 2. Atualizar leito de origem
-      const leitoOrigemRef = doc(getLeitosCollection(), regulacaoAtiva.leitoOrigemId);
-      batch.update(leitoOrigemRef, {
-        regulacaoEmAndamento: deleteField(),
-        status: 'Higienização',
-        historico: arrayUnion({
-          status: 'Higienização',
-          timestamp: new Date()
-        })
-      });
-      
-      // 3. Atualizar leito de destino
-      const leitoDestinoRef = doc(getLeitosCollection(), regulacaoAtiva.leitoDestinoId);
-      batch.update(leitoDestinoRef, {
-        regulacaoEmAndamento: deleteField(),
-        status: 'Ocupado',
-        historico: arrayUnion({
-          status: 'Ocupado',
-          timestamp: new Date()
-        })
+      const { logEntries } = adicionarConclusaoRegulacaoAoBatch({
+        batch,
+        paciente,
+        currentUser,
+        leitoOrigem,
+        leitoDestino,
+        setorDestino
       });
 
-      batch.set(
-        historicoRef,
-        {
-          status: 'Concluída',
-          dataConclusao: serverTimestamp(),
-          userNameConclusao: nomeUsuario,
-          statusFinal: 'Concluída',
-          tempoRegulacaoMinutos: tempoRegulacao,
-          leitoDestinoFinalId: regulacaoAtiva.leitoDestinoId,
-          setorDestinoFinalId: destinoSetorId
-        },
-        { merge: true }
-      );
-
-      // Executar transação
       await batch.commit();
 
-      // Auditoria detalhada
-      await logAction(
-        'Regulação de Leitos',
-        `Regulação para o paciente '${paciente.nomePaciente}' (do leito ${leitoOrigem.siglaSetor} - ${leitoOrigem.codigo} para ${leitoDestino.siglaSetor} - ${leitoDestino.codigo}) foi concluída por ${nomeUsuario} em ${tempoRegulacao ?? 0} minutos.`,
-        currentUser
-      );
-
-      // Log condicional de UTI
-      if (setorDestino?.tipoSetor === 'UTI' && paciente.pedidoUTI) {
-        const inicioUTI = paciente.pedidoUTI.solicitadoEm?.toDate?.() || new Date(paciente.pedidoUTI.solicitadoEm);
-        const tempoEspera = differenceInMinutes(new Date(), inicioUTI);
-        await logAction(
-          'Regulação de Leitos',
-          `Pedido de UTI do paciente '${paciente.nomePaciente}' foi atendido. Tempo de espera: ${tempoEspera} minutos.`,
-          currentUser
-        );
+      for (const message of logEntries) {
+        await logAction('Regulação de Leitos', message, currentUser);
       }
       
       toast({
