@@ -20,160 +20,44 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useDadosHospitalares } from "@/hooks/useDadosHospitalares";
+import { useQuartos } from "@/hooks/useCollections";
+import { getLeitosVagosPorSetor } from "@/lib/leitosDisponiveisUtils";
 
 const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
-  const { setores = [], leitos = [], estrutura = {} } = useDadosHospitalares();
-
-  const normalizarStatusLeito = (status) => {
-    if (!status) {
-      return "";
-    }
-
-    const texto = String(status).trim();
-    if (!texto) {
-      return "";
-    }
-
-    const semAcentos = texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-
-    if (semAcentos === "vago") {
-      return "Vago";
-    }
-
-    if (semAcentos === "higienizacao") {
-      return "Higienização";
-    }
-
-    return texto;
-  };
-
-  const restricoesPorLeito = useMemo(() => {
-    const mapaRestricoes = new Map();
-
-    const setoresEstruturados = Array.isArray(estrutura)
-      ? estrutura
-      : Object.values(estrutura || {}).reduce((acc, entradaAtual) => {
-          if (Array.isArray(entradaAtual)) {
-            acc.push(...entradaAtual);
-          } else if (entradaAtual) {
-            acc.push(entradaAtual);
-          }
-          return acc;
-        }, []);
-
-    setoresEstruturados.forEach((setor) => {
-      const registrarLeito = (leitoAtual = {}) => {
-        if (!leitoAtual?.id) {
-          return;
-        }
-
-        mapaRestricoes.set(leitoAtual.id, {
-          restricao: leitoAtual?.restricaoCoorte || null,
-        });
-      };
-
-      (setor?.quartos || []).forEach((quarto) => {
-        (quarto?.leitos || []).forEach(registrarLeito);
-      });
-
-      (setor?.leitosSemQuarto || []).forEach(registrarLeito);
-    });
-
-    return mapaRestricoes;
-  }, [estrutura]);
-
-  const obterCompatibilidade = (leitoBase) => {
-    if (!leitoBase) {
-      return "Misto";
-    }
-
-    const restricao =
-      restricoesPorLeito.get(leitoBase.id)?.restricao || leitoBase?.restricaoCoorte || null;
-
-    const sexo = restricao?.sexo ? String(restricao.sexo).trim() : "";
-    if (!sexo) {
-      return "Misto";
-    }
-
-    const sexoNormalizado = sexo
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase();
-
-    if (["m", "masc", "masculino"].includes(sexoNormalizado)) {
-      return "Masculino";
-    }
-
-    if (["f", "fem", "feminino"].includes(sexoNormalizado)) {
-      return "Feminino";
-    }
-
-    return sexo;
-  };
+  const {
+    setores = [],
+    leitos = [],
+    pacientes = [],
+    infeccoes = [],
+    loading: loadingDados,
+  } = useDadosHospitalares();
+  const { data: quartos = [], loading: loadingQuartos } = useQuartos();
+  const carregando = loadingDados || loadingQuartos;
 
   const setoresEnfermariaDisponiveis = useMemo(() => {
-    if (!setores.length || !leitos.length) {
+    if (carregando) {
       return [];
     }
 
-    const statusPermitidos = new Set(["Vago", "Higienização"]);
-    const leitosPorSetor = new Map();
-
-    leitos.forEach((leito) => {
-      const setorId = leito?.setorId;
-      const statusAtual = normalizarStatusLeito(leito?.status || leito?.statusLeito);
-
-      if (!setorId || !statusPermitidos.has(statusAtual)) {
-        return;
-      }
-
-      if (!leitosPorSetor.has(setorId)) {
-        leitosPorSetor.set(setorId, []);
-      }
-
-      leitosPorSetor.get(setorId).push({
-        ...leito,
-        statusPadronizado: statusAtual,
-      });
+    const setoresComLeitos = getLeitosVagosPorSetor({
+      setores,
+      leitos,
+      quartos,
+      pacientes,
+      infeccoes,
     });
 
-    return setores
+    return setoresComLeitos
       .filter((setor) => (setor?.tipoSetor || "").toLowerCase() === "enfermaria")
-      .map((setor) => {
-        const leitosDisponiveis = leitosPorSetor.get(setor.id) || [];
-
-        if (!leitosDisponiveis.length) {
-          return null;
-        }
-
-        const nomeSetor =
-          setor?.nomeSetor || setor?.nome || setor?.siglaSetor || "Setor sem nome";
-
-        const leitosOrdenados = [...leitosDisponiveis]
-          .sort((a, b) =>
-            String(a?.codigoLeito || "").localeCompare(String(b?.codigoLeito || ""))
-          )
-          .map((leito) => {
-            const codigo =
-              leito?.codigoLeito || leito?.nomeLeito || leito?.nome || String(leito?.id || "");
-
-            return {
-              id: leito.id,
-              codigo: codigo || "Leito sem código",
-              status: leito?.statusPadronizado || leito?.status || "Sem status",
-              compatibilidade: obterCompatibilidade(leito),
-            };
-          });
-
-        return {
-          id: setor.id,
-          nome: nomeSetor,
-          leitos: leitosOrdenados,
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [setores, leitos, restricoesPorLeito]);
+      .map((setor) => ({
+        id: setor.id,
+        nome: setor.nomeSetor,
+        leitos: setor.leitosVagos.map((leito) => ({
+          ...leito,
+          codigo: leito.codigoLeito,
+        })),
+      }));
+  }, [carregando, setores, leitos, quartos, pacientes, infeccoes]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -215,7 +99,11 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
               </div>
             </AlertDescription>
           </Alert>
-          {setoresEnfermariaDisponiveis.length ? (
+          {carregando ? (
+            <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
+              Carregando leitos disponíveis...
+            </div>
+          ) : setoresEnfermariaDisponiveis.length ? (
             <ScrollArea className="h-[60vh] pr-2">
               <Accordion type="multiple" className="space-y-4">
                 {setoresEnfermariaDisponiveis.map((setor) => (
@@ -229,17 +117,26 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                             value={`${setor.id}-${leito.id}`}
                           >
                             <AccordionTrigger>
-                              <div className="flex w-full items-center justify-between text-left">
+                              <div className="flex w-full items-center justify-between text-left" title={leito.compatibilidade}>
                                 <div className="flex items-center gap-2">
                                   <span className="font-medium">{leito.codigo}</span>
-                                  <Badge
-                                    variant={
-                                      leito.compatibilidade === "Misto" ? "outline" : "secondary"
-                                    }
-                                    className="text-xs capitalize"
-                                  >
-                                    {leito.compatibilidade}
-                                  </Badge>
+                                  {leito.compatibilidadeBadges.length ? (
+                                    <div className="flex flex-wrap gap-1">
+                                      {leito.compatibilidadeBadges.map((badge, index) => (
+                                        <Badge
+                                          key={`${leito.id}-${badge.text}-${index}`}
+                                          variant={badge.variant}
+                                          className="text-xs capitalize"
+                                        >
+                                          {badge.text}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                                      Livre
+                                    </Badge>
+                                  )}
                                 </div>
                                 <span className="text-xs font-medium text-muted-foreground">
                                   {leito.status}

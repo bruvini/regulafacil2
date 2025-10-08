@@ -13,6 +13,7 @@ import {
   onSnapshot
 } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
+import { getLeitosVagosPorSetor } from '@/lib/leitosDisponiveisUtils';
 
 const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
   const { toast } = useToast();
@@ -24,17 +25,6 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
     loading: true
   });
   const [infeccoes, setInfeccoes] = useState([]);
-
-  const formatarMensagemRestricaoCoorte = (restricao) => {
-    if (!restricao) {
-      return '';
-    }
-    const isolamentos = (restricao.isolamentos || []).map(sigla => sigla.toUpperCase());
-    if (isolamentos.length > 0) {
-      return `Permitido apenas pacientes do sexo ${restricao.sexo} com isolamento de ${isolamentos.join(', ')}`;
-    }
-    return `Permitido apenas pacientes do sexo ${restricao.sexo}`;
-  };
 
   // Buscar dados do Firestore
   useEffect(() => {
@@ -96,197 +86,17 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
     };
   }, [isOpen]);
 
-  const infeccoesPorId = useMemo(() => {
-    return new Map((infeccoes || []).map(infeccaoAtual => [infeccaoAtual.id, infeccaoAtual]));
-  }, [infeccoes]);
+  const setoresComLeitosVagos = useMemo(() => {
+    if (dados.loading) return [];
 
-  const pacientesPorId = useMemo(() => {
-    return new Map((dados.pacientes || []).map(pacienteAtual => [pacienteAtual.id, pacienteAtual]));
-  }, [dados.pacientes]);
-
-  const aplicarRestricoesCoorte = (quartos, pacientesMap, infeccoesMap) => {
-    if (!quartos || !pacientesMap || !infeccoesMap) return;
-
-    quartos.forEach(quarto => {
-      const leitosOcupados = quarto.leitos.filter(l => (l.status === 'Ocupado' || l.status === 'Regulado') && l.pacienteId);
-
-      if (leitosOcupados.length === 0) return; // Nenhuma restrição se o quarto não tiver pacientes
-
-      let coorteSexo = null;
-      const coorteIsolamentos = new Set();
-      let isSexoConflitante = false;
-
-      leitosOcupados.forEach(leitoOcupado => {
-        const paciente = pacientesMap.get(leitoOcupado.pacienteId);
-        if (!paciente) return;
-
-        // Define o sexo da coorte com base no primeiro paciente
-        if (coorteSexo === null) {
-          coorteSexo = paciente.sexo;
-        } else if (coorteSexo !== paciente.sexo) {
-          isSexoConflitante = true;
-        }
-
-        // Agrega os isolamentos de todos os pacientes do quarto
-        (paciente.isolamentos || []).forEach(iso => {
-          const infeccao = infeccoesMap.get(iso.infeccaoId);
-          if (infeccao) {
-            const sigla = infeccao.siglaInfeccao || infeccao.sigla;
-            if (sigla) coorteIsolamentos.add(sigla);
-          }
-        });
-      });
-
-      // Se houver conflito de sexo no quarto, não é possível criar uma coorte válida
-      if (isSexoConflitante) return;
-
-      // Cria o objeto de restrição
-      const restricao = {
-        sexo: coorteSexo,
-        isolamentos: Array.from(coorteIsolamentos)
-      };
-
-      // Aplica a restrição a todos os leitos VAGOS do quarto
-      quarto.leitos.forEach(leito => {
-        if (leito.status === 'Vago') {
-          leito.restricaoCoorte = restricao;
-        }
-      });
+    return getLeitosVagosPorSetor({
+      setores: dados.setores,
+      leitos: dados.leitos,
+      quartos: dados.quartos,
+      pacientes: dados.pacientes,
+      infeccoes,
     });
-  };
-
-  // Processar dados e aplicar lógica de coorte
-  const dadosProcessados = useMemo(() => {
-    if (dados.loading) return {};
-
-    const { setores, leitos, pacientes, quartos } = dados;
-
-    const pacientesPorLeito = {};
-    pacientes.forEach(paciente => {
-      if (paciente.leitoId) {
-        pacientesPorLeito[paciente.leitoId] = paciente;
-      }
-    });
-
-    const setoresElegiveis = setores.filter(setor =>
-      setor.tipoSetor === 'Enfermaria' || setor.tipoSetor === 'UTI'
-    );
-
-    const estruturarPorSetor = {};
-
-    setoresElegiveis.forEach(setor => {
-      const leitosDoSetor = leitos
-        .filter(leito => leito.setorId === setor.id)
-        .map(leito => ({
-          ...leito,
-          status: leito.status || leito.statusLeito || 'Desconhecido',
-          paciente: pacientesPorLeito[leito.id] || null,
-          pacienteId: leito.pacienteId || pacientesPorLeito[leito.id]?.id || null,
-          restricaoCoorte: null
-        }));
-
-      if (leitosDoSetor.length === 0) return;
-
-      let quartosComLeitos = [];
-      let leitosSemQuarto = [];
-
-      if (setor.tipoSetor === 'Enfermaria') {
-        const gruposQuarto = leitosDoSetor.reduce((acc, leitoAtual) => {
-          const codigo = leitoAtual.codigoLeito || '';
-          const codigoNormalizado = String(codigo).trim();
-          const chave = (codigoNormalizado.substring(0, 3) || '---').toUpperCase();
-          if (!acc[chave]) {
-            acc[chave] = {
-              id: `din-${setor.id}-${chave}`,
-              nomeQuarto: `Quarto ${chave}`,
-              leitos: []
-            };
-          }
-          acc[chave].leitos.push(leitoAtual);
-          return acc;
-        }, {});
-
-        quartosComLeitos = Object.values(gruposQuarto)
-          .map(quarto => ({
-            ...quarto,
-            leitos: quarto.leitos.sort((a, b) => {
-              const codeA = a.codigoLeito || '';
-              const codeB = b.codigoLeito || '';
-              return codeA.localeCompare(codeB);
-            })
-          }))
-          .sort((a, b) => {
-            const nomeA = a.nomeQuarto || '';
-            const nomeB = b.nomeQuarto || '';
-            return nomeA.localeCompare(nomeB);
-          });
-
-        aplicarRestricoesCoorte(quartosComLeitos, pacientesPorId, infeccoesPorId);
-        leitosSemQuarto = [];
-      } else {
-        const quartosDoSetor = quartos
-          .filter(quarto => quarto.setorId === setor.id)
-          .sort((a, b) => {
-            const nameA = a.nomeQuarto || '';
-            const nameB = b.nomeQuarto || '';
-            return nameA.localeCompare(nameB);
-          });
-
-        leitosSemQuarto = [...leitosDoSetor];
-
-        quartosComLeitos = quartosDoSetor.map(quarto => {
-          const leitosDoQuarto = leitosDoSetor
-            .filter(leito => quarto.leitosIds && quarto.leitosIds.includes(leito.id))
-            .sort((a, b) => {
-              const codeA = a.codigoLeito || '';
-              const codeB = b.codigoLeito || '';
-              return codeA.localeCompare(codeB);
-            });
-
-          leitosDoQuarto.forEach(leito => {
-            const index = leitosSemQuarto.findIndex(l => l.id === leito.id);
-            if (index > -1) {
-              leitosSemQuarto.splice(index, 1);
-            }
-          });
-
-          return {
-            ...quarto,
-            leitos: leitosDoQuarto
-          };
-        });
-
-        aplicarRestricoesCoorte(quartosComLeitos, pacientesPorId, infeccoesPorId);
-      }
-
-      const leitosVagos = [...quartosComLeitos.flatMap(quarto => quarto.leitos), ...leitosSemQuarto]
-        .filter(leito =>
-          ['Vago', 'Higienização'].includes(leito.status) &&
-          !leito.paciente &&
-          !leito.reservaExterna &&
-          !leito.regulacaoEmAndamento &&
-          leito.statusLeito !== 'Reservado'
-        )
-        .sort((a, b) => {
-          const codeA = a.codigoLeito || '';
-          const codeB = b.codigoLeito || '';
-          return codeA.localeCompare(codeB);
-        })
-        .map(leito => ({
-          ...leito,
-          compatibilidade: formatarMensagemRestricaoCoorte(leito.restricaoCoorte) || 'Livre',
-        }));
-
-      if (leitosVagos.length > 0) {
-        estruturarPorSetor[setor.id] = {
-          nomeSetor: setor.nomeSetor,
-          leitosVagos
-        };
-      }
-    });
-
-    return estruturarPorSetor;
-  }, [dados, infeccoesPorId, pacientesPorId]);
+  }, [dados, infeccoes]);
 
   const gerarMensagemWhatsApp = (nomeSetor, leitosVagos) => {
     let mensagem = `*Verificação de disponibilidade de leitos - ${nomeSetor}*\n\n`;
@@ -340,7 +150,7 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
               <Loader2 className="h-6 w-6 animate-spin mr-2" />
               <span>Carregando relatório...</span>
             </div>
-          ) : Object.keys(dadosProcessados).length === 0 ? (
+          ) : setoresComLeitosVagos.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-muted-foreground">
                 Nenhum leito vago encontrado em enfermarias e UTIs.
@@ -348,8 +158,8 @@ const RelatorioLeitosVagosModal = ({ isOpen, onClose }) => {
             </div>
           ) : (
             <div className="space-y-6 p-4">
-              {Object.values(dadosProcessados).map(setor => (
-                <div key={setor.nomeSetor} className="overflow-hidden rounded-lg border">
+              {setoresComLeitosVagos.map(setor => (
+                <div key={setor.id} className="overflow-hidden rounded-lg border">
                   <div className="flex items-center justify-between bg-muted px-4 py-3">
                     <h3 className="text-base font-semibold text-foreground">
                       {setor.nomeSetor}
