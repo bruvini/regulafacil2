@@ -23,6 +23,7 @@ import { useDadosHospitalares } from "@/hooks/useDadosHospitalares";
 import { useQuartos } from "@/hooks/useCollections";
 import { getLeitosVagosPorSetor } from "@/lib/leitosDisponiveisUtils";
 import { encontrarLeitosCompativeis, calcularIdade } from "@/lib/compatibilidadeUtils";
+import { intervalToDuration } from "date-fns";
 
 const PERFIS_DE_SETOR_POR_ESPECIALIDADE = {
   "UNID. JS ORTOPEDIA": [
@@ -141,36 +142,41 @@ const obterInfoTempoInternacao = (dataInternacao) => {
     };
   }
 
-  const agora = new Date();
-  const diffMs = Math.max(0, agora.getTime() - data.getTime());
-  const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const inicio = data.getTime();
+  const agora = Date.now();
+  const inicioNormalizado = Math.min(inicio, agora);
+  const fimNormalizado = Math.max(inicio, agora);
 
-  if (diffDias >= 1) {
-    return {
-      timestamp: data.getTime(),
-      texto: `Internado há ${diffDias} ${diffDias === 1 ? "dia" : "dias"}`,
-    };
+  const duration = intervalToDuration({
+    start: new Date(inicioNormalizado),
+    end: new Date(fimNormalizado),
+  });
+
+  const totalDias = Math.floor((fimNormalizado - inicioNormalizado) / (1000 * 60 * 60 * 24));
+  const horasRestantes = duration.hours ?? 0;
+  const minutosRestantes = duration.minutes ?? 0;
+
+  const partes = [];
+
+  if (totalDias > 0) {
+    partes.push(`${totalDias}d`);
   }
 
-  const diffHoras = Math.floor(diffMs / (1000 * 60 * 60));
-  if (diffHoras >= 1) {
-    return {
-      timestamp: data.getTime(),
-      texto: `Internado há ${diffHoras} ${diffHoras === 1 ? "hora" : "horas"}`,
-    };
+  if (horasRestantes > 0 || (totalDias > 0 && minutosRestantes > 0)) {
+    partes.push(`${horasRestantes}h`);
   }
 
-  const diffMinutos = Math.floor(diffMs / (1000 * 60));
-  if (diffMinutos >= 1) {
-    return {
-      timestamp: data.getTime(),
-      texto: `Internado há ${diffMinutos} ${diffMinutos === 1 ? "minuto" : "minutos"}`,
-    };
+  if (minutosRestantes > 0) {
+    partes.push(`${minutosRestantes}m`);
+  }
+
+  if (!partes.length) {
+    partes.push("0m");
   }
 
   return {
-    timestamp: data.getTime(),
-    texto: "Internado há menos de um minuto",
+    timestamp: inicio,
+    texto: partes.join(" "),
   };
 };
 
@@ -224,7 +230,7 @@ const obterTextoValido = (valor) => {
   return texto || null;
 };
 
-const obterSetorOrigemTexto = (paciente) => {
+const obterSetorOrigemTextoFallback = (paciente) => {
   const candidato = [
     paciente?.setorOrigemNome,
     paciente?.setorOrigemSigla,
@@ -239,7 +245,7 @@ const obterSetorOrigemTexto = (paciente) => {
   return candidato || "Não informado";
 };
 
-const obterLeitoOrigemTexto = (paciente) => {
+const obterLeitoOrigemTextoFallback = (paciente) => {
   const candidato = [
     paciente?.leitoOrigemCodigo,
     paciente?.leitoOrigem,
@@ -251,6 +257,117 @@ const obterLeitoOrigemTexto = (paciente) => {
     .find(Boolean);
 
   return candidato || "Não informado";
+};
+
+const normalizarCodigoLeito = (valor) => {
+  const texto = obterTextoValido(valor);
+  return texto ? texto.toUpperCase() : null;
+};
+
+const encontrarLeitoPaciente = (paciente, leitosPorId, leitosPorCodigo) => {
+  if (!paciente) return null;
+
+  const candidatosId = [
+    paciente?.leitoId,
+    paciente?.leitoOrigemId,
+    paciente?.leitoAtualId,
+    paciente?.leito?.id,
+    paciente?.leito?.leitoId,
+    paciente?.leitoAtual?.id,
+    paciente?.regulacaoAtiva?.leitoOrigemId,
+  ].filter(Boolean);
+
+  for (const id of candidatosId) {
+    const leito = leitosPorId.get(id);
+    if (leito) return leito;
+  }
+
+  const candidatosCodigo = [
+    paciente?.leitoOrigemCodigo,
+    paciente?.leitoOrigem,
+    paciente?.leitoAtualCodigo,
+    paciente?.leitoAtual,
+    paciente?.leitoNome,
+    paciente?.leito,
+    paciente?.codigoLeito,
+    paciente?.leito?.codigoLeito,
+    paciente?.leito?.codigo,
+  ]
+    .map((valor) => normalizarCodigoLeito(valor))
+    .filter(Boolean);
+
+  for (const codigo of candidatosCodigo) {
+    const leito = leitosPorCodigo.get(codigo);
+    if (leito) return leito;
+  }
+
+  return null;
+};
+
+const encontrarSetorPaciente = (
+  paciente,
+  setoresPorId,
+  leitosPorId,
+  leitosPorCodigo,
+  leitoEncontrado,
+) => {
+  if (!paciente) return null;
+
+  const candidatosId = [
+    paciente?.setorId,
+    paciente?.setorOrigemId,
+    paciente?.setor?.id,
+    paciente?.setorOrigem?.id,
+    paciente?.regulacaoAtiva?.setorOrigemId,
+  ].filter(Boolean);
+
+  for (const id of candidatosId) {
+    const setor = setoresPorId.get(id);
+    if (setor) return setor;
+  }
+
+  const leito = leitoEncontrado || encontrarLeitoPaciente(paciente, leitosPorId, leitosPorCodigo);
+  if (leito) {
+    const setorDoLeito = setoresPorId.get(leito.setorId);
+    if (setorDoLeito) return setorDoLeito;
+  }
+
+  return null;
+};
+
+const obterLocalizacaoPaciente = (paciente, setoresPorId, leitosPorId, leitosPorCodigo) => {
+  const fallbackSetor = obterSetorOrigemTextoFallback(paciente);
+  const fallbackLeito = obterLeitoOrigemTextoFallback(paciente);
+
+  const leito = encontrarLeitoPaciente(paciente, leitosPorId, leitosPorCodigo);
+  const setor = encontrarSetorPaciente(
+    paciente,
+    setoresPorId,
+    leitosPorId,
+    leitosPorCodigo,
+    leito,
+  );
+
+  const setorPreferencial =
+    obterTextoValido(setor?.siglaSetor) ||
+    obterTextoValido(setor?.nomeSetor || setor?.nome) ||
+    (fallbackSetor !== "Não informado" ? fallbackSetor : null);
+
+  const leitoPreferencial =
+    obterTextoValido(leito?.codigoLeito || leito?.codigo) ||
+    (fallbackLeito !== "Não informado" ? fallbackLeito : null);
+
+  const localizacaoTexto = setorPreferencial
+    ? leitoPreferencial
+      ? `${setorPreferencial} - ${leitoPreferencial}`
+      : setorPreferencial
+    : leitoPreferencial || "Não informado";
+
+  return {
+    setorTexto: setorPreferencial || fallbackSetor,
+    leitoTexto: leitoPreferencial || fallbackLeito,
+    localizacaoTexto,
+  };
 };
 
 const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
@@ -289,6 +406,14 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
     }
 
     const hospitalData = { estrutura };
+
+    const setoresPorId = new Map((setores || []).map((setor) => [setor.id, setor]));
+    const leitosPorId = new Map((leitos || []).map((leito) => [leito.id, leito]));
+    const leitosPorCodigo = new Map(
+      (leitos || [])
+        .map((leito) => [normalizarCodigoLeito(leito?.codigoLeito || leito?.codigo), leito])
+        .filter(([codigo]) => Boolean(codigo)),
+    );
 
     const setoresPorNome = new Map(
       (setores || []).map((setor) => [
@@ -375,8 +500,12 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                 const infoTempo = obterInfoTempoInternacao(paciente.dataInternacao);
                 const isolamentos = obterIsolamentosAtivos(paciente, infeccoesMap);
                 const sexoFormatado = formatarSexo(paciente.sexo);
-                const setorOrigem = obterSetorOrigemTexto(paciente);
-                const leitoOrigem = obterLeitoOrigemTexto(paciente);
+                const localizacao = obterLocalizacaoPaciente(
+                  paciente,
+                  setoresPorId,
+                  leitosPorId,
+                  leitosPorCodigo,
+                );
 
                 return {
                   id: paciente.id,
@@ -388,8 +517,9 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                   tempoInternacaoTimestamp: infoTempo.timestamp,
                   isolamentos,
                   temIsolamento: possuiIsolamentoAtivo(paciente),
-                  setorOrigem,
-                  leitoOrigem,
+                  setorOrigem: localizacao.setorTexto,
+                  leitoOrigem: localizacao.leitoTexto,
+                  localizacao: localizacao.localizacaoTexto,
                 };
               })
               .sort((a, b) => {
@@ -565,12 +695,8 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                                             {sugestao.especialidade}
                                           </div>
                                           <div className="text-xs text-muted-foreground">
-                                            <span className="font-medium text-foreground">Setor de Origem:</span>{' '}
-                                            {sugestao.setorOrigem}
-                                          </div>
-                                          <div className="text-xs text-muted-foreground">
-                                            <span className="font-medium text-foreground">Leito de Origem:</span>{' '}
-                                            {sugestao.leitoOrigem}
+                                            <span className="font-medium text-foreground">Localização:</span>{' '}
+                                            {sugestao.localizacao}
                                           </div>
                                           {sugestao.tempoInternacaoTexto && (
                                             <div className="text-xs text-muted-foreground">
