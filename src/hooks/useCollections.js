@@ -21,3 +21,4 @@ export const usePacientes = () => useCollection('artifacts/regulafacil/public/da
 export const useLeitos = () => useCollection('artifacts/regulafacil/public/data/leitos');
 export const useSetores = () => useCollection('artifacts/regulafacil/public/data/setores');
 export const useInfeccoes = () => useCollection('artifacts/regulafacil/public/data/infeccoes');
+export const useQuartos = () => useCollection('artifacts/regulafacil/public/data/quartos');
