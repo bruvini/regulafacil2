@@ -17,10 +17,99 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 import { useDadosHospitalares } from "@/hooks/useDadosHospitalares";
 
 const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
-  const { setores = [], leitos = [] } = useDadosHospitalares();
+  const { setores = [], leitos = [], estrutura = {} } = useDadosHospitalares();
+
+  const normalizarStatusLeito = (status) => {
+    if (!status) {
+      return "";
+    }
+
+    const texto = String(status).trim();
+    if (!texto) {
+      return "";
+    }
+
+    const semAcentos = texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+    if (semAcentos === "vago") {
+      return "Vago";
+    }
+
+    if (semAcentos === "higienizacao") {
+      return "Higienização";
+    }
+
+    return texto;
+  };
+
+  const restricoesPorLeito = useMemo(() => {
+    const mapaRestricoes = new Map();
+
+    const setoresEstruturados = Array.isArray(estrutura)
+      ? estrutura
+      : Object.values(estrutura || {}).reduce((acc, entradaAtual) => {
+          if (Array.isArray(entradaAtual)) {
+            acc.push(...entradaAtual);
+          } else if (entradaAtual) {
+            acc.push(entradaAtual);
+          }
+          return acc;
+        }, []);
+
+    setoresEstruturados.forEach((setor) => {
+      const registrarLeito = (leitoAtual = {}) => {
+        if (!leitoAtual?.id) {
+          return;
+        }
+
+        mapaRestricoes.set(leitoAtual.id, {
+          restricao: leitoAtual?.restricaoCoorte || null,
+        });
+      };
+
+      (setor?.quartos || []).forEach((quarto) => {
+        (quarto?.leitos || []).forEach(registrarLeito);
+      });
+
+      (setor?.leitosSemQuarto || []).forEach(registrarLeito);
+    });
+
+    return mapaRestricoes;
+  }, [estrutura]);
+
+  const obterCompatibilidade = (leitoBase) => {
+    if (!leitoBase) {
+      return "Misto";
+    }
+
+    const restricao =
+      restricoesPorLeito.get(leitoBase.id)?.restricao || leitoBase?.restricaoCoorte || null;
+
+    const sexo = restricao?.sexo ? String(restricao.sexo).trim() : "";
+    if (!sexo) {
+      return "Misto";
+    }
+
+    const sexoNormalizado = sexo
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+
+    if (["m", "masc", "masculino"].includes(sexoNormalizado)) {
+      return "Masculino";
+    }
+
+    if (["f", "fem", "feminino"].includes(sexoNormalizado)) {
+      return "Feminino";
+    }
+
+    return sexo;
+  };
 
   const setoresEnfermariaDisponiveis = useMemo(() => {
     if (!setores.length || !leitos.length) {
@@ -32,7 +121,9 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
 
     leitos.forEach((leito) => {
       const setorId = leito?.setorId;
-      if (!setorId || !statusPermitidos.has(leito?.status)) {
+      const statusAtual = normalizarStatusLeito(leito?.status || leito?.statusLeito);
+
+      if (!setorId || !statusPermitidos.has(statusAtual)) {
         return;
       }
 
@@ -40,7 +131,10 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
         leitosPorSetor.set(setorId, []);
       }
 
-      leitosPorSetor.get(setorId).push(leito);
+      leitosPorSetor.get(setorId).push({
+        ...leito,
+        statusPadronizado: statusAtual,
+      });
     });
 
     return setores
@@ -60,18 +154,14 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
             String(a?.codigoLeito || "").localeCompare(String(b?.codigoLeito || ""))
           )
           .map((leito) => {
-            const identificadorBase =
+            const codigo =
               leito?.codigoLeito || leito?.nomeLeito || leito?.nome || String(leito?.id || "");
-            const label = identificadorBase
-              ? (identificadorBase.toLowerCase().startsWith("leito")
-                  ? identificadorBase
-                  : `Leito ${identificadorBase}`)
-              : "Leito sem código";
 
             return {
               id: leito.id,
-              label,
-              status: leito?.status || "Sem status",
+              codigo: codigo || "Leito sem código",
+              status: leito?.statusPadronizado || leito?.status || "Sem status",
+              compatibilidade: obterCompatibilidade(leito),
             };
           });
 
@@ -83,7 +173,7 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
       })
       .filter(Boolean)
       .sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [setores, leitos]);
+  }, [setores, leitos, restricoesPorLeito]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -126,37 +216,49 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
             </AlertDescription>
           </Alert>
           {setoresEnfermariaDisponiveis.length ? (
-            <Accordion type="multiple" className="space-y-4">
-              {setoresEnfermariaDisponiveis.map((setor) => (
-                <AccordionItem key={setor.id} value={String(setor.id)}>
-                  <AccordionTrigger>{setor.nome}</AccordionTrigger>
-                  <AccordionContent>
-                    <Accordion type="multiple" className="space-y-2">
-                      {setor.leitos.map((leito) => (
-                        <AccordionItem
-                          key={leito.id}
-                          value={`${setor.id}-${leito.id}`}
-                        >
-                          <AccordionTrigger>
-                            <div className="flex w-full items-center justify-between text-left">
-                              <span>{leito.label}</span>
-                              <span className="text-xs font-medium text-muted-foreground">
-                                {leito.status}
-                              </span>
-                            </div>
-                          </AccordionTrigger>
-                          <AccordionContent>
-                            <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                              A lista de pacientes compatíveis será exibida aqui.
-                            </div>
-                          </AccordionContent>
-                        </AccordionItem>
-                      ))}
-                    </Accordion>
-                  </AccordionContent>
-                </AccordionItem>
-              ))}
-            </Accordion>
+            <ScrollArea className="h-[60vh] pr-2">
+              <Accordion type="multiple" className="space-y-4">
+                {setoresEnfermariaDisponiveis.map((setor) => (
+                  <AccordionItem key={setor.id} value={String(setor.id)}>
+                    <AccordionTrigger>{setor.nome}</AccordionTrigger>
+                    <AccordionContent>
+                      <Accordion type="multiple" className="space-y-2">
+                        {setor.leitos.map((leito) => (
+                          <AccordionItem
+                            key={leito.id}
+                            value={`${setor.id}-${leito.id}`}
+                          >
+                            <AccordionTrigger>
+                              <div className="flex w-full items-center justify-between text-left">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">{leito.codigo}</span>
+                                  <Badge
+                                    variant={
+                                      leito.compatibilidade === "Misto" ? "outline" : "secondary"
+                                    }
+                                    className="text-xs capitalize"
+                                  >
+                                    {leito.compatibilidade}
+                                  </Badge>
+                                </div>
+                                <span className="text-xs font-medium text-muted-foreground">
+                                  {leito.status}
+                                </span>
+                              </div>
+                            </AccordionTrigger>
+                            <AccordionContent>
+                              <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                                A lista de pacientes compatíveis será exibida aqui.
+                              </div>
+                            </AccordionContent>
+                          </AccordionItem>
+                        ))}
+                      </Accordion>
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            </ScrollArea>
           ) : (
             <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
               Nenhum leito de enfermaria disponível no momento.
