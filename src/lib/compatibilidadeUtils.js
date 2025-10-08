@@ -1,15 +1,71 @@
 // src/lib/compatibilidadeUtils.js
 
+const removerAcentos = (texto = '') =>
+  texto
+    .toString()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '');
+
 const normalizarData = (valor) => {
   if (!valor) return null;
-  if (valor instanceof Date) return valor;
-  if (typeof valor === 'string' || typeof valor === 'number') {
-    const parsed = new Date(valor);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
+
+  if (valor instanceof Date) {
+    return Number.isNaN(valor.getTime()) ? null : valor;
   }
-  if (typeof valor === 'object' && typeof valor.seconds === 'number') {
-    return new Date(valor.seconds * 1000);
+
+  if (typeof valor === 'string') {
+    const texto = valor.trim();
+    if (!texto) return null;
+
+    if (/^\d{2}\/\d{2}\/\d{4}/.test(texto)) {
+      const [dataParte, horaParte] = texto.split(' ');
+      const [dia, mes, ano] = dataParte.split('/').map((parte) => parseInt(parte, 10));
+      if (Number.isNaN(dia) || Number.isNaN(mes) || Number.isNaN(ano)) return null;
+
+      if (horaParte && /^\d{2}:\d{2}/.test(horaParte)) {
+        const [hora, minuto] = horaParte.split(':').map((parte) => parseInt(parte, 10));
+        const data = new Date(ano, (mes || 1) - 1, dia, hora || 0, minuto || 0);
+        return Number.isNaN(data.getTime()) ? null : data;
+      }
+
+      const data = new Date(ano, (mes || 1) - 1, dia);
+      return Number.isNaN(data.getTime()) ? null : data;
+    }
+
+    const parsed = new Date(texto);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
+
+  if (typeof valor === 'number' && Number.isFinite(valor)) {
+    const data = new Date(valor);
+    return Number.isNaN(data.getTime()) ? null : data;
+  }
+
+  if (typeof valor === 'object') {
+    if (typeof valor.toDate === 'function') {
+      const data = valor.toDate();
+      return data instanceof Date && !Number.isNaN(data.getTime()) ? data : null;
+    }
+
+    const segundos =
+      typeof valor.seconds === 'number'
+        ? valor.seconds
+        : typeof valor._seconds === 'number'
+          ? valor._seconds
+          : null;
+
+    if (segundos !== null) {
+      const nanos =
+        typeof valor.nanoseconds === 'number'
+          ? valor.nanoseconds
+          : typeof valor._nanoseconds === 'number'
+            ? valor._nanoseconds
+            : 0;
+      const data = new Date(segundos * 1000 + nanos / 1e6);
+      return Number.isNaN(data.getTime()) ? null : data;
+    }
+  }
+
   return null;
 };
 
@@ -24,6 +80,17 @@ const calcularIdade = (dataNascimento) => {
     idade -= 1;
   }
   return idade;
+};
+
+const normalizarPrimeiroNome = (nome) => {
+  if (!nome) return '';
+  const texto = nome.toString().trim();
+  if (!texto) return '';
+
+  const [primeiroNome] = texto.split(/\s+/);
+  if (!primeiroNome) return '';
+
+  return removerAcentos(primeiroNome).toUpperCase();
 };
 
 const extrairIdInfeccao = (iso) => {
@@ -265,7 +332,17 @@ export const encontrarLeitosCompativeis = (pacienteAlvo, hospitalData, modo = 'e
       // Vamos verificar todas as condições de elegibilidade.
       const isAgeOk = idade !== null && idade >= 18 && idade <= 60;
       const hasNoIsolation = chavesPaciente.size === 0;
-      const isOriginOk = (pacienteAlvo.setorOrigem || '').toUpperCase() !== 'CC - RECUPERAÇÃO';
+      const origemNormalizada = [
+        pacienteAlvo.setorOrigemNome,
+        pacienteAlvo.setorOrigem,
+        pacienteAlvo.origemSetorNome,
+        pacienteAlvo.origem,
+        pacienteAlvo.setorNome,
+        pacienteAlvo.localizacaoAtual,
+      ]
+        .map((valor) => removerAcentos(textoUpper(valor)))
+        .find((texto) => texto);
+      const isOriginOk = origemNormalizada !== 'CC - RECUPERACAO';
 
       // O paciente só é elegível se TODAS as condições forem verdadeiras.
       const isPcpEligible = isAgeOk && hasNoIsolation && isOriginOk;
@@ -311,6 +388,19 @@ export const encontrarLeitosCompativeis = (pacienteAlvo, hospitalData, modo = 'e
 
     if (!coorteValida) {
       return;
+    }
+
+    const primeiroNomePaciente = normalizarPrimeiroNome(pacienteAlvo?.nomePaciente || pacienteAlvo?.nome);
+    if (primeiroNomePaciente) {
+      const primeirosNomesOcupantes = new Set(
+        ocupantes
+          .map(ocupante => normalizarPrimeiroNome(ocupante?.nomePaciente || ocupante?.nome))
+          .filter(Boolean),
+      );
+
+      if (primeirosNomesOcupantes.has(primeiroNomePaciente)) {
+        return;
+      }
     }
 
     leitosCompativeis.push(leito);

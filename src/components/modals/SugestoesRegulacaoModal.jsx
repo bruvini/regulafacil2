@@ -219,6 +219,40 @@ const formatarSexo = (valor) => {
   return texto;
 };
 
+const obterTextoValido = (valor) => {
+  const texto = String(valor ?? "").trim();
+  return texto || null;
+};
+
+const obterSetorOrigemTexto = (paciente) => {
+  const candidato = [
+    paciente?.setorOrigemNome,
+    paciente?.setorOrigemSigla,
+    paciente?.setorOrigem,
+    paciente?.origemSetorNome,
+    paciente?.setorNome,
+    paciente?.localizacaoAtual,
+    paciente?.setor,
+  ].map(obterTextoValido)
+    .find(Boolean);
+
+  return candidato || "Não informado";
+};
+
+const obterLeitoOrigemTexto = (paciente) => {
+  const candidato = [
+    paciente?.leitoOrigemCodigo,
+    paciente?.leitoOrigem,
+    paciente?.leitoAtualCodigo,
+    paciente?.leitoAtual,
+    paciente?.leitoNome,
+    paciente?.leito,
+  ].map(obterTextoValido)
+    .find(Boolean);
+
+  return candidato || "Não informado";
+};
+
 const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
   const {
     setores = [],
@@ -320,42 +354,47 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
         const setorNomeNorm = normalizarTexto(setor?.nomeSetor);
         const especialidadesPermitidas = PERFIS_NORMALIZADOS.get(setorNomeNorm) || new Set();
 
-        const leitosComSugestoes = setor.leitosVagos.map((leito) => {
-          const pacientesCompativeis = pacientesElegiveis
-            .filter((paciente) => {
-              if (!especialidadesPermitidas.size) {
-                return false;
-              }
+        const leitosComSugestoes = setor.leitosVagos
+          .map((leito) => {
+            const pacientesCompativeis = pacientesElegiveis
+              .filter((paciente) => {
+                if (!especialidadesPermitidas.size) {
+                  return false;
+                }
 
-              const especialidadePaciente = normalizarTexto(paciente?.especialidade);
-              if (!especialidadePaciente || !especialidadesPermitidas.has(especialidadePaciente)) {
-                return false;
-              }
+                const especialidadePaciente = normalizarTexto(paciente?.especialidade);
+                if (!especialidadePaciente || !especialidadesPermitidas.has(especialidadePaciente)) {
+                  return false;
+                }
 
-              const leitosPaciente = leitosCompativeisPorPaciente.get(paciente.id);
-              return leitosPaciente ? leitosPaciente.has(leito.id) : false;
-            })
-            .map((paciente) => {
-              const idade = calcularIdade(paciente.dataNascimento);
-              const infoTempo = obterInfoTempoInternacao(paciente.dataInternacao);
-              const isolamentos = obterIsolamentosAtivos(paciente, infeccoesMap);
-              const sexoFormatado = formatarSexo(paciente.sexo);
+                const leitosPaciente = leitosCompativeisPorPaciente.get(paciente.id);
+                return leitosPaciente ? leitosPaciente.has(leito.id) : false;
+              })
+              .map((paciente) => {
+                const idade = calcularIdade(paciente.dataNascimento);
+                const infoTempo = obterInfoTempoInternacao(paciente.dataInternacao);
+                const isolamentos = obterIsolamentosAtivos(paciente, infeccoesMap);
+                const sexoFormatado = formatarSexo(paciente.sexo);
+                const setorOrigem = obterSetorOrigemTexto(paciente);
+                const leitoOrigem = obterLeitoOrigemTexto(paciente);
 
-              return {
-                id: paciente.id,
-                nome: paciente.nomePaciente,
-                especialidade: paciente.especialidade || "Não informado",
-                sexo: sexoFormatado,
-                idade,
-                tempoInternacaoTexto: infoTempo.texto,
-                tempoInternacaoTimestamp: infoTempo.timestamp,
-                isolamentos,
-                temIsolamento: possuiIsolamentoAtivo(paciente),
-              };
-            })
-            .sort((a, b) => {
-              if (a.temIsolamento !== b.temIsolamento) {
-                return a.temIsolamento ? -1 : 1;
+                return {
+                  id: paciente.id,
+                  nome: paciente.nomePaciente,
+                  especialidade: paciente.especialidade || "Não informado",
+                  sexo: sexoFormatado,
+                  idade,
+                  tempoInternacaoTexto: infoTempo.texto,
+                  tempoInternacaoTimestamp: infoTempo.timestamp,
+                  isolamentos,
+                  temIsolamento: possuiIsolamentoAtivo(paciente),
+                  setorOrigem,
+                  leitoOrigem,
+                };
+              })
+              .sort((a, b) => {
+                if (a.temIsolamento !== b.temIsolamento) {
+                  return a.temIsolamento ? -1 : 1;
               }
 
               const idadeA = Number.isFinite(a.idade) ? a.idade : -Infinity;
@@ -368,22 +407,28 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                 return a.tempoInternacaoTimestamp - b.tempoInternacaoTimestamp;
               }
 
-              return (a.nome || "").localeCompare(b.nome || "");
-            });
+                return (a.nome || "").localeCompare(b.nome || "");
+              });
 
-          return {
-            ...leito,
-            codigo: leito.codigoLeito,
-            sugestoes: pacientesCompativeis,
-          };
-        });
+            return {
+              ...leito,
+              codigo: leito.codigoLeito,
+              sugestoes: pacientesCompativeis,
+            };
+          })
+          .filter((leito) => leito.sugestoes.length > 0);
+
+        if (!leitosComSugestoes.length) {
+          return null;
+        }
 
         return {
           id: setor.id,
           nome: setor.nomeSetor,
           leitos: leitosComSugestoes,
         };
-      });
+      })
+      .filter(Boolean);
   }, [
     carregando,
     setores,
@@ -433,6 +478,17 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                     </li>
                   </ol>
                 </div>
+                <div>
+                  <h4 className="font-semibold">Dica de Uso e Verificação Manual</h4>
+                  <p className="mt-2 text-sm leading-relaxed">
+                    Antes de regular, verifique no Kanban ou no prontuário se a especialidade do paciente
+                    corresponde à da internação, se não há isolamentos não registrados e se ele está clinicamente
+                    apto para a transferência. Leitos PCP possuem critérios clínicos específicos que não são
+                    avaliados aqui. Se um paciente ou leito esperado não aparece, verifique os critérios do sistema
+                    (especialidade, sexo, isolamento exato, idade para PCP, etc.). Após a decisão, utilize o painel
+                    &quot;Pacientes Aguardando Regulação&quot; para efetivar a transferência.
+                  </p>
+                </div>
               </div>
             </AlertDescription>
           </Alert>
@@ -442,12 +498,12 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
             </div>
           ) : setoresEnfermariaDisponiveis.length ? (
             <ScrollArea className="h-[60vh] pr-2">
-              <Accordion type="multiple" className="space-y-4">
+              <Accordion type="single" collapsible className="space-y-4">
                 {setoresEnfermariaDisponiveis.map((setor) => (
                   <AccordionItem key={setor.id} value={String(setor.id)}>
                     <AccordionTrigger>{setor.nome}</AccordionTrigger>
                     <AccordionContent>
-                      <Accordion type="multiple" className="space-y-2">
+                      <Accordion type="single" collapsible className="space-y-2">
                         {setor.leitos.map((leito) => (
                           <AccordionItem
                             key={leito.id}
@@ -457,9 +513,9 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                               <div className="flex w-full items-center justify-between text-left" title={leito.compatibilidade}>
                                 <div className="flex items-center gap-2">
                                   <span className="font-medium">{leito.codigo}</span>
-                                  {leito.compatibilidadeBadges.length ? (
+                                  {(leito.compatibilidadeBadges || []).length ? (
                                     <div className="flex flex-wrap gap-1">
-                                      {leito.compatibilidadeBadges.map((badge, index) => (
+                                      {(leito.compatibilidadeBadges || []).map((badge, index) => (
                                         <Badge
                                           key={`${leito.id}-${badge.text}-${index}`}
                                           variant={badge.variant}
@@ -491,7 +547,7 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                                     return (
                                       <div
                                         key={`${leito.id}-paciente-${sugestao.id}`}
-                                        className="rounded-md border bg-muted/30 p-3"
+                                          className="rounded-md border bg-muted/30 p-3"
                                       >
                                         <div className="space-y-2">
                                           <div className="flex flex-wrap items-start justify-between gap-2">
@@ -507,6 +563,14 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                                           <div className="text-xs text-muted-foreground">
                                             <span className="font-medium text-foreground">Especialidade:</span>{' '}
                                             {sugestao.especialidade}
+                                          </div>
+                                          <div className="text-xs text-muted-foreground">
+                                            <span className="font-medium text-foreground">Setor de Origem:</span>{' '}
+                                            {sugestao.setorOrigem}
+                                          </div>
+                                          <div className="text-xs text-muted-foreground">
+                                            <span className="font-medium text-foreground">Leito de Origem:</span>{' '}
+                                            {sugestao.leitoOrigem}
                                           </div>
                                           {sugestao.tempoInternacaoTexto && (
                                             <div className="text-xs text-muted-foreground">
