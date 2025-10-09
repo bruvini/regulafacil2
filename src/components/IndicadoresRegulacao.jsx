@@ -37,7 +37,7 @@ import {
   orderBy,
 } from '@/lib/firebase';
 import { onSnapshot } from 'firebase/firestore';
-import { endOfDay, format, isWithinInterval, subDays } from 'date-fns';
+import { endOfDay, format, isWithinInterval, startOfDay, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 const PERIOD_OPTIONS = [
@@ -215,13 +215,13 @@ const IndicadoresRegulacao = () => {
         startDate = subDays(endDate, 1);
         break;
       case '7d':
-        startDate = subDays(endDate, 6);
+        startDate = startOfDay(subDays(endDate, 6));
         break;
       case '15d':
-        startDate = subDays(endDate, 14);
+        startDate = startOfDay(subDays(endDate, 14));
         break;
       case '30d':
-        startDate = subDays(endDate, 29);
+        startDate = startOfDay(subDays(endDate, 29));
         break;
       default:
         startDate = null;
