@@ -34,17 +34,18 @@ import {
   getSetoresCollection,
   getDocs,
   query,
-  where,
   orderBy,
 } from '@/lib/firebase';
-import { Timestamp, onSnapshot } from 'firebase/firestore';
-import { format } from 'date-fns';
+import { onSnapshot } from 'firebase/firestore';
+import { endOfDay, format, isWithinInterval, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 const PERIOD_OPTIONS = [
+  { value: '24h', label: 'Últimas 24h' },
   { value: '7d', label: 'Últimos 7 dias' },
+  { value: '15d', label: 'Últimos 15 dias' },
   { value: '30d', label: 'Últimos 30 dias' },
-  { value: 'month', label: 'Mês Atual' },
+  { value: 'all', label: 'Todo o período' },
 ];
 
 const PIE_COLORS = ['#2563eb', '#7c3aed', '#ea580c', '#059669', '#0ea5e9', '#facc15', '#14b8a6', '#f97316'];
@@ -63,28 +64,6 @@ const parseFirestoreDate = (value) => {
   }
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
-
-const getDateRange = (periodValue) => {
-  const end = new Date();
-  const endDate = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999);
-
-  if (periodValue === '7d') {
-    const start = new Date(endDate);
-    start.setDate(start.getDate() - 6);
-    start.setHours(0, 0, 0, 0);
-    return { start, end: endDate };
-  }
-
-  if (periodValue === '30d') {
-    const start = new Date(endDate);
-    start.setDate(start.getDate() - 29);
-    start.setHours(0, 0, 0, 0);
-    return { start, end: endDate };
-  }
-
-  const start = new Date(endDate.getFullYear(), endDate.getMonth(), 1, 0, 0, 0, 0);
-  return { start, end: endDate };
 };
 
 const normalizarStatus = (status) => {
@@ -153,7 +132,7 @@ const resolveSetorInfo = (registro, chave, setoresMap) => {
 };
 
 const IndicadoresRegulacao = () => {
-  const [period, setPeriod] = useState(PERIOD_OPTIONS[0].value);
+  const [period, setPeriod] = useState(PERIOD_OPTIONS[1].value);
   const [regulacoes, setRegulacoes] = useState([]);
   const [setores, setSetores] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -176,30 +155,12 @@ const IndicadoresRegulacao = () => {
       setError(null);
 
       try {
-        const { start, end } = getDateRange(period);
-        const startTimestamp = Timestamp.fromDate(start);
-        const endTimestamp = Timestamp.fromDate(end);
         const collectionRef = getHistoricoRegulacoesCollection();
-
         const registrosMap = new Map();
 
-        const queryInicio = query(
-          collectionRef,
-          where('dataInicio', '>=', startTimestamp),
-          where('dataInicio', '<=', endTimestamp),
-          orderBy('dataInicio', 'desc')
-        );
-
-        const queryConclusao = query(
-          collectionRef,
-          where('dataConclusao', '>=', startTimestamp),
-          where('dataConclusao', '<=', endTimestamp),
-          orderBy('dataConclusao', 'desc')
-        );
-
         const [snapshotInicio, snapshotConclusao] = await Promise.all([
-          getDocs(queryInicio),
-          getDocs(queryConclusao),
+          getDocs(query(collectionRef, orderBy('dataInicio', 'desc'))),
+          getDocs(query(collectionRef, orderBy('dataConclusao', 'desc'))),
         ]);
 
         snapshotInicio.forEach((doc) => {
@@ -212,8 +173,10 @@ const IndicadoresRegulacao = () => {
 
         if (isMounted) {
           const registros = Array.from(registrosMap.values()).sort((a, b) => {
-            const dataA = parseFirestoreDate(a.dataInicio) || parseFirestoreDate(a.dataConclusao) || new Date(0);
-            const dataB = parseFirestoreDate(b.dataInicio) || parseFirestoreDate(b.dataConclusao) || new Date(0);
+            const dataA =
+              parseFirestoreDate(a.dataInicio) || parseFirestoreDate(a.dataConclusao) || new Date(0);
+            const dataB =
+              parseFirestoreDate(b.dataInicio) || parseFirestoreDate(b.dataConclusao) || new Date(0);
             return dataB.getTime() - dataA.getTime();
           });
           setRegulacoes(registros);
@@ -235,12 +198,60 @@ const IndicadoresRegulacao = () => {
     return () => {
       isMounted = false;
     };
-  }, [period]);
+  }, []);
 
   const setoresMap = useMemo(() => new Map(setores.map((setor) => [setor.id, setor])), [setores]);
 
+  const regulacoesFiltradas = useMemo(() => {
+    if (!regulacoes.length) return [];
+    if (period === 'all') return regulacoes;
+
+    const agora = new Date();
+    const endDate = period === '24h' ? agora : endOfDay(agora);
+
+    let startDate;
+    switch (period) {
+      case '24h':
+        startDate = subDays(endDate, 1);
+        break;
+      case '7d':
+        startDate = subDays(endDate, 6);
+        break;
+      case '15d':
+        startDate = subDays(endDate, 14);
+        break;
+      case '30d':
+        startDate = subDays(endDate, 29);
+        break;
+      default:
+        startDate = null;
+        break;
+    }
+
+    if (!startDate) {
+      return regulacoes;
+    }
+
+    return regulacoes.filter((item) => {
+      const dataInicio = parseFirestoreDate(item?.dataInicio);
+      const dataConclusao = parseFirestoreDate(item?.dataConclusao);
+      const datasValidas = [dataInicio, dataConclusao].filter(Boolean);
+
+      if (!datasValidas.length) {
+        return false;
+      }
+
+      return datasValidas.some((data) =>
+        isWithinInterval(data, {
+          start: startDate,
+          end: endDate,
+        })
+      );
+    });
+  }, [period, regulacoes]);
+
   const metricasGerais = useMemo(() => {
-    if (!regulacoes.length) {
+    if (!regulacoesFiltradas.length) {
       return {
         total: 0,
         concluidas: 0,
@@ -249,8 +260,8 @@ const IndicadoresRegulacao = () => {
       };
     }
 
-    const total = regulacoes.length;
-    const concluidas = regulacoes.filter(
+    const total = regulacoesFiltradas.length;
+    const concluidas = regulacoesFiltradas.filter(
       (item) => normalizarStatus(item.statusFinal) === 'concluida'
     );
     const tempos = concluidas
@@ -267,19 +278,19 @@ const IndicadoresRegulacao = () => {
       tempoMedio,
       taxaSucesso,
     };
-  }, [regulacoes]);
+  }, [regulacoesFiltradas]);
 
   const dadosDesfecho = useMemo(() => {
-    if (!regulacoes.length) return [];
+    if (!regulacoesFiltradas.length) return [];
 
     const contagem = new Map();
-    regulacoes.forEach((item) => {
+    regulacoesFiltradas.forEach((item) => {
       const status = item?.statusFinal || 'Sem status';
       contagem.set(status, (contagem.get(status) || 0) + 1);
     });
 
     return Array.from(contagem.entries()).map(([name, value]) => ({ name, value }));
-  }, [regulacoes]);
+  }, [regulacoesFiltradas]);
 
   const dadosPorHora = useMemo(() => {
     const base = Array.from({ length: 24 }, (_, index) => ({
@@ -288,11 +299,11 @@ const IndicadoresRegulacao = () => {
       turno: getTurnoFromHour(index),
     }));
 
-    if (!regulacoes.length) {
+    if (!regulacoesFiltradas.length) {
       return base;
     }
 
-    regulacoes.forEach((item) => {
+    regulacoesFiltradas.forEach((item) => {
       const dataInicio = parseFirestoreDate(item?.dataInicio);
       if (!dataInicio) return;
       const hora = dataInicio.getHours();
@@ -300,14 +311,14 @@ const IndicadoresRegulacao = () => {
     });
 
     return base;
-  }, [regulacoes]);
+  }, [regulacoesFiltradas]);
 
   const dadosFluxo = useMemo(() => {
-    if (!regulacoes.length) return [];
+    if (!regulacoesFiltradas.length) return [];
 
     const contagem = new Map();
 
-    regulacoes.forEach((item) => {
+    regulacoesFiltradas.forEach((item) => {
       const origem = resolveSetorInfo(item, 'setorOrigem', setoresMap);
       const destino = resolveSetorInfo(item, 'setorDestino', setoresMap);
 
@@ -340,14 +351,14 @@ const IndicadoresRegulacao = () => {
       }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
-  }, [regulacoes, setoresMap]);
+  }, [regulacoesFiltradas, setoresMap]);
 
   const dadosComparativoSetores = useMemo(() => {
-    if (!regulacoes.length) return [];
+    if (!regulacoesFiltradas.length) return [];
 
     const acumulado = new Map();
 
-    regulacoes.forEach((item) => {
+    regulacoesFiltradas.forEach((item) => {
       const tempo = Number(item?.tempoRegulacaoMinutos ?? NaN);
       if (!Number.isFinite(tempo) || tempo <= 0) return;
 
@@ -407,7 +418,17 @@ const IndicadoresRegulacao = () => {
         const maxB = Math.max(b.origemMedio || 0, b.destinoMedio || 0);
         return maxB - maxA;
       });
-  }, [regulacoes, setoresMap]);
+  }, [regulacoesFiltradas, setoresMap]);
+
+  const maiorTempoAbsoluto = useMemo(() => {
+    if (!dadosComparativoSetores.length) return 0;
+
+    return dadosComparativoSetores.reduce((maior, item) => {
+      const valores = [item.barOrigem ?? 0, item.barDestino ?? 0];
+      const maiorAtual = Math.max(...valores.map((valor) => Math.abs(valor || 0)));
+      return Math.max(maior, maiorAtual);
+    }, 0);
+  }, [dadosComparativoSetores]);
 
   const dadosVolumePorDiaTurno = useMemo(() => {
     const diasSemanaOrdem = [1, 2, 3, 4, 5, 6, 0];
@@ -429,13 +450,13 @@ const IndicadoresRegulacao = () => {
       noite: 0,
     }));
 
-    if (!regulacoes.length) {
+    if (!regulacoesFiltradas.length) {
       return base;
     }
 
     const baseMap = new Map(base.map((item) => [item.diaValor, item]));
 
-    regulacoes.forEach((item) => {
+    regulacoesFiltradas.forEach((item) => {
       const dataInicio = parseFirestoreDate(item?.dataInicio);
       if (!dataInicio) return;
 
@@ -448,7 +469,9 @@ const IndicadoresRegulacao = () => {
     });
 
     return base;
-  }, [regulacoes]);
+  }, [regulacoesFiltradas]);
+
+  const limiteEixoComparativo = maiorTempoAbsoluto ? Math.ceil(maiorTempoAbsoluto * 1.1) : 10;
 
   const renderLoadingState = () => (
     <div className="space-y-6">
@@ -514,7 +537,7 @@ const IndicadoresRegulacao = () => {
 
       {loading ? (
         renderLoadingState()
-      ) : regulacoes.length === 0 ? (
+      ) : regulacoesFiltradas.length === 0 ? (
         <Card className="border-muted">
           <CardContent className="py-12 text-center text-sm text-muted-foreground">
             Nenhuma regulação encontrada no período selecionado.
@@ -673,8 +696,8 @@ const IndicadoresRegulacao = () => {
           </section>
 
           <section>
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Card className="border-muted">
+            <div className="grid gap-4">
+              <Card className="border-muted lg:col-span-2">
                 <CardHeader>
                   <CardTitle className="text-base font-semibold text-foreground">
                     Principais Fluxos de Regulação
@@ -721,7 +744,7 @@ const IndicadoresRegulacao = () => {
                 </CardContent>
               </Card>
 
-              <Card className="border-muted">
+              <Card className="border-muted lg:col-span-2">
                 <CardHeader>
                   <CardTitle className="text-base font-semibold text-foreground">
                     Eficiência por Setor: Origem vs. Destino
@@ -732,22 +755,26 @@ const IndicadoresRegulacao = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-80">
+                  <div className="h-[600px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart
                         data={dadosComparativoSetores}
                         layout="vertical"
-                        margin={{ left: 100, right: 40 }}
+                        margin={{ left: 160, right: 40, top: 16, bottom: 16 }}
+                        barCategoryGap={24}
+                        barGap={8}
                       >
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis
                           type="number"
+                          domain={[-limiteEixoComparativo, limiteEixoComparativo]}
                           tickFormatter={(value) => `${Math.round(Math.abs(value))} min`}
                         />
                         <YAxis
                           type="category"
                           dataKey="setor"
-                          width={140}
+                          yAxisId="setores"
+                          width={200}
                           tick={{ fontSize: 12 }}
                         />
                         <RechartsTooltip
@@ -773,6 +800,7 @@ const IndicadoresRegulacao = () => {
                           fill="#0ea5e9"
                           radius={[4, 4, 4, 4]}
                           isAnimationActive={false}
+                          yAxisId="setores"
                         />
                         <Bar
                           dataKey="barDestino"
@@ -780,6 +808,7 @@ const IndicadoresRegulacao = () => {
                           fill="#059669"
                           radius={[4, 4, 4, 4]}
                           isAnimationActive={false}
+                          yAxisId="setores"
                         />
                       </BarChart>
                     </ResponsiveContainer>
