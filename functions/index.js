@@ -16,7 +16,13 @@ exports.createNewUser = functions.https.onCall(async (data, context) => {
   }
 
   const requesterRole = context.auth.token?.role;
-  if (requesterRole !== 'admin') {
+  const requesterTipoUsuario = context.auth.token?.tipoUsuario;
+  const hasAdminClaim =
+    requesterRole === 'admin' ||
+    requesterRole === 'Administrador' ||
+    requesterTipoUsuario === 'Administrador';
+
+  if (!hasAdminClaim) {
     throw new functions.https.HttpsError(
       'permission-denied',
       'Apenas administradores podem criar novos usuários.'
@@ -113,7 +119,14 @@ exports.createNewUser = functions.https.onCall(async (data, context) => {
 });
 
 exports.bootstrapAdminClaims = functions.https.onCall(async (_, context) => {
-  if (!context.auth || context.auth.token?.role !== 'admin') {
+  const requesterRole = context.auth?.token?.role;
+  const requesterTipoUsuario = context.auth?.token?.tipoUsuario;
+  const hasAdminClaim =
+    requesterRole === 'admin' ||
+    requesterRole === 'Administrador' ||
+    requesterTipoUsuario === 'Administrador';
+
+  if (!context.auth || !hasAdminClaim) {
     throw new functions.https.HttpsError(
       'permission-denied',
       'Somente administradores autenticados podem executar esta operação.'
