@@ -123,6 +123,5 @@ export {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  updatePassword,
-  createUserWithoutSignIn
+  updatePassword
 };
