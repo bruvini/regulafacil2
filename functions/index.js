@@ -16,7 +16,7 @@ exports.createNewUser = functions.https.onCall(async (data, context) => {
   }
 
   const requesterRole = context.auth.token?.role;
-  if (requesterRole !== 'Administrador') {
+  if (requesterRole !== 'admin') {
     throw new functions.https.HttpsError(
       'permission-denied',
       'Apenas administradores podem criar novos usuários.'
@@ -70,7 +70,12 @@ exports.createNewUser = functions.https.onCall(async (data, context) => {
       displayName: normalizarTexto(nomeCompleto)
     });
 
-    await admin.auth().setCustomUserClaims(userRecord.uid, { role: tipoUsuario });
+    const customClaims = {
+      role: tipoUsuario === 'Administrador' ? 'admin' : 'user',
+      tipoUsuario
+    };
+
+    await admin.auth().setCustomUserClaims(userRecord.uid, customClaims);
 
     const usuarioFirestore = {
       uid: userRecord.uid,
@@ -106,3 +111,115 @@ exports.createNewUser = functions.https.onCall(async (data, context) => {
     );
   }
 });
+
+exports.bootstrapAdminClaims = functions.https.onCall(async (_, context) => {
+  if (!context.auth || context.auth.token?.role !== 'admin') {
+    throw new functions.https.HttpsError(
+      'permission-denied',
+      'Somente administradores autenticados podem executar esta operação.'
+    );
+  }
+
+  const firestore = admin.firestore();
+
+  try {
+    const adminUsersSnapshot = await firestore
+      .collection(USERS_COLLECTION_PATH)
+      .where('tipoUsuario', '==', 'Administrador')
+      .get();
+
+    if (adminUsersSnapshot.empty) {
+      return {
+        updatedAdmins: 0,
+        message: 'Nenhum administrador encontrado para atualizar.'
+      };
+    }
+
+    const updatePromises = [];
+
+    adminUsersSnapshot.forEach((doc) => {
+      const data = doc.data();
+      const targetUid = data.uid || doc.id;
+
+      if (!targetUid) {
+        functions.logger.warn(
+          `Documento de usuário ${doc.id} não possui UID associado. Ignorando.`
+        );
+        return;
+      }
+
+      updatePromises.push(
+        admin.auth().setCustomUserClaims(targetUid, {
+          role: 'admin',
+          tipoUsuario: 'Administrador'
+        })
+      );
+    });
+
+    const results = await Promise.allSettled(updatePromises);
+
+    const updatedAdmins = results.filter((result) => result.status === 'fulfilled')
+      .length;
+
+    if (updatedAdmins !== updatePromises.length) {
+      const rejected = results.filter((result) => result.status === 'rejected');
+      rejected.forEach((result) => {
+        functions.logger.error('Falha ao atualizar claim de administrador:', result);
+      });
+    }
+
+    return {
+      updatedAdmins,
+      message: 'Claims de administradores atualizadas com sucesso.'
+    };
+  } catch (error) {
+    functions.logger.error('Erro ao executar bootstrapAdminClaims:', error);
+    throw new functions.https.HttpsError(
+      'internal',
+      'Falha ao atualizar os custom claims dos administradores.'
+    );
+  }
+});
+
+exports.syncUserClaimsOnUpdate = functions.firestore
+  .document(`${USERS_COLLECTION_PATH}/{userId}`)
+  .onUpdate(async (change, context) => {
+    const beforeTipoUsuario = change.before.data()?.tipoUsuario;
+    const afterTipoUsuario = change.after.data()?.tipoUsuario;
+
+    if (beforeTipoUsuario === afterTipoUsuario) {
+      return null;
+    }
+
+    const userId = context.params.userId;
+    const targetUid = change.after.data()?.uid || userId;
+
+    if (!targetUid) {
+      functions.logger.warn(
+        `Documento de usuário ${userId} não possui UID associado. Claims não foram atualizadas.`
+      );
+      return null;
+    }
+
+    const isAdmin = afterTipoUsuario === 'Administrador';
+    const customClaims = {
+      role: isAdmin ? 'admin' : 'user',
+      tipoUsuario: afterTipoUsuario || null
+    };
+
+    try {
+      await admin.auth().setCustomUserClaims(targetUid, customClaims);
+      functions.logger.info(
+        `Custom claims do usuário ${targetUid} atualizadas para ${JSON.stringify(
+          customClaims
+        )}.`
+      );
+    } catch (error) {
+      functions.logger.error(
+        `Erro ao atualizar custom claims do usuário ${targetUid}:`,
+        error
+      );
+    }
+
+    return null;
+  });
