@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/use-toast";
 import {
   Activity,
   AlignLeft,
@@ -12,7 +13,8 @@ import {
   Layers,
   PieChart as PieChartIcon,
   Stethoscope,
-  Users
+  Users,
+  Copy
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -37,6 +39,7 @@ import {
 } from '@/lib/firebase';
 import { calcularPermanenciaAtual } from '@/lib/historicoOcupacoes';
 import { getDay, getHours } from 'date-fns';
+import ListaPacientesPorSetorModal from '@/components/modals/ListaPacientesPorSetorModal';
 
 const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const FAIXAS_HORARIO = ['0-6h', '6-12h', '12-18h', '18-24h'];
@@ -123,12 +126,14 @@ const identificarGrupoClinico = (especialidade) => {
 };
 
 const GestaoEstrategicaPage = () => {
+  const { toast } = useToast();
   const [pacientes, setPacientes] = useState(null);
   const [historicoOcupacoes, setHistoricoOcupacoes] = useState(null);
   const [leitos, setLeitos] = useState(null);
   const [setores, setSetores] = useState(null);
   const [loading, setLoading] = useState(true);
   const [modalIndicador, setModalIndicador] = useState({ open: false, indicadorId: null });
+  const [modalPacientes, setModalPacientes] = useState({ open: false, setor: null, grupo: null });
 
   useEffect(() => {
     const unsubscribePacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
@@ -188,6 +193,32 @@ const GestaoEstrategicaPage = () => {
 
   const leitosPorId = useMemo(() => new Map(leitosList.map((leito) => [leito.id, leito])), [leitosList]);
   const setoresPorId = useMemo(() => new Map(setoresList.map((setor) => [setor.id, setor])), [setoresList]);
+
+  const pacientesAtivosEnriquecidos = useMemo(() => {
+    if (!pacientesAtivos.length) {
+      return [];
+    }
+
+    return pacientesAtivos.map((paciente) => {
+      const leito = paciente?.leitoId ? leitosPorId.get(paciente.leitoId) : null;
+      const setorId = paciente?.setorId || leito?.setorId || null;
+      const setor = setorId ? setoresPorId.get(setorId) : null;
+      const nomeSetor = setor?.siglaSetor || setor?.nomeSetor || setor?.nome || 'Setor não identificado';
+      const grupoClinico = identificarGrupoClinico(paciente?.especialidade);
+      const especialidadeFormatada = paciente?.especialidade
+        ? String(paciente.especialidade).trim().toUpperCase()
+        : 'ESPECIALIDADE NÃO INFORMADA';
+
+      return {
+        ...paciente,
+        setorId,
+        nomeSetor,
+        codigoLeito: leito?.codigoLeito || paciente?.codigoLeito || paciente?.leitoCodigo || '—',
+        grupoClinico,
+        especialidadeFormatada,
+      };
+    });
+  }, [pacientesAtivos, leitosPorId, setoresPorId]);
 
   const dadosTaxaOcupacao = useMemo(() => {
     if (!leitosList.length || !setoresList.length) {
@@ -254,37 +285,60 @@ const GestaoEstrategicaPage = () => {
     };
   }, [pacientesAtivos]);
 
-  const dadosDistribuicaoClinicas = useMemo(() => {
-    if (!pacientesAtivos.length) {
+  const dadosDistribuicaoClinicasDetalhados = useMemo(() => {
+    if (!pacientesAtivosEnriquecidos.length) {
       return [];
     }
 
-    const contagem = new Map(GRUPO_LABELS.map((grupo) => [grupo, 0]));
+    const contagemPorGrupo = new Map();
 
-    pacientesAtivos.forEach((paciente) => {
-      const grupo = identificarGrupoClinico(paciente?.especialidade);
-      contagem.set(grupo, (contagem.get(grupo) || 0) + 1);
+    pacientesAtivosEnriquecidos.forEach((paciente) => {
+      const grupo = paciente.grupoClinico || 'Outras Especialidades';
+      const especialidade = paciente.especialidadeFormatada || 'ESPECIALIDADE NÃO INFORMADA';
+
+      if (!contagemPorGrupo.has(grupo)) {
+        contagemPorGrupo.set(grupo, {
+          grupo,
+          total: 0,
+          especialidades: new Map(),
+        });
+      }
+
+      const registroGrupo = contagemPorGrupo.get(grupo);
+      registroGrupo.total += 1;
+      registroGrupo.especialidades.set(
+        especialidade,
+        (registroGrupo.especialidades.get(especialidade) || 0) + 1
+      );
     });
 
-    return Array.from(contagem.entries())
-      .filter(([, value]) => value > 0)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [pacientesAtivos]);
+    return Array.from(contagemPorGrupo.values())
+      .map((item) => ({
+        ...item,
+        especialidades: Array.from(item.especialidades.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(([nome, quantidade]) => ({ nome, quantidade })),
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [pacientesAtivosEnriquecidos]);
+
+  const dadosDistribuicaoClinicas = useMemo(() => {
+    return dadosDistribuicaoClinicasDetalhados.map(({ grupo, total }) => ({
+      name: grupo,
+      value: total,
+    }));
+  }, [dadosDistribuicaoClinicasDetalhados]);
 
   const dadosEspecialidadesPorSetor = useMemo(() => {
-    if (!pacientesAtivos.length) {
+    if (!pacientesAtivosEnriquecidos.length) {
       return [];
     }
 
     const agregados = new Map();
 
-    pacientesAtivos.forEach((paciente) => {
-      const leito = paciente?.leitoId ? leitosPorId.get(paciente.leitoId) : null;
-      const setorId = paciente?.setorId || leito?.setorId;
-      const setor = setorId ? setoresPorId.get(setorId) : null;
-      const nomeSetor = setor?.siglaSetor || setor?.nomeSetor || setor?.nome || 'Setor não identificado';
-      const grupo = identificarGrupoClinico(paciente?.especialidade);
+    pacientesAtivosEnriquecidos.forEach((paciente) => {
+      const nomeSetor = paciente.nomeSetor || 'Setor não identificado';
+      const grupo = paciente.grupoClinico || 'Outras Especialidades';
 
       if (!agregados.has(nomeSetor)) {
         const estrutura = { setor: nomeSetor, total: 0 };
@@ -295,14 +349,14 @@ const GestaoEstrategicaPage = () => {
       }
 
       const entrada = agregados.get(nomeSetor);
-      entrada[grupo] += 1;
+      entrada[grupo] = (entrada[grupo] || 0) + 1;
       entrada.total += 1;
     });
 
     return Array.from(agregados.values())
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
-  }, [pacientesAtivos, leitosPorId, setoresPorId]);
+  }, [pacientesAtivosEnriquecidos]);
 
   const gruposAtivosNoSetor = useMemo(() => {
     const ativos = new Set();
@@ -316,6 +370,72 @@ const GestaoEstrategicaPage = () => {
 
     return GRUPO_LABELS.filter((grupo) => ativos.has(grupo));
   }, [dadosEspecialidadesPorSetor]);
+
+  const relatorioDistribuicaoClinicasTexto = useMemo(() => {
+    if (!dadosDistribuicaoClinicasDetalhados.length) {
+      return '*RELATÓRIO DE DISTRIBUIÇÃO POR CLÍNICAS*\n\nNenhum paciente ativo encontrado.';
+    }
+
+    const linhas = ['*RELATÓRIO DE DISTRIBUIÇÃO POR CLÍNICAS*', ''];
+
+    dadosDistribuicaoClinicasDetalhados.forEach(({ grupo, total, especialidades }) => {
+      linhas.push(`*Grupo ${grupo}: ${total} paciente(s)*`);
+      especialidades.forEach(({ nome, quantidade }) => {
+        linhas.push(`- ${nome}: ${quantidade}`);
+      });
+      linhas.push('');
+    });
+
+    return linhas.join('\n').trim();
+  }, [dadosDistribuicaoClinicasDetalhados]);
+
+  const handleCopiarRelatorioClinicas = useCallback(async () => {
+    if (!dadosDistribuicaoClinicasDetalhados.length) {
+      toast({
+        title: 'Nenhum dado disponível',
+        description: 'Não há pacientes ativos para gerar o relatório detalhado no momento.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!navigator?.clipboard?.writeText) {
+      toast({
+        title: 'Copiador indisponível',
+        description: 'Não foi possível acessar a área de transferência neste dispositivo.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(relatorioDistribuicaoClinicasTexto);
+      toast({
+        title: 'Relatório copiado com sucesso!',
+        description: 'Os dados de distribuição por clínicas foram enviados para a sua área de transferência.',
+      });
+    } catch (error) {
+      console.error('Erro ao copiar relatório de distribuição por clínicas:', error);
+      toast({
+        title: 'Erro ao copiar relatório.',
+        description: 'Tente novamente ou copie manualmente as informações exibidas.',
+        variant: 'destructive',
+      });
+    }
+  }, [dadosDistribuicaoClinicasDetalhados.length, relatorioDistribuicaoClinicasTexto, toast]);
+
+  const handleAbrirModalPacientesPorSetor = useCallback((grupo, data) => {
+    const setorNome = data?.payload?.setor;
+    if (!setorNome) {
+      return;
+    }
+
+    setModalPacientes({ open: true, setor: setorNome, grupo });
+  }, [setModalPacientes]);
+
+  const fecharModalPacientes = useCallback(() => {
+    setModalPacientes({ open: false, setor: null, grupo: null });
+  }, [setModalPacientes]);
 
   const dadosHeatmap = useMemo(() => {
     const todasInternacoes = [
@@ -560,14 +680,27 @@ const GestaoEstrategicaPage = () => {
                     Pacientes agrupados em macrocategorias assistenciais para avaliar especialidades predominantes.
                   </p>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => abrirModalIndicador('distribuicaoGruposClinicos')}
-                >
-                  <Info className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={handleCopiarRelatorioClinicas}
+                    disabled={!dadosDistribuicaoClinicasDetalhados.length}
+                    aria-label="Copiar relatório detalhado da distribuição por clínicas"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => abrirModalIndicador('distribuicaoGruposClinicos')}
+                    aria-label="Ver detalhes do indicador de distribuição por clínicas"
+                  >
+                    <Info className="h-4 w-4" />
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 {dadosDistribuicaoClinicas.length ? (
@@ -640,6 +773,8 @@ const GestaoEstrategicaPage = () => {
                             stackId="a"
                             name={grupo}
                             fill={GRUPO_CORES[grupo] || '#94a3b8'}
+                            cursor="pointer"
+                            onClick={(data) => handleAbrirModalPacientesPorSetor(grupo, data)}
                           />
                         ))}
                       </BarChart>
@@ -773,6 +908,14 @@ const GestaoEstrategicaPage = () => {
           </div>
         </section>
       </div>
+
+      <ListaPacientesPorSetorModal
+        isOpen={modalPacientes.open}
+        onClose={fecharModalPacientes}
+        setor={modalPacientes.setor}
+        grupo={modalPacientes.grupo}
+        pacientes={pacientesAtivosEnriquecidos}
+      />
 
       <IndicadorInfoModal
         isOpen={modalIndicador.open}
