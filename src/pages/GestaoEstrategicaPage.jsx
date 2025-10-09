@@ -40,6 +40,7 @@ import {
 import { calcularPermanenciaAtual } from '@/lib/historicoOcupacoes';
 import { getDay, getHours } from 'date-fns';
 import ListaPacientesPorSetorModal from '@/components/modals/ListaPacientesPorSetorModal';
+import IndicadoresRegulacao from '@/components/IndicadoresRegulacao';
 
 const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const FAIXAS_HORARIO = ['0-6h', '6-12h', '12-18h', '18-24h'];
@@ -906,6 +907,19 @@ const GestaoEstrategicaPage = () => {
               </CardContent>
             </Card>
           </div>
+        </section>
+
+        {/* Análise do Processo de Regulação */}
+        <section className="space-y-6">
+          <div>
+            <h2 className="text-xl font-semibold text-foreground">Análise do Processo de Regulação</h2>
+            <p className="text-sm text-muted-foreground max-w-3xl">
+              Aprofunde-se nos indicadores de volume, eficiência e fluxo do histórico de regulações para identificar padrões,
+              gargalos e oportunidades de melhoria operacional.
+            </p>
+          </div>
+
+          <IndicadoresRegulacao />
         </section>
       </div>
 
