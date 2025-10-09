@@ -26,6 +26,8 @@ import {
   XAxis,
   YAxis,
   Bar,
+  LineChart,
+  Line,
 } from 'recharts';
 import {
   getHistoricoRegulacoesCollection,
@@ -46,6 +48,12 @@ const PERIOD_OPTIONS = [
 ];
 
 const PIE_COLORS = ['#2563eb', '#7c3aed', '#ea580c', '#059669', '#0ea5e9', '#facc15', '#14b8a6', '#f97316'];
+
+const SHIFT_CONFIG = {
+  manha: { label: 'Manhã', color: '#2563eb' },
+  tarde: { label: 'Tarde', color: '#f97316' },
+  noite: { label: 'Noite', color: '#7c3aed' },
+};
 
 const parseFirestoreDate = (value) => {
   if (!value) return null;
@@ -101,6 +109,17 @@ const formatMinutes = (minutes) => {
     return `${horas}h`;
   }
   return `${horas}h ${mins}min`;
+};
+
+const getTurnoFromHour = (hour) => {
+  if (hour >= 6 && hour < 12) return 'manha';
+  if (hour >= 12 && hour < 18) return 'tarde';
+  return 'noite';
+};
+
+const getTurnoFromDate = (date) => {
+  if (!(date instanceof Date)) return 'noite';
+  return getTurnoFromHour(date.getHours());
 };
 
 const resolveSetorInfo = (registro, chave, setoresMap) => {
@@ -266,6 +285,7 @@ const IndicadoresRegulacao = () => {
     const base = Array.from({ length: 24 }, (_, index) => ({
       hora: `${String(index).padStart(2, '0')}h`,
       total: 0,
+      turno: getTurnoFromHour(index),
     }));
 
     if (!regulacoes.length) {
@@ -297,49 +317,138 @@ const IndicadoresRegulacao = () => {
           origem: origem.label,
           destino: destino.label,
           total: 0,
+          tempoTotal: 0,
+          quantidadeTempo: 0,
         });
       }
 
-      contagem.get(chave).total += 1;
+      const registro = contagem.get(chave);
+      registro.total += 1;
+
+      const tempo = Number(item?.tempoRegulacaoMinutos ?? NaN);
+      if (Number.isFinite(tempo) && tempo > 0) {
+        registro.tempoTotal += tempo;
+        registro.quantidadeTempo += 1;
+      }
     });
 
     return Array.from(contagem.values())
+      .map((item) => ({
+        ...item,
+        tempoMedio:
+          item.quantidadeTempo > 0 ? item.tempoTotal / item.quantidadeTempo : null,
+      }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
   }, [regulacoes, setoresMap]);
 
-  const dadosTempoPorOrigem = useMemo(() => {
+  const dadosComparativoSetores = useMemo(() => {
     if (!regulacoes.length) return [];
 
     const acumulado = new Map();
 
     regulacoes.forEach((item) => {
-      const tempo = Number(item?.tempoRegulacaoMinutos ?? item?.tempoTotalMinutos ?? NaN);
+      const tempo = Number(item?.tempoRegulacaoMinutos ?? NaN);
       if (!Number.isFinite(tempo) || tempo <= 0) return;
 
       const status = normalizarStatus(item.statusFinal);
       if (status && status !== 'concluida') return;
 
       const origem = resolveSetorInfo(item, 'setorOrigem', setoresMap);
-      const chave = origem.label;
+      const destino = resolveSetorInfo(item, 'setorDestino', setoresMap);
 
-      if (!acumulado.has(chave)) {
-        acumulado.set(chave, { setor: chave, totalTempo: 0, quantidade: 0 });
+      if (!acumulado.has(origem.label)) {
+        acumulado.set(origem.label, {
+          setor: origem.label,
+          origemTempo: 0,
+          origemQtd: 0,
+          destinoTempo: 0,
+          destinoQtd: 0,
+        });
       }
 
-      const registro = acumulado.get(chave);
-      registro.totalTempo += tempo;
-      registro.quantidade += 1;
+      if (!acumulado.has(destino.label)) {
+        acumulado.set(destino.label, {
+          setor: destino.label,
+          origemTempo: 0,
+          origemQtd: 0,
+          destinoTempo: 0,
+          destinoQtd: 0,
+        });
+      }
+
+      const registroOrigem = acumulado.get(origem.label);
+      registroOrigem.origemTempo += tempo;
+      registroOrigem.origemQtd += 1;
+
+      const registroDestino = acumulado.get(destino.label);
+      registroDestino.destinoTempo += tempo;
+      registroDestino.destinoQtd += 1;
     });
 
     return Array.from(acumulado.values())
-      .map((item) => ({
-        setor: item.setor,
-        tempoMedio: item.totalTempo / item.quantidade,
-        quantidade: item.quantidade,
-      }))
-      .sort((a, b) => a.tempoMedio - b.tempoMedio);
+      .map((item) => {
+        const origemMedio = item.origemQtd > 0 ? item.origemTempo / item.origemQtd : null;
+        const destinoMedio = item.destinoQtd > 0 ? item.destinoTempo / item.destinoQtd : null;
+
+        return {
+          setor: item.setor,
+          origemMedio,
+          destinoMedio,
+          origemQtd: item.origemQtd,
+          destinoQtd: item.destinoQtd,
+          barOrigem: origemMedio !== null ? -origemMedio : null,
+          barDestino: destinoMedio !== null ? destinoMedio : null,
+        };
+      })
+      .filter((item) => item.origemQtd > 0 || item.destinoQtd > 0)
+      .sort((a, b) => {
+        const maxA = Math.max(a.origemMedio || 0, a.destinoMedio || 0);
+        const maxB = Math.max(b.origemMedio || 0, b.destinoMedio || 0);
+        return maxB - maxA;
+      });
   }, [regulacoes, setoresMap]);
+
+  const dadosVolumePorDiaTurno = useMemo(() => {
+    const diasSemanaOrdem = [1, 2, 3, 4, 5, 6, 0];
+    const rotulosDias = {
+      0: 'Domingo',
+      1: 'Segunda',
+      2: 'Terça',
+      3: 'Quarta',
+      4: 'Quinta',
+      5: 'Sexta',
+      6: 'Sábado',
+    };
+
+    const base = diasSemanaOrdem.map((dia) => ({
+      diaValor: dia,
+      dia: rotulosDias[dia],
+      manha: 0,
+      tarde: 0,
+      noite: 0,
+    }));
+
+    if (!regulacoes.length) {
+      return base;
+    }
+
+    const baseMap = new Map(base.map((item) => [item.diaValor, item]));
+
+    regulacoes.forEach((item) => {
+      const dataInicio = parseFirestoreDate(item?.dataInicio);
+      if (!dataInicio) return;
+
+      const dia = dataInicio.getDay();
+      const turno = getTurnoFromDate(dataInicio);
+      const registro = baseMap.get(dia);
+      if (!registro) return;
+
+      registro[turno] += 1;
+    });
+
+    return base;
+  }, [regulacoes]);
 
   const renderLoadingState = () => (
     <div className="space-y-6">
@@ -534,9 +643,27 @@ const IndicadoresRegulacao = () => {
                         <XAxis dataKey="hora" interval={1} tick={{ fontSize: 12 }} />
                         <YAxis allowDecimals={false} />
                         <RechartsTooltip
-                          formatter={(value) => [`${value} regulações`, 'Inícios']}
+                          formatter={(value, _name, { payload }) => [
+                            `${value} regulações`,
+                            SHIFT_CONFIG[payload.turno]?.label || 'Turno',
+                          ]}
                         />
-                        <Bar dataKey="total" name="Regulações" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                        <Legend
+                          payload={Object.entries(SHIFT_CONFIG).map(([key, info]) => ({
+                            id: key,
+                            type: 'square',
+                            value: info.label,
+                            color: info.color,
+                          }))}
+                        />
+                        <Bar dataKey="total" name="Regulações" radius={[4, 4, 0, 0]}>
+                          {dadosPorHora.map((entry, index) => (
+                            <Cell
+                              key={`turno-${entry.hora}-${index}`}
+                              fill={SHIFT_CONFIG[entry.turno]?.color || '#94a3b8'}
+                            />
+                          ))}
+                        </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -564,6 +691,7 @@ const IndicadoresRegulacao = () => {
                           <th className="pb-2">Origem</th>
                           <th className="pb-2">Destino</th>
                           <th className="pb-2 text-right">Regulações</th>
+                          <th className="pb-2 text-right">Tempo Médio</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -572,11 +700,14 @@ const IndicadoresRegulacao = () => {
                             <td className="py-2 pr-3 font-medium text-foreground">{fluxo.origem}</td>
                             <td className="py-2 pr-3 text-foreground">{fluxo.destino}</td>
                             <td className="py-2 text-right font-semibold text-foreground">{fluxo.total}</td>
+                            <td className="py-2 text-right text-foreground">
+                              {formatMinutes(fluxo.tempoMedio)}
+                            </td>
                           </tr>
                         ))}
                         {!dadosFluxo.length && (
                           <tr>
-                            <td colSpan={3} className="py-6 text-center text-muted-foreground">
+                            <td colSpan={4} className="py-6 text-center text-muted-foreground">
                               Nenhum fluxo relevante identificado.
                             </td>
                           </tr>
@@ -593,38 +724,121 @@ const IndicadoresRegulacao = () => {
               <Card className="border-muted">
                 <CardHeader>
                   <CardTitle className="text-base font-semibold text-foreground">
-                    Eficiência por Setor de Origem
+                    Eficiência por Setor: Origem vs. Destino
                   </CardTitle>
                   <CardDescription>
-                    Tempo médio de conclusão das regulações originadas em cada setor.
+                    Compare o tempo médio para regular pacientes quando o setor é origem ou
+                    destino.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="h-80">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={dadosTempoPorOrigem} layout="vertical" margin={{ left: 80 }}>
+                      <BarChart
+                        data={dadosComparativoSetores}
+                        layout="vertical"
+                        margin={{ left: 100, right: 40 }}
+                      >
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis type="number" tickFormatter={(value) => `${Math.round(value)} min`} />
+                        <XAxis
+                          type="number"
+                          tickFormatter={(value) => `${Math.round(Math.abs(value))} min`}
+                        />
                         <YAxis
                           type="category"
                           dataKey="setor"
-                          width={120}
+                          width={140}
                           tick={{ fontSize: 12 }}
                         />
                         <RechartsTooltip
-                          formatter={(value, _name, { payload }) => [
-                            formatMinutes(value),
-                            `${payload.quantidade} regulações`,
-                          ]}
+                          formatter={(value, name, { payload }) => {
+                            if (value === null || value === undefined) {
+                              return ['—', name];
+                            }
+                            const tempo = Math.abs(value);
+                            const quantidade =
+                              name === 'Origem' ? payload.origemQtd : payload.destinoQtd;
+                            const contexto =
+                              name === 'Origem'
+                                ? `${quantidade} regulações originadas`
+                                : `${quantidade} regulações recebidas`;
+                            return [formatMinutes(tempo), contexto];
+                          }}
                           labelFormatter={(label) => label}
                         />
-                        <Bar dataKey="tempoMedio" name="Tempo médio" fill="#059669" radius={[0, 4, 4, 0]} />
+                        <Legend />
+                        <Bar
+                          dataKey="barOrigem"
+                          name="Origem"
+                          fill="#0ea5e9"
+                          radius={[4, 4, 4, 4]}
+                          isAnimationActive={false}
+                        />
+                        <Bar
+                          dataKey="barDestino"
+                          name="Destino"
+                          fill="#059669"
+                          radius={[4, 4, 4, 4]}
+                          isAnimationActive={false}
+                        />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </CardContent>
               </Card>
             </div>
+          </section>
+
+          <section>
+            <Card className="border-muted">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-foreground">
+                  Volume Semanal por Turno
+                </CardTitle>
+                <CardDescription>
+                  Visualize como a demanda de regulações varia por dia da semana e turno.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={dadosVolumePorDiaTurno} margin={{ left: 12, right: 12 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="dia" tick={{ fontSize: 12 }} />
+                      <YAxis allowDecimals={false} />
+                      <RechartsTooltip
+                        formatter={(value, name) => [`${value} regulações`, name]}
+                      />
+                      <Legend />
+                      <Line
+                        type="monotone"
+                        dataKey="manha"
+                        name={SHIFT_CONFIG.manha.label}
+                        stroke={SHIFT_CONFIG.manha.color}
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="tarde"
+                        name={SHIFT_CONFIG.tarde.label}
+                        stroke={SHIFT_CONFIG.tarde.color}
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="noite"
+                        name={SHIFT_CONFIG.noite.label}
+                        stroke={SHIFT_CONFIG.noite.color}
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
           </section>
         </div>
       )}
