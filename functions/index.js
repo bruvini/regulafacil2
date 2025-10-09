@@ -14,7 +14,7 @@ const normalizeText = (text = '') =>
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '');
 
-const ensureAdminRequester = (context) => {
+const ensureAdminRequester = async (context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError(
       'unauthenticated',
@@ -22,10 +22,34 @@ const ensureAdminRequester = (context) => {
     );
   }
 
-  const requesterRole = context.auth.token?.role || context.auth.token?.tipoUsuario;
-  const isAdmin = requesterRole && ['admin', 'Administrador'].includes(requesterRole);
+  const requesterRole = context.auth.token?.role;
+  const requesterTipoUsuario = context.auth.token?.tipoUsuario;
+  const isAdminByClaims =
+    (requesterRole && ['admin', 'Administrador'].includes(requesterRole)) ||
+    requesterTipoUsuario === 'Administrador';
 
-  if (!isAdmin) {
+  if (isAdminByClaims) {
+    return;
+  }
+
+  const requesterUid = context.auth.uid;
+
+  if (!requesterUid) {
+    throw new functions.https.HttpsError(
+      'permission-denied',
+      'Somente administradores podem criar novos usuários.'
+    );
+  }
+
+  const requesterSnapshot = await admin
+    .firestore()
+    .doc(`${USERS_COLLECTION_PATH}/${requesterUid}`)
+    .get();
+
+  const requesterData = requesterSnapshot.data();
+  const isAdminByProfile = requesterData?.tipoUsuario === 'Administrador';
+
+  if (!isAdminByProfile) {
     throw new functions.https.HttpsError(
       'permission-denied',
       'Somente administradores podem criar novos usuários.'
@@ -60,7 +84,7 @@ const validatePayload = (data) => {
 };
 
 exports.createNewUser = functions.https.onCall(async (data, context) => {
-  ensureAdminRequester(context);
+  await ensureAdminRequester(context);
   validatePayload(data);
 
   const email = data.email.toLowerCase();
