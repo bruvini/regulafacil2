@@ -359,9 +359,6 @@ const IndicadoresRegulacao = () => {
     const acumulado = new Map();
 
     regulacoesFiltradas.forEach((item) => {
-      const tempo = Number(item?.tempoRegulacaoMinutos ?? NaN);
-      if (!Number.isFinite(tempo) || tempo <= 0) return;
-
       const status = normalizarStatus(item.statusFinal);
       if (status && status !== 'concluida') return;
 
@@ -371,64 +368,45 @@ const IndicadoresRegulacao = () => {
       if (!acumulado.has(origem.label)) {
         acumulado.set(origem.label, {
           setor: origem.label,
-          origemTempo: 0,
-          origemQtd: 0,
-          destinoTempo: 0,
-          destinoQtd: 0,
+          origemCount: 0,
+          destinoCount: 0,
         });
       }
 
       if (!acumulado.has(destino.label)) {
         acumulado.set(destino.label, {
           setor: destino.label,
-          origemTempo: 0,
-          origemQtd: 0,
-          destinoTempo: 0,
-          destinoQtd: 0,
+          origemCount: 0,
+          destinoCount: 0,
         });
       }
 
       const registroOrigem = acumulado.get(origem.label);
-      registroOrigem.origemTempo += tempo;
-      registroOrigem.origemQtd += 1;
+      registroOrigem.origemCount += 1;
 
       const registroDestino = acumulado.get(destino.label);
-      registroDestino.destinoTempo += tempo;
-      registroDestino.destinoQtd += 1;
+      registroDestino.destinoCount += 1;
     });
 
     return Array.from(acumulado.values())
-      .map((item) => {
-        const origemMedio = item.origemQtd > 0 ? item.origemTempo / item.origemQtd : null;
-        const destinoMedio = item.destinoQtd > 0 ? item.destinoTempo / item.destinoQtd : null;
-
-        return {
-          setor: item.setor,
-          origemMedio,
-          destinoMedio,
-          origemQtd: item.origemQtd,
-          destinoQtd: item.destinoQtd,
-          barOrigem: origemMedio !== null ? -origemMedio : null,
-          barDestino: destinoMedio !== null ? destinoMedio : null,
-        };
-      })
-      .filter((item) => item.origemQtd > 0 || item.destinoQtd > 0)
+      .filter((item) => item.origemCount > 0 || item.destinoCount > 0)
       .sort((a, b) => {
-        const maxA = Math.max(a.origemMedio || 0, a.destinoMedio || 0);
-        const maxB = Math.max(b.origemMedio || 0, b.destinoMedio || 0);
+        const maxA = Math.max(a.origemCount || 0, a.destinoCount || 0);
+        const maxB = Math.max(b.origemCount || 0, b.destinoCount || 0);
         return maxB - maxA;
       });
   }, [regulacoesFiltradas, setoresMap]);
 
-  const maiorTempoAbsoluto = useMemo(() => {
+  const maxVolumeComparativo = useMemo(() => {
     if (!dadosComparativoSetores.length) return 0;
 
-    return dadosComparativoSetores.reduce((maior, item) => {
-      const valores = [item.barOrigem ?? 0, item.barDestino ?? 0];
-      const maiorAtual = Math.max(...valores.map((valor) => Math.abs(valor || 0)));
-      return Math.max(maior, maiorAtual);
-    }, 0);
+    return dadosComparativoSetores.reduce(
+      (maior, item) => Math.max(maior, item.origemCount || 0, item.destinoCount || 0),
+      0,
+    );
   }, [dadosComparativoSetores]);
+
+  const dominioVolumeComparativo = Math.max(maxVolumeComparativo, 1);
 
   const dadosVolumePorDiaTurno = useMemo(() => {
     const diasSemanaOrdem = [1, 2, 3, 4, 5, 6, 0];
@@ -470,8 +448,6 @@ const IndicadoresRegulacao = () => {
 
     return base;
   }, [regulacoesFiltradas]);
-
-  const limiteEixoComparativo = maiorTempoAbsoluto ? Math.ceil(maiorTempoAbsoluto * 1.1) : 10;
 
   const renderLoadingState = () => (
     <div className="space-y-6">
@@ -744,14 +720,14 @@ const IndicadoresRegulacao = () => {
                 </CardContent>
               </Card>
 
-              <Card className="border-muted lg:col-span-2">
+              <Card className="border-muted col-span-full">
                 <CardHeader>
                   <CardTitle className="text-base font-semibold text-foreground">
                     Eficiência por Setor: Origem vs. Destino
                   </CardTitle>
                   <CardDescription>
-                    Compare o tempo médio para regular pacientes quando o setor é origem ou
-                    destino.
+                    Compare o volume de regulações originadas e recebidas por setor em um único
+                    panorama.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -760,15 +736,26 @@ const IndicadoresRegulacao = () => {
                       <BarChart
                         data={dadosComparativoSetores}
                         layout="vertical"
-                        margin={{ left: 160, right: 40, top: 16, bottom: 16 }}
+                        margin={{ left: 160, right: 64, top: 16, bottom: 16 }}
                         barCategoryGap={24}
                         barGap={8}
+                        barSize={20}
                       >
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis
                           type="number"
-                          domain={[-limiteEixoComparativo, limiteEixoComparativo]}
-                          tickFormatter={(value) => `${Math.round(Math.abs(value))} min`}
+                          xAxisId="origem"
+                          domain={[0, dominioVolumeComparativo]}
+                          reversed
+                          allowDecimals={false}
+                          tickFormatter={(value) => value.toLocaleString('pt-BR')}
+                        />
+                        <XAxis
+                          type="number"
+                          xAxisId="destino"
+                          domain={[0, dominioVolumeComparativo]}
+                          allowDecimals={false}
+                          tickFormatter={(value) => value.toLocaleString('pt-BR')}
                         />
                         <YAxis
                           type="category"
@@ -778,37 +765,37 @@ const IndicadoresRegulacao = () => {
                           tick={{ fontSize: 12 }}
                         />
                         <RechartsTooltip
-                          formatter={(value, name, { payload }) => {
+                          formatter={(value, name) => {
                             if (value === null || value === undefined) {
                               return ['—', name];
                             }
-                            const tempo = Math.abs(value);
-                            const quantidade =
-                              name === 'Origem' ? payload.origemQtd : payload.destinoQtd;
+                            const total = Number(value).toLocaleString('pt-BR');
                             const contexto =
                               name === 'Origem'
-                                ? `${quantidade} regulações originadas`
-                                : `${quantidade} regulações recebidas`;
-                            return [formatMinutes(tempo), contexto];
+                                ? `${total} regulações originadas`
+                                : `${total} regulações recebidas`;
+                            return [`${total} regulações`, contexto];
                           }}
                           labelFormatter={(label) => label}
                         />
                         <Legend />
                         <Bar
-                          dataKey="barOrigem"
+                          dataKey="origemCount"
                           name="Origem"
                           fill="#0ea5e9"
                           radius={[4, 4, 4, 4]}
                           isAnimationActive={false}
                           yAxisId="setores"
+                          xAxisId="origem"
                         />
                         <Bar
-                          dataKey="barDestino"
+                          dataKey="destinoCount"
                           name="Destino"
                           fill="#059669"
                           radius={[4, 4, 4, 4]}
                           isAnimationActive={false}
                           yAxisId="setores"
+                          xAxisId="destino"
                         />
                       </BarChart>
                     </ResponsiveContainer>
