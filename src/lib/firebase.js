@@ -1,9 +1,9 @@
 // Firebase configuration and initialization
 import { initializeApp } from 'firebase/app';
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
+import {
+  getFirestore,
+  collection,
+  doc,
   addDoc, 
   setDoc, 
   deleteDoc, 

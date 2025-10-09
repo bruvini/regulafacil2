@@ -168,16 +168,18 @@ const ModalUsuario = ({ isOpen, onClose, modo, usuario, onSave }) => {
 
       if (modo === 'criar') {
         const createNewUser = httpsCallable(functions, 'createNewUser');
-        await createNewUser({
+        const response = await createNewUser({
           email: dadosUsuario.emailInstitucional,
           password: 'HMSJ@2025',
           nomeCompleto: dadosUsuario.nomeCompleto,
+          matricula: dadosUsuario.matricula,
           tipoUsuario: dadosUsuario.tipoUsuario,
           permissoes: dadosUsuario.permissoes,
-          matricula: dadosUsuario.matricula,
           qtdAcessos: dadosUsuario.qtdAcessos,
           ultimoAcesso: dadosUsuario.ultimoAcesso
         });
+
+        dadosUsuario.uid = response?.data?.uid;
 
         await logAction('Gestão de Usuários', `Usuário criado: ${dadosUsuario.nomeCompleto} (${dadosUsuario.emailInstitucional})`, currentUser);
 

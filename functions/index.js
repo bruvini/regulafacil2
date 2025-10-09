@@ -7,7 +7,14 @@ if (!admin.apps.length) {
 
 const USERS_COLLECTION_PATH = 'artifacts/regulafacil/public/data/usuarios';
 
-exports.createNewUser = functions.https.onCall(async (data, context) => {
+const normalizeText = (text = '') =>
+  text
+    .toString()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '');
+
+const ensureAdminRequester = (context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError(
       'unauthenticated',
@@ -15,211 +22,132 @@ exports.createNewUser = functions.https.onCall(async (data, context) => {
     );
   }
 
-  const requesterRole = context.auth.token?.role;
-  if (requesterRole !== 'admin') {
+  const requesterRole = context.auth.token?.role || context.auth.token?.tipoUsuario;
+  const isAdmin = requesterRole && ['admin', 'Administrador'].includes(requesterRole);
+
+  if (!isAdmin) {
     throw new functions.https.HttpsError(
       'permission-denied',
-      'Apenas administradores podem criar novos usuários.'
+      'Somente administradores podem criar novos usuários.'
     );
   }
+};
 
-  const {
-    email,
-    password,
-    nomeCompleto,
-    tipoUsuario,
-    permissoes = [],
-    matricula = '',
-    qtdAcessos = 0,
-    ultimoAcesso = null
-  } = data || {};
+const validatePayload = (data) => {
+  const requiredFields = ['email', 'password', 'nomeCompleto', 'matricula', 'tipoUsuario'];
+  for (const field of requiredFields) {
+    if (!data[field]) {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        `O campo "${field}" é obrigatório.`
+      );
+    }
+  }
 
-  if (!email || !password || !nomeCompleto || !tipoUsuario) {
+  if (typeof data.email !== 'string' || !data.email.endsWith('@joinville.sc.gov.br')) {
     throw new functions.https.HttpsError(
       'invalid-argument',
-      'Email, senha, nome completo e tipo de usuário são obrigatórios.'
+      'O e-mail deve terminar com @joinville.sc.gov.br.'
     );
   }
 
-  if (!/^.+@joinville\.sc\.gov\.br$/i.test(email)) {
+  if (typeof data.password !== 'string' || data.password.length < 6) {
     throw new functions.https.HttpsError(
       'invalid-argument',
-      'O e-mail deve pertencer ao domínio @joinville.sc.gov.br.'
+      'A senha deve conter ao menos 6 caracteres.'
     );
   }
+};
 
-  if (!['Administrador', 'Comum'].includes(tipoUsuario)) {
-    throw new functions.https.HttpsError(
-      'invalid-argument',
-      'Tipo de usuário inválido.'
-    );
-  }
+exports.createNewUser = functions.https.onCall(async (data, context) => {
+  ensureAdminRequester(context);
+  validatePayload(data);
 
-  const normalizarTexto = (texto) =>
-    texto
-      .toUpperCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '');
-
-  const firestore = admin.firestore();
+  const email = data.email.toLowerCase();
+  const password = data.password;
+  const nomeCompleto = normalizeText(data.nomeCompleto);
+  const tipoUsuario = data.tipoUsuario;
+  const matricula = data.matricula?.toString();
+  const permissoes = Array.isArray(data.permissoes) && tipoUsuario === 'Comum' ? data.permissoes : [];
+  const qtdAcessos = typeof data.qtdAcessos === 'number' ? data.qtdAcessos : 0;
+  const ultimoAcesso = data.ultimoAcesso ?? null;
 
   try {
-    const userRecord = await admin.auth().createUser({
-      email: email.toLowerCase(),
-      password,
-      displayName: normalizarTexto(nomeCompleto)
-    });
+    const usersCollection = admin.firestore().collection(USERS_COLLECTION_PATH);
 
-    const customClaims = {
-      role: tipoUsuario === 'Administrador' ? 'admin' : 'user',
-      tipoUsuario
-    };
+    const [matriculaSnapshot, emailSnapshot] = await Promise.all([
+      usersCollection.where('matricula', '==', matricula).limit(1).get(),
+      usersCollection.where('emailInstitucional', '==', email).limit(1).get(),
+    ]);
 
-    await admin.auth().setCustomUserClaims(userRecord.uid, customClaims);
+    if (!matriculaSnapshot.empty) {
+      throw new functions.https.HttpsError(
+        'already-exists',
+        'Esta matrícula já está cadastrada.'
+      );
+    }
 
-    const usuarioFirestore = {
-      uid: userRecord.uid,
-      nomeCompleto: normalizarTexto(nomeCompleto),
-      matricula: String(matricula),
-      emailInstitucional: email.toLowerCase(),
-      tipoUsuario,
-      permissoes: Array.isArray(permissoes) ? permissoes : [],
-      qtdAcessos,
-      ultimoAcesso,
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
-    };
-
-    await firestore.collection(USERS_COLLECTION_PATH).add(usuarioFirestore);
-
-    return {
-      uid: userRecord.uid,
-      message: 'Usuário criado com sucesso.'
-    };
-  } catch (error) {
-    console.error('Erro ao criar usuário via função:', error);
-
-    if (error.code === 'auth/email-already-exists') {
+    if (!emailSnapshot.empty) {
       throw new functions.https.HttpsError(
         'already-exists',
         'Este e-mail já está cadastrado.'
       );
     }
 
-    throw new functions.https.HttpsError(
-      'internal',
-      error.message || 'Erro ao criar o usuário.'
-    );
-  }
-});
-
-exports.bootstrapAdminClaims = functions.https.onCall(async (_, context) => {
-  if (!context.auth || context.auth.token?.role !== 'admin') {
-    throw new functions.https.HttpsError(
-      'permission-denied',
-      'Somente administradores autenticados podem executar esta operação.'
-    );
-  }
-
-  const firestore = admin.firestore();
-
-  try {
-    const adminUsersSnapshot = await firestore
-      .collection(USERS_COLLECTION_PATH)
-      .where('tipoUsuario', '==', 'Administrador')
-      .get();
-
-    if (adminUsersSnapshot.empty) {
-      return {
-        updatedAdmins: 0,
-        message: 'Nenhum administrador encontrado para atualizar.'
-      };
+    try {
+      await admin.auth().getUserByEmail(email);
+      throw new functions.https.HttpsError(
+        'already-exists',
+        'Uma conta com este e-mail já existe no Firebase Authentication.'
+      );
+    } catch (authLookupError) {
+      if (authLookupError.code !== 'auth/user-not-found') {
+        throw authLookupError;
+      }
     }
 
-    const updatePromises = [];
-
-    adminUsersSnapshot.forEach((doc) => {
-      const data = doc.data();
-      const targetUid = data.uid || doc.id;
-
-      if (!targetUid) {
-        functions.logger.warn(
-          `Documento de usuário ${doc.id} não possui UID associado. Ignorando.`
-        );
-        return;
-      }
-
-      updatePromises.push(
-        admin.auth().setCustomUserClaims(targetUid, {
-          role: 'admin',
-          tipoUsuario: 'Administrador'
-        })
-      );
+    const userRecord = await admin.auth().createUser({
+      email,
+      password,
+      displayName: nomeCompleto,
+      disabled: false,
     });
 
-    const results = await Promise.allSettled(updatePromises);
+    const customClaims = {
+      role: tipoUsuario === 'Administrador' ? 'admin' : 'user',
+      tipoUsuario,
+    };
 
-    const updatedAdmins = results.filter((result) => result.status === 'fulfilled')
-      .length;
+    await admin.auth().setCustomUserClaims(userRecord.uid, customClaims);
 
-    if (updatedAdmins !== updatePromises.length) {
-      const rejected = results.filter((result) => result.status === 'rejected');
-      rejected.forEach((result) => {
-        functions.logger.error('Falha ao atualizar claim de administrador:', result);
-      });
-    }
+    const userDoc = {
+      uid: userRecord.uid,
+      nomeCompleto,
+      matricula,
+      emailInstitucional: email,
+      tipoUsuario,
+      permissoes,
+      qtdAcessos,
+      ultimoAcesso,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    await admin.firestore().doc(`${USERS_COLLECTION_PATH}/${userRecord.uid}`).set(userDoc);
 
     return {
-      updatedAdmins,
-      message: 'Claims de administradores atualizadas com sucesso.'
+      uid: userRecord.uid,
+      email,
+      tipoUsuario,
     };
   } catch (error) {
-    functions.logger.error('Erro ao executar bootstrapAdminClaims:', error);
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+
+    console.error('Erro ao criar usuário via Cloud Function:', error);
     throw new functions.https.HttpsError(
       'internal',
-      'Falha ao atualizar os custom claims dos administradores.'
+      'Ocorreu um erro ao criar o usuário. Tente novamente mais tarde.'
     );
   }
 });
-
-exports.syncUserClaimsOnUpdate = functions.firestore
-  .document(`${USERS_COLLECTION_PATH}/{userId}`)
-  .onUpdate(async (change, context) => {
-    const beforeTipoUsuario = change.before.data()?.tipoUsuario;
-    const afterTipoUsuario = change.after.data()?.tipoUsuario;
-
-    if (beforeTipoUsuario === afterTipoUsuario) {
-      return null;
-    }
-
-    const userId = context.params.userId;
-    const targetUid = change.after.data()?.uid || userId;
-
-    if (!targetUid) {
-      functions.logger.warn(
-        `Documento de usuário ${userId} não possui UID associado. Claims não foram atualizadas.`
-      );
-      return null;
-    }
-
-    const isAdmin = afterTipoUsuario === 'Administrador';
-    const customClaims = {
-      role: isAdmin ? 'admin' : 'user',
-      tipoUsuario: afterTipoUsuario || null
-    };
-
-    try {
-      await admin.auth().setCustomUserClaims(targetUid, customClaims);
-      functions.logger.info(
-        `Custom claims do usuário ${targetUid} atualizadas para ${JSON.stringify(
-          customClaims
-        )}.`
-      );
-    } catch (error) {
-      functions.logger.error(
-        `Erro ao atualizar custom claims do usuário ${targetUid}:`,
-        error
-      );
-    }
-
-    return null;
-  });
