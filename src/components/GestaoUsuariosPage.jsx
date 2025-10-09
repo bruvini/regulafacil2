@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import {
   getUsuariosCollection,
+  addDoc,
   setDoc,
   deleteDoc,
   doc,
@@ -30,9 +31,10 @@ import {
   query,
   getDocs,
   where,
+  auth,
+  createUserWithEmailAndPassword,
   deleteUser,
-  functions,
-  httpsCallable
+  db
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
@@ -167,20 +169,19 @@ const ModalUsuario = ({ isOpen, onClose, modo, usuario, onSave }) => {
       };
 
       if (modo === 'criar') {
-        const createNewUser = httpsCallable(functions, 'createNewUser');
-        await createNewUser({
-          email: dadosUsuario.emailInstitucional,
-          password: 'HMSJ@2025',
-          nomeCompleto: dadosUsuario.nomeCompleto,
-          tipoUsuario: dadosUsuario.tipoUsuario,
-          permissoes: dadosUsuario.permissoes,
-          matricula: dadosUsuario.matricula,
-          qtdAcessos: dadosUsuario.qtdAcessos,
-          ultimoAcesso: dadosUsuario.ultimoAcesso
-        });
+        // Criar usuário no Firebase Auth
+        const userCredential = await createUserWithEmailAndPassword(
+          auth, 
+          data.emailInstitucional, 
+          'HMSJ@2025'
+        );
+        
+        // Adicionar UID aos dados e salvar no Firestore
+        dadosUsuario.uid = userCredential.user.uid;
+        await addDoc(getUsuariosCollection(), dadosUsuario);
 
         await logAction('Gestão de Usuários', `Usuário criado: ${dadosUsuario.nomeCompleto} (${dadosUsuario.emailInstitucional})`, currentUser);
-
+        
         toast({
           title: "Usuário criado",
           description: `${dadosUsuario.nomeCompleto} foi cadastrado com sucesso`
@@ -202,11 +203,10 @@ const ModalUsuario = ({ isOpen, onClose, modo, usuario, onSave }) => {
       onClose();
     } catch (error) {
       console.error('Erro ao salvar usuário:', error);
-      const errorMessage = error?.details || error?.message || 'Ocorreu um erro ao salvar o usuário. Tente novamente.';
       toast({
         variant: "destructive",
         title: "Erro",
-        description: errorMessage
+        description: "Ocorreu um erro ao salvar o usuário. Tente novamente."
       });
     }
     setLoading(false);

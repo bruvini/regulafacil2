@@ -21,15 +21,15 @@ import {
   increment,
   writeBatch
 } from 'firebase/firestore';
-import {
-  getAuth,
-  deleteUser,
+import { 
+  getAuth, 
+  createUserWithEmailAndPassword, 
+  deleteUser, 
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
   updatePassword
 } from 'firebase/auth';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBvgWppRYjPIP22U9-vu-J2dwrhJ2Klvpc",
@@ -45,7 +45,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
-const functions = getFunctions(app);
 
 // Import centralized path constants
 import { 
@@ -76,14 +75,13 @@ export const getDefinicoesIndicadoresCollection = () => collection(db, DEFINICOE
 export const getHistoricoRegulacoesCollection = () => collection(db, HISTORICO_REGULACOES_COLLECTION_PATH);
 
 // Export Firebase utilities
-export {
-  db,
+export { 
+  db, 
   auth,
-  functions,
-  collection,
-  doc,
-  addDoc,
-  setDoc,
+  collection, 
+  doc, 
+  addDoc, 
+  setDoc, 
   deleteDoc, 
   updateDoc,
   onSnapshot, 
@@ -98,10 +96,10 @@ export {
   limit,
   increment,
   writeBatch,
+  createUserWithEmailAndPassword,
   deleteUser,
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  updatePassword,
-  httpsCallable
+  updatePassword
 };
