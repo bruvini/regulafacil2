@@ -1,5 +1,5 @@
 // Firebase configuration and initialization
-import { initializeApp } from 'firebase/app';
+import { initializeApp, deleteApp } from 'firebase/app';
 import { 
   getFirestore, 
   collection, 
@@ -45,6 +45,28 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
+
+export const createUserWithoutSignIn = async (email, password) => {
+  const tempAppName = `user-creator-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  let tempApp;
+
+  try {
+    tempApp = initializeApp(firebaseConfig, tempAppName);
+    const tempAuth = getAuth(tempApp);
+    const userCredential = await createUserWithEmailAndPassword(tempAuth, email, password);
+    return userCredential.user;
+  } catch (error) {
+    throw error;
+  } finally {
+    if (tempApp) {
+      try {
+        await deleteApp(tempApp);
+      } catch (cleanupError) {
+        console.warn('Erro ao encerrar instância temporária do Firebase:', cleanupError);
+      }
+    }
+  }
+};
 
 // Import centralized path constants
 import { 
@@ -101,5 +123,6 @@ export {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  updatePassword
+  updatePassword,
+  createUserWithoutSignIn
 };

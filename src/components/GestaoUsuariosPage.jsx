@@ -31,10 +31,9 @@ import {
   query,
   getDocs,
   where,
-  auth,
-  createUserWithEmailAndPassword,
   deleteUser,
-  db
+  db,
+  createUserWithoutSignIn
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
@@ -169,15 +168,14 @@ const ModalUsuario = ({ isOpen, onClose, modo, usuario, onSave }) => {
       };
 
       if (modo === 'criar') {
-        // Criar usuário no Firebase Auth
-        const userCredential = await createUserWithEmailAndPassword(
-          auth, 
-          data.emailInstitucional, 
+        // Criar usuário no Firebase Auth sem afetar a sessão atual
+        const user = await createUserWithoutSignIn(
+          data.emailInstitucional,
           'HMSJ@2025'
         );
-        
+
         // Adicionar UID aos dados e salvar no Firestore
-        dadosUsuario.uid = userCredential.user.uid;
+        dadosUsuario.uid = user.uid;
         await addDoc(getUsuariosCollection(), dadosUsuario);
 
         await logAction('Gestão de Usuários', `Usuário criado: ${dadosUsuario.nomeCompleto} (${dadosUsuario.emailInstitucional})`, currentUser);
