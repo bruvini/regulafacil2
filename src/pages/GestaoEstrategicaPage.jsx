@@ -1,784 +1,222 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState, useEffect, useRef } from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Activity,
-  AlignLeft,
+import { 
+  Play, 
+  Pause, 
+  ChevronLeft, 
+  ChevronRight,
   BarChart3,
-  Calendar,
-  Info,
-  Layers,
-  PieChart as PieChartIcon,
-  Stethoscope,
-  Users
+  Activity,
+  Sparkles,
+  Shield,
+  FileSearch
 } from 'lucide-react';
-import {
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip as RechartsTooltip,
-  Legend,
-  BarChart,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Bar
-} from 'recharts';
-import IndicadorInfoModal from '@/components/modals/IndicadorInfoModal';
-import { onSnapshot } from '@/lib/firebase';
-import {
-  getPacientesCollection,
-  getHistoricoOcupacoesCollection,
-  getLeitosCollection,
-  getSetoresCollection
-} from '@/lib/firebase';
-import { calcularPermanenciaAtual } from '@/lib/historicoOcupacoes';
-import { getDay, getHours } from 'date-fns';
+import MapaLeitosDashboard from '@/components/dashboards/MapaLeitosDashboard';
+import RegulacaoLeitosDashboard from '@/components/dashboards/RegulacaoLeitosDashboard';
+import CentralHigienizacaoDashboard from '@/components/dashboards/CentralHigienizacaoDashboard';
+import GestaoIsolamentosDashboard from '@/components/dashboards/GestaoIsolamentosDashboard';
+import AuditoriasDashboard from '@/components/dashboards/AuditoriasDashboard';
 
-const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-const FAIXAS_HORARIO = ['0-6h', '6-12h', '12-18h', '18-24h'];
-
-const GRUPOS_CLINICOS = {
-  'Clínica Médica': ['CLINICA GERAL', 'OTORRINOLARINGOLOGIA', 'PROCTOLOGIA', 'INTENSIVISTA', 'RESIDENTE'],
-  'Cirúrgico': ['CIRURGIA GERAL', 'CIRURGIA TORACICA', 'CIRURGIA PLASTICA', 'CIRURGIA CABECA E PESCOCO'],
-  'Oncologia': ['HEMATOLOGIA', 'ONCOLOGIA CLINICA/CANCEROLOGIA', 'ONCOLOGIA CIRURGICA', 'MASTOLOGIA'],
-  'Nefrologia': ['NEFROLOGIA', 'UROLOGIA'],
-  'Neurologia': ['NEUROLOGIA', 'NEUROCIRURGIA'],
-  'Ortopedia': ['ORTOPEDIA/TRAUMATOLOGIA', 'ODONTOLOGIA C.TRAUM.B.M.F.', 'BUCOMAXILO']
-};
-
-const GRUPO_CORES = {
-  'Clínica Médica': '#2563eb',
-  'Cirúrgico': '#7c3aed',
-  'Oncologia': '#ea580c',
-  'Nefrologia': '#059669',
-  'Neurologia': '#0ea5e9',
-  'Ortopedia': '#facc15',
-  'Outras Especialidades': '#6b7280'
-};
-
-const PIE_COLORS = ['#2563eb', '#7c3aed', '#ea580c', '#059669', '#0ea5e9', '#facc15', '#14b8a6'];
-
-const KPI_CONFIG = [
+// Configuração dos slides do dashboard
+const dashboardSlides = [
   {
-    id: 'internacoesAtivas',
-    title: 'Internações Ativas',
-    description: 'Pacientes atualmente internados ou em acompanhamento ativo.',
-    icon: Activity
+    id: 'mapa-leitos',
+    title: 'Mapa de Leitos',
+    subtitle: 'Internações por Especialidade',
+    icon: BarChart3,
+    color: 'bg-blue-500',
+    component: MapaLeitosDashboard
   },
   {
-    id: 'especialidadesAtivas',
-    title: 'Especialidades Ativas',
-    description: 'Diversidade de especialidades com pacientes internados.',
-    icon: Stethoscope
+    id: 'regulacao-leitos',
+    title: 'Regulação de Leitos',
+    subtitle: 'Indicadores de Regulação',
+    icon: Activity,
+    color: 'bg-green-500',
+    component: RegulacaoLeitosDashboard
   },
   {
-    id: 'especialidadePrincipal',
-    title: 'Especialidade Principal',
-    description: 'Maior concentração de pacientes em acompanhamento.',
-    icon: PieChartIcon
+    id: 'central-higienizacao',
+    title: 'Central de Higienização',
+    subtitle: 'Status de Limpeza',
+    icon: Sparkles,
+    color: 'bg-purple-500',
+    component: CentralHigienizacaoDashboard
   },
   {
-    id: 'taxaMediaOcupacaoGeral',
-    title: 'Taxa Média de Ocupação',
-    description: 'Média da ocupação entre os tipos de setor monitorados.',
-    icon: BarChart3
+    id: 'gestao-isolamentos',
+    title: 'Gestão de Isolamentos',
+    subtitle: 'Monitoramento de Isolamentos',
+    icon: Shield,
+    color: 'bg-red-500',
+    component: GestaoIsolamentosDashboard
+  },
+  {
+    id: 'auditorias',
+    title: 'Auditorias',
+    subtitle: 'Atividades e Controles',
+    icon: FileSearch,
+    color: 'bg-gray-500',
+    component: AuditoriasDashboard
   }
 ];
 
-const GRUPO_LABELS = [...Object.keys(GRUPOS_CLINICOS), 'Outras Especialidades'];
-
-const isStatusBloqueado = (status) => {
-  if (!status) return false;
-  const normalized = String(status).toLowerCase();
-  return normalized.includes('bloque');
-};
-
-const isStatusOcupado = (status) => {
-  if (!status) return false;
-  const normalized = String(status).toLowerCase();
-  return ['ocupado', 'regulado', 'reservado'].some((valor) => normalized.includes(valor));
-};
-
-const identificarGrupoClinico = (especialidade) => {
-  if (!especialidade) return 'Outras Especialidades';
-
-  const normalizado = String(especialidade).trim().toUpperCase();
-  if (!normalizado) {
-    return 'Outras Especialidades';
-  }
-
-  const entrada = Object.entries(GRUPOS_CLINICOS).find(([, especialidades]) =>
-    especialidades.includes(normalizado)
-  );
-
-  if (entrada) {
-    return entrada[0];
-  }
-
-  return 'Outras Especialidades';
-};
-
 const GestaoEstrategicaPage = () => {
-  const [pacientes, setPacientes] = useState(null);
-  const [historicoOcupacoes, setHistoricoOcupacoes] = useState(null);
-  const [leitos, setLeitos] = useState(null);
-  const [setores, setSetores] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [modalIndicador, setModalIndicador] = useState({ open: false, indicadorId: null });
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const intervalRef = useRef(null);
 
+  // Configuração do autoplay
+  const SLIDE_DURATION = 30000; // 30 segundos
+
+  // Função para avançar para o próximo slide
+  const nextSlide = () => {
+    setCurrentSlide((prev) => (prev + 1) % dashboardSlides.length);
+  };
+
+  // Função para voltar ao slide anterior
+  const prevSlide = () => {
+    setCurrentSlide((prev) => (prev - 1 + dashboardSlides.length) % dashboardSlides.length);
+  };
+
+  // Função para ir para um slide específico
+  const goToSlide = (index) => {
+    setCurrentSlide(index);
+  };
+
+  // Toggle play/pause
+  const togglePlay = () => {
+    setIsPlaying(!isPlaying);
+  };
+
+  // Controle do autoplay
   useEffect(() => {
-    const unsubscribePacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
-      setPacientes(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))); 
-    });
+    if (isPlaying) {
+      intervalRef.current = setInterval(() => {
+        nextSlide();
+      }, SLIDE_DURATION);
+    } else {
+      clearInterval(intervalRef.current);
+    }
 
-    const unsubscribeHistorico = onSnapshot(getHistoricoOcupacoesCollection(), (snapshot) => {
-      setHistoricoOcupacoes(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-    });
+    return () => clearInterval(intervalRef.current);
+  }, [isPlaying]);
 
-    const unsubscribeLeitos = onSnapshot(getLeitosCollection(), (snapshot) => {
-      setLeitos(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-    });
-
-    const unsubscribeSetores = onSnapshot(getSetoresCollection(), (snapshot) => {
-      setSetores(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-    });
-
+  // Cleanup quando o componente desmonta
+  useEffect(() => {
     return () => {
-      unsubscribePacientes();
-      unsubscribeHistorico();
-      unsubscribeLeitos();
-      unsubscribeSetores();
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
     };
   }, []);
 
-  useEffect(() => {
-    if (pacientes && historicoOcupacoes && leitos && setores) {
-      setLoading(false);
-    }
-  }, [pacientes, historicoOcupacoes, leitos, setores]);
-
-  const pacientesList = pacientes || [];
-  const leitosList = leitos || [];
-  const setoresList = setores || [];
-  const historicoList = historicoOcupacoes || [];
-
-  const pacientesAtivos = useMemo(() => {
-    return pacientesList.filter((paciente) => {
-      const status = (paciente?.status || paciente?.statusInternacao || paciente?.situacao || '').toString().toLowerCase();
-      if (status) {
-        if (['alta', 'óbito', 'obito', 'transfer', 'cancel'].some((palavra) => status.includes(palavra))) {
-          return false;
-        }
-        if (status.includes('intern') || status.includes('ativo')) {
-          return true;
-        }
-      }
-
-      if (paciente?.dataAlta || paciente?.dataSaida) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [pacientesList]);
-
-  const leitosPorId = useMemo(() => new Map(leitosList.map((leito) => [leito.id, leito])), [leitosList]);
-  const setoresPorId = useMemo(() => new Map(setoresList.map((setor) => [setor.id, setor])), [setoresList]);
-
-  const dadosTaxaOcupacao = useMemo(() => {
-    if (!leitosList.length || !setoresList.length) {
-      return [];
-    }
-
-    const tiposSetorUnicos = Array.from(
-      new Set(setoresList.map((setor) => setor?.tipoSetor || 'Não classificado'))
-    );
-
-    return tiposSetorUnicos.map((tipo) => {
-      const setoresDoTipo = setoresList.filter((setor) => (setor?.tipoSetor || 'Não classificado') === tipo);
-      const setorIds = new Set(setoresDoTipo.map((setor) => setor.id));
-      const leitosDoTipo = leitosList.filter((leito) => setorIds.has(leito.setorId));
-
-      const totalLeitos = leitosDoTipo.length;
-      const leitosOperacionais = leitosDoTipo.filter((leito) => !isStatusBloqueado(leito.status)).length;
-      const leitosOcupados = leitosDoTipo.filter((leito) => isStatusOcupado(leito.status)).length;
-
-      const taxaOcupacao = leitosOperacionais > 0
-        ? Math.round((leitosOcupados / leitosOperacionais) * 100)
-        : 0;
-
-      return {
-        tipo: tipo || 'Não classificado',
-        taxaOcupacao,
-        ocupados: leitosOcupados,
-        disponiveis: leitosOperacionais,
-        total: totalLeitos
-      };
-    }).sort((a, b) => b.taxaOcupacao - a.taxaOcupacao);
-  }, [leitosList, setoresList]);
-
-  const taxaMediaOcupacao = useMemo(() => {
-    if (!dadosTaxaOcupacao.length) {
-      return 0;
-    }
-    const soma = dadosTaxaOcupacao.reduce((acc, item) => acc + item.taxaOcupacao, 0);
-    return Math.round(soma / dadosTaxaOcupacao.length);
-  }, [dadosTaxaOcupacao]);
-
-  const especialidadesAtivas = useMemo(() => {
-    const contagem = new Map();
-
-    pacientesAtivos.forEach((paciente) => {
-      const especialidade = paciente?.especialidade;
-      if (!especialidade) {
-        return;
-      }
-
-      const chave = String(especialidade).trim();
-      if (!chave) {
-        return;
-      }
-
-      contagem.set(chave, (contagem.get(chave) || 0) + 1);
-    });
-
-    const lista = Array.from(contagem.entries()).sort((a, b) => b[1] - a[1]);
-
-    return {
-      total: contagem.size,
-      principal: lista.length ? lista[0][0] : 'Sem especialidade definida'
-    };
-  }, [pacientesAtivos]);
-
-  const dadosDistribuicaoClinicas = useMemo(() => {
-    if (!pacientesAtivos.length) {
-      return [];
-    }
-
-    const contagem = new Map(GRUPO_LABELS.map((grupo) => [grupo, 0]));
-
-    pacientesAtivos.forEach((paciente) => {
-      const grupo = identificarGrupoClinico(paciente?.especialidade);
-      contagem.set(grupo, (contagem.get(grupo) || 0) + 1);
-    });
-
-    return Array.from(contagem.entries())
-      .filter(([, value]) => value > 0)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [pacientesAtivos]);
-
-  const dadosEspecialidadesPorSetor = useMemo(() => {
-    if (!pacientesAtivos.length) {
-      return [];
-    }
-
-    const agregados = new Map();
-
-    pacientesAtivos.forEach((paciente) => {
-      const leito = paciente?.leitoId ? leitosPorId.get(paciente.leitoId) : null;
-      const setorId = paciente?.setorId || leito?.setorId;
-      const setor = setorId ? setoresPorId.get(setorId) : null;
-      const nomeSetor = setor?.siglaSetor || setor?.nomeSetor || setor?.nome || 'Setor não identificado';
-      const grupo = identificarGrupoClinico(paciente?.especialidade);
-
-      if (!agregados.has(nomeSetor)) {
-        const estrutura = { setor: nomeSetor, total: 0 };
-        GRUPO_LABELS.forEach((grupoNome) => {
-          estrutura[grupoNome] = 0;
-        });
-        agregados.set(nomeSetor, estrutura);
-      }
-
-      const entrada = agregados.get(nomeSetor);
-      entrada[grupo] += 1;
-      entrada.total += 1;
-    });
-
-    return Array.from(agregados.values())
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 10);
-  }, [pacientesAtivos, leitosPorId, setoresPorId]);
-
-  const gruposAtivosNoSetor = useMemo(() => {
-    const ativos = new Set();
-    dadosEspecialidadesPorSetor.forEach((entrada) => {
-      GRUPO_LABELS.forEach((grupo) => {
-        if ((entrada[grupo] || 0) > 0) {
-          ativos.add(grupo);
-        }
-      });
-    });
-
-    return GRUPO_LABELS.filter((grupo) => ativos.has(grupo));
-  }, [dadosEspecialidadesPorSetor]);
-
-  const dadosHeatmap = useMemo(() => {
-    const todasInternacoes = [
-      ...pacientesList.map((paciente) => paciente.dataInternacao).filter(Boolean),
-      ...historicoList.map((registro) => registro.dataEntrada).filter(Boolean)
-    ];
-
-    const matriz = {};
-    DIAS_SEMANA.forEach((dia) => {
-      matriz[dia] = {};
-      FAIXAS_HORARIO.forEach((faixa) => {
-        matriz[dia][faixa] = 0;
-      });
-    });
-
-    todasInternacoes.forEach((data) => {
-      const dataObj = data?.toDate ? data.toDate() : new Date(data);
-      if (Number.isNaN(dataObj.getTime())) {
-        return;
-      }
-
-      const diaSemana = DIAS_SEMANA[getDay(dataObj)];
-      const hora = getHours(dataObj);
-
-      let faixaHorario = '18-24h';
-      if (hora >= 0 && hora < 6) faixaHorario = '0-6h';
-      else if (hora < 12) faixaHorario = '6-12h';
-      else if (hora < 18) faixaHorario = '12-18h';
-
-      matriz[diaSemana][faixaHorario] += 1;
-    });
-
-    return matriz;
-  }, [pacientesList, historicoList]);
-
-  const dadosPermanenciaEspecialidade = useMemo(() => {
-    if (!pacientesAtivos.length) {
-      return [];
-    }
-
-    const grupos = {};
-
-    pacientesAtivos.forEach((paciente) => {
-      if (paciente?.especialidade && paciente?.dataInternacao) {
-        const grupo = identificarGrupoClinico(paciente.especialidade);
-        if (!grupos[grupo]) {
-          grupos[grupo] = { total: 0, count: 0 };
-        }
-
-        grupos[grupo].total += calcularPermanenciaAtual(paciente.dataInternacao);
-        grupos[grupo].count += 1;
-      }
-    });
-
-    return Object.entries(grupos)
-      .map(([grupo, valores]) => ({
-        especialidade: grupo,
-        mediaPermanencia: Math.round((valores.total / valores.count) * 10) / 10,
-        pacientes: valores.count
-      }))
-      .sort((a, b) => b.mediaPermanencia - a.mediaPermanencia)
-      .slice(0, 8);
-  }, [pacientesAtivos]);
-
-  const abrirModalIndicador = (indicadorId) => {
-    setModalIndicador({ open: true, indicadorId });
-  };
-
-  const fecharModalIndicador = () => {
-    setModalIndicador({ open: false, indicadorId: null });
-  };
-
-  const renderTooltipDistribuicao = ({ active, payload }) => {
-    if (active && payload && payload.length) {
-      const total = dadosDistribuicaoClinicas.reduce((acc, item) => acc + item.value, 0);
-      const valor = payload[0].value;
-      const percentual = total > 0 ? ((valor / total) * 100).toFixed(1) : 0;
-
-      return (
-        <div className="rounded-lg border bg-background p-3 shadow-sm">
-          <p className="font-medium text-sm">{payload[0].payload.name}</p>
-          <p className="text-xs text-muted-foreground">{valor} pacientes ({percentual}%)</p>
-        </div>
-      );
-    }
-    return null;
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-muted/40">
-        <div className="mx-auto max-w-7xl space-y-8 p-6">
-          <div className="space-y-4">
-            <Skeleton className="h-10 w-72" />
-            <Skeleton className="h-5 w-96" />
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <Skeleton key={index} className="h-40 w-full" />
-            ))}
-          </div>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Skeleton className="h-96 w-full" />
-            <Skeleton className="h-96 w-full" />
-          </div>
-          <Skeleton className="h-96 w-full" />
-        </div>
-      </div>
-    );
-  }
-
-  const kpiValues = {
-    internacoesAtivas: pacientesAtivos.length,
-    especialidadesAtivas: especialidadesAtivas.total,
-    especialidadePrincipal: especialidadesAtivas.principal,
-    taxaMediaOcupacaoGeral: `${taxaMediaOcupacao}%`
-  };
+  const currentDashboard = dashboardSlides[currentSlide];
+  const CurrentDashboardComponent = currentDashboard.component;
+  const CurrentIcon = currentDashboard.icon;
 
   return (
-    <div className="min-h-screen bg-muted/40">
-      <div className="mx-auto max-w-7xl space-y-12 p-6">
-        <header className="space-y-2">
-          <Badge variant="outline">Gestão Estratégica</Badge>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Visão Estratégica da Capacidade Assistencial
-          </h1>
-          <p className="text-sm text-muted-foreground max-w-3xl">
-            Acompanhe a jornada do paciente e da infraestrutura hospitalar desde o panorama macro de ocupação até as nuances de
-            perfil assistencial e eficiência operacional.
-          </p>
-        </header>
-
-        {/* Nível 1 */}
-        <section className="space-y-6">
-          <div className="flex items-center justify-between">
+    <div className="min-h-screen bg-gradient-subtle">
+      {/* Header com controles */}
+      <div className="bg-card border-b border-border p-4">
+        <div className="flex items-center justify-between max-w-7xl mx-auto">
+          {/* Título e indicador de slide */}
+          <div className="flex items-center gap-4">
+            <div className={`p-2 rounded-full ${currentDashboard.color} text-white`}>
+              <CurrentIcon className="h-6 w-6" />
+            </div>
             <div>
-              <h2 className="text-xl font-semibold text-foreground">Panorama Geral</h2>
+              <h1 className="text-xl font-bold text-foreground">
+                {currentDashboard.title}
+              </h1>
               <p className="text-sm text-muted-foreground">
-                Indicadores críticos para o status atual das internações e da capacidade.
+                {currentDashboard.subtitle}
               </p>
             </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {KPI_CONFIG.map(({ id, title, description, icon: Icon }) => (
-              <Card key={id} className="border-muted">
-                <CardHeader className="flex items-start justify-between space-y-0 pb-4">
-                  <div>
-                    <CardTitle className="text-sm font-semibold text-muted-foreground">{title}</CardTitle>
-                    <div className="mt-3 text-3xl font-bold text-foreground">
-                      {kpiValues[id] ?? '—'}
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <div className="rounded-full bg-primary/10 p-2 text-primary">
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => abrirModalIndicador(id)}
-                    >
-                      <Info className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardHeader>
-              </Card>
-            ))}
-          </div>
-        </section>
-
-        {/* Nível 2 */}
-        <section className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-foreground">Capacidade e Ocupação</h2>
-              <p className="text-sm text-muted-foreground">
-                Avalie gargalos e oportunidades de expansão por tipo de setor assistencial.
-              </p>
-            </div>
-          </div>
-          <Card className="border-muted">
-            <CardHeader className="flex items-start justify-between space-y-0 pb-4">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-foreground">
-                  <Layers className="h-5 w-5 text-primary" />
-                  Taxa de Ocupação por Tipo de Setor
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Visualize como os diferentes tipos de setor estão utilizando sua capacidade instalada.
-                </p>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => abrirModalIndicador('taxaOcupacao')}
-              >
-                <Info className="h-4 w-4" />
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dadosTaxaOcupacao}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="tipo" />
-                    <YAxis />
-                    <RechartsTooltip
-                      formatter={(value) => [`${value}%`, 'Taxa de Ocupação']}
-                      labelFormatter={(label) => `Tipo de Setor: ${label}`}
-                    />
-                    <Legend />
-                    <Bar dataKey="taxaOcupacao" name="Taxa de Ocupação" fill="#2563eb" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </section>
-
-        {/* Nível 3 */}
-        <section className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-foreground">Perfil do Paciente</h2>
-              <p className="text-sm text-muted-foreground">
-                Entenda quais grupos clínicos dominam a ocupação e como eles se distribuem pelos setores.
-              </p>
-            </div>
-          </div>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card className="border-muted">
-              <CardHeader className="flex items-start justify-between space-y-0 pb-4">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-foreground">
-                    <PieChartIcon className="h-5 w-5 text-primary" />
-                    Distribuição por Clínicas Maiores
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    Pacientes agrupados em macrocategorias assistenciais para avaliar especialidades predominantes.
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => abrirModalIndicador('distribuicaoGruposClinicos')}
-                >
-                  <Info className="h-4 w-4" />
-                </Button>
-              </CardHeader>
-              <CardContent>
-                {dadosDistribuicaoClinicas.length ? (
-                  <div className="h-80">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={dadosDistribuicaoClinicas}
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={110}
-                          dataKey="value"
-                          labelLine={false}
-                          label={({ percent }) => (percent > 0.05 ? `${Math.round(percent * 100)}%` : '')}
-                        >
-                          {dadosDistribuicaoClinicas.map((entrada, index) => (
-                            <Cell
-                              key={entrada.name}
-                              fill={GRUPO_CORES[entrada.name] || PIE_COLORS[index % PIE_COLORS.length]}
-                            />
-                          ))}
-                        </Pie>
-                        <RechartsTooltip content={renderTooltipDistribuicao} />
-                        <Legend />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                ) : (
-                  <div className="flex h-80 items-center justify-center text-sm text-muted-foreground">
-                    Nenhum dado de pacientes ativos disponível.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="border-muted">
-              <CardHeader className="flex items-start justify-between space-y-0 pb-4">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-foreground">
-                    <AlignLeft className="h-5 w-5 text-primary" />
-                    Especialidades por Setor
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    Distribuição dos grupos clínicos predominantes em cada setor assistencial.
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => abrirModalIndicador('especialidadesPorSetor')}
-                >
-                  <Info className="h-4 w-4" />
-                </Button>
-              </CardHeader>
-              <CardContent>
-                {dadosEspecialidadesPorSetor.length ? (
-                  <div className="h-80">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={dadosEspecialidadesPorSetor} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="setor" tick={{ fontSize: 12 }} interval={0} angle={-15} textAnchor="end" height={70} />
-                        <YAxis allowDecimals={false} />
-                        <RechartsTooltip />
-                        <Legend />
-                        {gruposAtivosNoSetor.map((grupo) => (
-                          <Bar
-                            key={grupo}
-                            dataKey={grupo}
-                            stackId="a"
-                            name={grupo}
-                            fill={GRUPO_CORES[grupo] || '#94a3b8'}
-                          />
-                        ))}
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                ) : (
-                  <div className="flex h-80 items-center justify-center text-sm text-muted-foreground">
-                    Nenhuma combinação de setor e especialidade encontrada.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </section>
-
-        {/* Nível 4 */}
-        <section className="space-y-6">
-          <div>
-            <h2 className="text-xl font-semibold text-foreground">Fluxo e Eficiência</h2>
-            <p className="text-sm text-muted-foreground">
-              Identifique padrões de entrada e permanência para otimizar o uso dos leitos.
-            </p>
+            <Badge variant="outline" className="ml-4">
+              {currentSlide + 1} de {dashboardSlides.length}
+            </Badge>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card className="border-muted">
-              <CardHeader className="flex items-start justify-between space-y-0 pb-4">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-foreground">
-                    <Calendar className="h-5 w-5 text-primary" />
-                    Padrão de Internações por Dia e Horário
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    Concentre esforços assistenciais nos períodos de maior demanda de admissões.
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => abrirModalIndicador('internacoesHorario')}
-                >
-                  <Info className="h-4 w-4" />
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <div className="grid min-w-[640px] grid-cols-[120px_repeat(7,1fr)] gap-2">
-                    <div />
-                    {DIAS_SEMANA.map((dia) => (
-                      <div key={dia} className="rounded bg-muted p-2 text-center text-xs font-medium">
-                        {dia}
-                      </div>
-                    ))}
-                    {FAIXAS_HORARIO.map((faixa) => (
-                      <React.Fragment key={faixa}>
-                        <div className="flex items-center rounded bg-muted p-2 text-xs font-medium">
-                          {faixa}
-                        </div>
-                        {DIAS_SEMANA.map((dia) => {
-                          const valor = dadosHeatmap[dia]?.[faixa] || 0;
-                          const maxValor = Math.max(
-                            ...DIAS_SEMANA.flatMap((diaSemana) =>
-                              FAIXAS_HORARIO.map((faixaHorario) => dadosHeatmap[diaSemana]?.[faixaHorario] || 0)
-                            )
-                          );
-                          const intensidade = maxValor > 0 ? valor / maxValor : 0;
+          {/* Controles de navegação */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={prevSlide}
+              className="h-10 w-10"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
 
-                          return (
-                            <div
-                              key={`${dia}-${faixa}`}
-                              className="rounded p-2 text-center text-xs font-medium"
-                              style={{
-                                backgroundColor: `hsl(211, 96%, ${95 - intensidade * 35}%)`,
-                                color: intensidade > 0.6 ? '#fff' : '#0f172a'
-                              }}
-                            >
-                              {valor}
-                            </div>
-                          );
-                        })}
-                      </React.Fragment>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={togglePlay}
+              className="h-10 w-10"
+            >
+              {isPlaying ? (
+                <Pause className="h-5 w-5" />
+              ) : (
+                <Play className="h-5 w-5" />
+              )}
+            </Button>
 
-            <Card className="border-muted">
-              <CardHeader className="flex items-start justify-between space-y-0 pb-4">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-foreground">
-                    <Users className="h-5 w-5 text-primary" />
-                    Permanência Atual por Grupo Clínico
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    Monitore o tempo médio de permanência dos pacientes ativos em cada grupo clínico.
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => abrirModalIndicador('permanenciaAtualEspecialidade')}
-                >
-                  <Info className="h-4 w-4" />
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {dadosPermanenciaEspecialidade.map((item) => (
-                    <div
-                      key={item.especialidade}
-                      className="flex items-center justify-between rounded-lg bg-muted/60 p-3"
-                    >
-                      <span className="text-sm font-medium text-foreground">{item.especialidade}</span>
-                      <div className="flex items-center gap-2 text-xs">
-                        <Badge variant="outline">{item.pacientes} pac.</Badge>
-                        <Badge variant="secondary">{item.mediaPermanencia} dias</Badge>
-                      </div>
-                    </div>
-                  ))}
-                  {!dadosPermanenciaEspecialidade.length && (
-                    <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                      Não há pacientes com dados suficientes para calcular a permanência.
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={nextSlide}
+              className="h-10 w-10"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </Button>
           </div>
-        </section>
+        </div>
+
+        {/* Indicadores de slide (pontos) */}
+        <div className="flex justify-center mt-4 gap-2">
+          {dashboardSlides.map((_, index) => (
+            <button
+              key={index}
+              onClick={() => goToSlide(index)}
+              className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                index === currentSlide
+                  ? currentDashboard.color
+                  : 'bg-border hover:bg-muted-foreground'
+              }`}
+            />
+          ))}
+        </div>
+
+        {/* Barra de progresso do autoplay */}
+        {isPlaying && (
+          <div className="mt-2 w-full bg-border rounded-full h-1 max-w-7xl mx-auto">
+            <div
+              className={`h-1 rounded-full ${currentDashboard.color} transition-all duration-100 ease-linear`}
+              style={{
+                animation: `progress ${SLIDE_DURATION}ms linear infinite`,
+              }}
+            />
+          </div>
+        )}
       </div>
 
-      <IndicadorInfoModal
-        isOpen={modalIndicador.open}
-        onClose={fecharModalIndicador}
-        indicadorId={modalIndicador.indicadorId}
-      />
+      {/* Conteúdo do dashboard atual */}
+      <div className="max-w-7xl mx-auto p-6">
+        <div className="transition-all duration-500 ease-in-out">
+          <CurrentDashboardComponent />
+        </div>
+      </div>
+
+      {/* CSS para a animação da barra de progresso */}
+      <style jsx>{`
+        @keyframes progress {
+          0% { width: 0%; }
+          100% { width: 100%; }
+        }
+      `}</style>
     </div>
   );
 };

@@ -2,62 +2,6 @@
 // Este arquivo serve como backup e referência das definições
 
 export const definicoesIndicadores = {
-  internacoesAtivas: {
-    nome: "Internações Ativas",
-    unidadeMedida: "Pacientes",
-    meta: "Monitoramento contínuo",
-    direcao: "Quanto mais alinhado ao planejamento assistencial, melhor",
-    definicao: "Número total de pacientes com internação ativa, incluindo casos regulados ou aguardando acomodação definitiva.",
-    fonte: "Coleção 'pacientes' em tempo real no Firestore.",
-    numerador: "Contagem de pacientes com status de internação ativo ou sem data de alta registrada.",
-    denominador: "—",
-    criteriosInclusao: "Pacientes com internação vigente, independente do leito alocado.",
-    criteriosExclusao: "Pacientes com alta, óbito, transferência externa concluída ou internação cancelada.",
-    formula: "Contagem simples dos registros elegíveis"
-  },
-
-  especialidadesAtivas: {
-    nome: "Especialidades Ativas",
-    unidadeMedida: "Especialidades",
-    meta: "Diversidade assistencial equilibrada",
-    direcao: "Monitoramento contínuo",
-    definicao: "Quantidade de especialidades distintas atendendo pacientes internados atualmente.",
-    fonte: "Coleção 'pacientes' em tempo real no Firestore.",
-    numerador: "Número de especialidades únicas entre os pacientes internados.",
-    denominador: "—",
-    criteriosInclusao: "Pacientes ativos com especialidade clínica registrada.",
-    criteriosExclusao: "Pacientes sem especialidade definida.",
-    formula: "Contagem de valores únicos do campo especialidade para pacientes ativos"
-  },
-
-  especialidadePrincipal: {
-    nome: "Especialidade Principal",
-    unidadeMedida: "Especialidade",
-    meta: "Monitoramento contínuo",
-    direcao: "Identificar concentração assistencial",
-    definicao: "Especialidade com o maior número de pacientes internados no momento da análise.",
-    fonte: "Coleção 'pacientes' em tempo real no Firestore.",
-    numerador: "Especialidade com maior contagem de pacientes ativos.",
-    denominador: "Total de pacientes ativos.",
-    criteriosInclusao: "Pacientes ativos com especialidade clínica registrada.",
-    criteriosExclusao: "Pacientes sem especialidade definida.",
-    formula: "Especialidade cujo número de pacientes ativos é máximo no período"
-  },
-
-  taxaMediaOcupacaoGeral: {
-    nome: "Taxa Média de Ocupação",
-    unidadeMedida: "%",
-    meta: "85% - 95%",
-    direcao: "Ideal entre 85% e 95%",
-    definicao: "Média da taxa de ocupação entre os tipos de setor considerados operacionais.",
-    fonte: "Coleções 'leitos' e 'setores' em tempo real no Firestore.",
-    numerador: "Soma das taxas de ocupação calculadas por tipo de setor.",
-    denominador: "Número de tipos de setor analisados.",
-    criteriosInclusao: "Leitos operacionais (excluídos bloqueados) e setores ativos.",
-    criteriosExclusao: "Leitos bloqueados ou desativados.",
-    formula: "Média aritmética das taxas de ocupação por tipo de setor"
-  },
-
   mediaPermanencia: {
     nome: "Média de Permanência",
     unidadeMedida: "Dias",
@@ -131,34 +75,6 @@ export const definicoesIndicadores = {
     criteriosExclusao: "Registros sem informação de data/hora.",
     formula: "Contagem de internações agrupadas por [Dia da Semana, Faixa Horária]",
     resultado: "Matriz de distribuição temporal das internações."
-  },
-
-  distribuicaoGruposClinicos: {
-    nome: "Distribuição por Clínicas Maiores",
-    unidadeMedida: "Pacientes",
-    meta: "Balanceamento conforme vocação assistencial",
-    direcao: "Análise de mix de pacientes",
-    definicao: "Proporção de pacientes internados agrupados em macrocategorias clínicas (Clínicas Maiores).",
-    fonte: "Coleção 'pacientes' em tempo real no Firestore.",
-    numerador: "Número de pacientes ativos dentro de cada grupo clínico agregado.",
-    denominador: "Total de pacientes ativos no período.",
-    criteriosInclusao: "Pacientes ativos com especialidade passível de mapeamento.",
-    criteriosExclusao: "Pacientes sem especialidade registrada.",
-    formula: "Contagem de pacientes por grupo clínico ÷ Total de pacientes ativos"
-  },
-
-  especialidadesPorSetor: {
-    nome: "Especialidades por Setor",
-    unidadeMedida: "Pacientes",
-    meta: "Aderência entre perfil clínico e vocação do setor",
-    direcao: "Identificar desalinhamentos",
-    definicao: "Distribuição de pacientes por grupo clínico dentro de cada setor assistencial.",
-    fonte: "Coleções 'pacientes', 'leitos' e 'setores' em tempo real no Firestore.",
-    numerador: "Número de pacientes ativos de cada grupo clínico em um setor.",
-    denominador: "Total de pacientes ativos daquele setor.",
-    criteriosInclusao: "Pacientes ativos com setor identificado.",
-    criteriosExclusao: "Pacientes sem vínculo de setor ou especialidade.",
-    formula: "Contagem de pacientes por [Setor, Grupo Clínico]"
   },
 
   statusRegulacoes: {
