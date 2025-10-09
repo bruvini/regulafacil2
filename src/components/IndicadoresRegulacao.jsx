@@ -34,18 +34,17 @@ import {
   getSetoresCollection,
   getDocs,
   query,
+  where,
   orderBy,
 } from '@/lib/firebase';
-import { onSnapshot } from 'firebase/firestore';
-import { endOfDay, format, isWithinInterval, subDays } from 'date-fns';
+import { Timestamp, onSnapshot } from 'firebase/firestore';
+import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 const PERIOD_OPTIONS = [
-  { value: '24h', label: 'Últimas 24h' },
   { value: '7d', label: 'Últimos 7 dias' },
-  { value: '15d', label: 'Últimos 15 dias' },
   { value: '30d', label: 'Últimos 30 dias' },
-  { value: 'all', label: 'Todo o período' },
+  { value: 'month', label: 'Mês Atual' },
 ];
 
 const PIE_COLORS = ['#2563eb', '#7c3aed', '#ea580c', '#059669', '#0ea5e9', '#facc15', '#14b8a6', '#f97316'];
@@ -64,6 +63,28 @@ const parseFirestoreDate = (value) => {
   }
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getDateRange = (periodValue) => {
+  const end = new Date();
+  const endDate = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999);
+
+  if (periodValue === '7d') {
+    const start = new Date(endDate);
+    start.setDate(start.getDate() - 6);
+    start.setHours(0, 0, 0, 0);
+    return { start, end: endDate };
+  }
+
+  if (periodValue === '30d') {
+    const start = new Date(endDate);
+    start.setDate(start.getDate() - 29);
+    start.setHours(0, 0, 0, 0);
+    return { start, end: endDate };
+  }
+
+  const start = new Date(endDate.getFullYear(), endDate.getMonth(), 1, 0, 0, 0, 0);
+  return { start, end: endDate };
 };
 
 const normalizarStatus = (status) => {
@@ -132,7 +153,7 @@ const resolveSetorInfo = (registro, chave, setoresMap) => {
 };
 
 const IndicadoresRegulacao = () => {
-  const [period, setPeriod] = useState(PERIOD_OPTIONS[1].value);
+  const [period, setPeriod] = useState(PERIOD_OPTIONS[0].value);
   const [regulacoes, setRegulacoes] = useState([]);
   const [setores, setSetores] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -155,12 +176,30 @@ const IndicadoresRegulacao = () => {
       setError(null);
 
       try {
+        const { start, end } = getDateRange(period);
+        const startTimestamp = Timestamp.fromDate(start);
+        const endTimestamp = Timestamp.fromDate(end);
         const collectionRef = getHistoricoRegulacoesCollection();
+
         const registrosMap = new Map();
 
+        const queryInicio = query(
+          collectionRef,
+          where('dataInicio', '>=', startTimestamp),
+          where('dataInicio', '<=', endTimestamp),
+          orderBy('dataInicio', 'desc')
+        );
+
+        const queryConclusao = query(
+          collectionRef,
+          where('dataConclusao', '>=', startTimestamp),
+          where('dataConclusao', '<=', endTimestamp),
+          orderBy('dataConclusao', 'desc')
+        );
+
         const [snapshotInicio, snapshotConclusao] = await Promise.all([
-          getDocs(query(collectionRef, orderBy('dataInicio', 'desc'))),
-          getDocs(query(collectionRef, orderBy('dataConclusao', 'desc'))),
+          getDocs(queryInicio),
+          getDocs(queryConclusao),
         ]);
 
         snapshotInicio.forEach((doc) => {
@@ -173,10 +212,8 @@ const IndicadoresRegulacao = () => {
 
         if (isMounted) {
           const registros = Array.from(registrosMap.values()).sort((a, b) => {
-            const dataA =
-              parseFirestoreDate(a.dataInicio) || parseFirestoreDate(a.dataConclusao) || new Date(0);
-            const dataB =
-              parseFirestoreDate(b.dataInicio) || parseFirestoreDate(b.dataConclusao) || new Date(0);
+            const dataA = parseFirestoreDate(a.dataInicio) || parseFirestoreDate(a.dataConclusao) || new Date(0);
+            const dataB = parseFirestoreDate(b.dataInicio) || parseFirestoreDate(b.dataConclusao) || new Date(0);
             return dataB.getTime() - dataA.getTime();
           });
           setRegulacoes(registros);
@@ -198,60 +235,12 @@ const IndicadoresRegulacao = () => {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [period]);
 
   const setoresMap = useMemo(() => new Map(setores.map((setor) => [setor.id, setor])), [setores]);
 
-  const regulacoesFiltradas = useMemo(() => {
-    if (!regulacoes.length) return [];
-    if (period === 'all') return regulacoes;
-
-    const agora = new Date();
-    const endDate = period === '24h' ? agora : endOfDay(agora);
-
-    let startDate;
-    switch (period) {
-      case '24h':
-        startDate = subDays(endDate, 1);
-        break;
-      case '7d':
-        startDate = subDays(endDate, 6);
-        break;
-      case '15d':
-        startDate = subDays(endDate, 14);
-        break;
-      case '30d':
-        startDate = subDays(endDate, 29);
-        break;
-      default:
-        startDate = null;
-        break;
-    }
-
-    if (!startDate) {
-      return regulacoes;
-    }
-
-    return regulacoes.filter((item) => {
-      const dataInicio = parseFirestoreDate(item?.dataInicio);
-      const dataConclusao = parseFirestoreDate(item?.dataConclusao);
-      const datasValidas = [dataInicio, dataConclusao].filter(Boolean);
-
-      if (!datasValidas.length) {
-        return false;
-      }
-
-      return datasValidas.some((data) =>
-        isWithinInterval(data, {
-          start: startDate,
-          end: endDate,
-        })
-      );
-    });
-  }, [period, regulacoes]);
-
   const metricasGerais = useMemo(() => {
-    if (!regulacoesFiltradas.length) {
+    if (!regulacoes.length) {
       return {
         total: 0,
         concluidas: 0,
@@ -260,8 +249,8 @@ const IndicadoresRegulacao = () => {
       };
     }
 
-    const total = regulacoesFiltradas.length;
-    const concluidas = regulacoesFiltradas.filter(
+    const total = regulacoes.length;
+    const concluidas = regulacoes.filter(
       (item) => normalizarStatus(item.statusFinal) === 'concluida'
     );
     const tempos = concluidas
@@ -278,19 +267,19 @@ const IndicadoresRegulacao = () => {
       tempoMedio,
       taxaSucesso,
     };
-  }, [regulacoesFiltradas]);
+  }, [regulacoes]);
 
   const dadosDesfecho = useMemo(() => {
-    if (!regulacoesFiltradas.length) return [];
+    if (!regulacoes.length) return [];
 
     const contagem = new Map();
-    regulacoesFiltradas.forEach((item) => {
+    regulacoes.forEach((item) => {
       const status = item?.statusFinal || 'Sem status';
       contagem.set(status, (contagem.get(status) || 0) + 1);
     });
 
     return Array.from(contagem.entries()).map(([name, value]) => ({ name, value }));
-  }, [regulacoesFiltradas]);
+  }, [regulacoes]);
 
   const dadosPorHora = useMemo(() => {
     const base = Array.from({ length: 24 }, (_, index) => ({
@@ -299,11 +288,11 @@ const IndicadoresRegulacao = () => {
       turno: getTurnoFromHour(index),
     }));
 
-    if (!regulacoesFiltradas.length) {
+    if (!regulacoes.length) {
       return base;
     }
 
-    regulacoesFiltradas.forEach((item) => {
+    regulacoes.forEach((item) => {
       const dataInicio = parseFirestoreDate(item?.dataInicio);
       if (!dataInicio) return;
       const hora = dataInicio.getHours();
@@ -311,14 +300,14 @@ const IndicadoresRegulacao = () => {
     });
 
     return base;
-  }, [regulacoesFiltradas]);
+  }, [regulacoes]);
 
   const dadosFluxo = useMemo(() => {
-    if (!regulacoesFiltradas.length) return [];
+    if (!regulacoes.length) return [];
 
     const contagem = new Map();
 
-    regulacoesFiltradas.forEach((item) => {
+    regulacoes.forEach((item) => {
       const origem = resolveSetorInfo(item, 'setorOrigem', setoresMap);
       const destino = resolveSetorInfo(item, 'setorDestino', setoresMap);
 
@@ -351,14 +340,17 @@ const IndicadoresRegulacao = () => {
       }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
-  }, [regulacoesFiltradas, setoresMap]);
+  }, [regulacoes, setoresMap]);
 
   const dadosComparativoSetores = useMemo(() => {
-    if (!regulacoesFiltradas.length) return [];
+    if (!regulacoes.length) return [];
 
     const acumulado = new Map();
 
-    regulacoesFiltradas.forEach((item) => {
+    regulacoes.forEach((item) => {
+      const tempo = Number(item?.tempoRegulacaoMinutos ?? NaN);
+      if (!Number.isFinite(tempo) || tempo <= 0) return;
+
       const status = normalizarStatus(item.statusFinal);
       if (status && status !== 'concluida') return;
 
@@ -368,45 +360,54 @@ const IndicadoresRegulacao = () => {
       if (!acumulado.has(origem.label)) {
         acumulado.set(origem.label, {
           setor: origem.label,
-          origemCount: 0,
-          destinoCount: 0,
+          origemTempo: 0,
+          origemQtd: 0,
+          destinoTempo: 0,
+          destinoQtd: 0,
         });
       }
 
       if (!acumulado.has(destino.label)) {
         acumulado.set(destino.label, {
           setor: destino.label,
-          origemCount: 0,
-          destinoCount: 0,
+          origemTempo: 0,
+          origemQtd: 0,
+          destinoTempo: 0,
+          destinoQtd: 0,
         });
       }
 
       const registroOrigem = acumulado.get(origem.label);
-      registroOrigem.origemCount += 1;
+      registroOrigem.origemTempo += tempo;
+      registroOrigem.origemQtd += 1;
 
       const registroDestino = acumulado.get(destino.label);
-      registroDestino.destinoCount += 1;
+      registroDestino.destinoTempo += tempo;
+      registroDestino.destinoQtd += 1;
     });
 
     return Array.from(acumulado.values())
-      .filter((item) => item.origemCount > 0 || item.destinoCount > 0)
+      .map((item) => {
+        const origemMedio = item.origemQtd > 0 ? item.origemTempo / item.origemQtd : null;
+        const destinoMedio = item.destinoQtd > 0 ? item.destinoTempo / item.destinoQtd : null;
+
+        return {
+          setor: item.setor,
+          origemMedio,
+          destinoMedio,
+          origemQtd: item.origemQtd,
+          destinoQtd: item.destinoQtd,
+          barOrigem: origemMedio !== null ? -origemMedio : null,
+          barDestino: destinoMedio !== null ? destinoMedio : null,
+        };
+      })
+      .filter((item) => item.origemQtd > 0 || item.destinoQtd > 0)
       .sort((a, b) => {
-        const maxA = Math.max(a.origemCount || 0, a.destinoCount || 0);
-        const maxB = Math.max(b.origemCount || 0, b.destinoCount || 0);
+        const maxA = Math.max(a.origemMedio || 0, a.destinoMedio || 0);
+        const maxB = Math.max(b.origemMedio || 0, b.destinoMedio || 0);
         return maxB - maxA;
       });
-  }, [regulacoesFiltradas, setoresMap]);
-
-  const maxVolumeComparativo = useMemo(() => {
-    if (!dadosComparativoSetores.length) return 0;
-
-    return dadosComparativoSetores.reduce(
-      (maior, item) => Math.max(maior, item.origemCount || 0, item.destinoCount || 0),
-      0,
-    );
-  }, [dadosComparativoSetores]);
-
-  const dominioVolumeComparativo = Math.max(maxVolumeComparativo, 1);
+  }, [regulacoes, setoresMap]);
 
   const dadosVolumePorDiaTurno = useMemo(() => {
     const diasSemanaOrdem = [1, 2, 3, 4, 5, 6, 0];
@@ -428,13 +429,13 @@ const IndicadoresRegulacao = () => {
       noite: 0,
     }));
 
-    if (!regulacoesFiltradas.length) {
+    if (!regulacoes.length) {
       return base;
     }
 
     const baseMap = new Map(base.map((item) => [item.diaValor, item]));
 
-    regulacoesFiltradas.forEach((item) => {
+    regulacoes.forEach((item) => {
       const dataInicio = parseFirestoreDate(item?.dataInicio);
       if (!dataInicio) return;
 
@@ -447,7 +448,7 @@ const IndicadoresRegulacao = () => {
     });
 
     return base;
-  }, [regulacoesFiltradas]);
+  }, [regulacoes]);
 
   const renderLoadingState = () => (
     <div className="space-y-6">
@@ -513,7 +514,7 @@ const IndicadoresRegulacao = () => {
 
       {loading ? (
         renderLoadingState()
-      ) : regulacoesFiltradas.length === 0 ? (
+      ) : regulacoes.length === 0 ? (
         <Card className="border-muted">
           <CardContent className="py-12 text-center text-sm text-muted-foreground">
             Nenhuma regulação encontrada no período selecionado.
@@ -672,8 +673,8 @@ const IndicadoresRegulacao = () => {
           </section>
 
           <section>
-            <div className="grid gap-4">
-              <Card className="border-muted lg:col-span-2">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card className="border-muted">
                 <CardHeader>
                   <CardTitle className="text-base font-semibold text-foreground">
                     Principais Fluxos de Regulação
@@ -720,82 +721,65 @@ const IndicadoresRegulacao = () => {
                 </CardContent>
               </Card>
 
-              <Card className="border-muted col-span-full">
+              <Card className="border-muted">
                 <CardHeader>
                   <CardTitle className="text-base font-semibold text-foreground">
                     Eficiência por Setor: Origem vs. Destino
                   </CardTitle>
                   <CardDescription>
-                    Compare o volume de regulações originadas e recebidas por setor em um único
-                    panorama.
+                    Compare o tempo médio para regular pacientes quando o setor é origem ou
+                    destino.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-[600px]">
+                  <div className="h-80">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart
                         data={dadosComparativoSetores}
                         layout="vertical"
-                        margin={{ left: 160, right: 64, top: 16, bottom: 16 }}
-                        barCategoryGap={24}
-                        barGap={8}
-                        barSize={20}
+                        margin={{ left: 100, right: 40 }}
                       >
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis
                           type="number"
-                          xAxisId="origem"
-                          domain={[0, dominioVolumeComparativo]}
-                          reversed
-                          allowDecimals={false}
-                          tickFormatter={(value) => value.toLocaleString('pt-BR')}
-                        />
-                        <XAxis
-                          type="number"
-                          xAxisId="destino"
-                          domain={[0, dominioVolumeComparativo]}
-                          allowDecimals={false}
-                          tickFormatter={(value) => value.toLocaleString('pt-BR')}
+                          tickFormatter={(value) => `${Math.round(Math.abs(value))} min`}
                         />
                         <YAxis
                           type="category"
                           dataKey="setor"
-                          yAxisId="setores"
-                          width={200}
+                          width={140}
                           tick={{ fontSize: 12 }}
                         />
                         <RechartsTooltip
-                          formatter={(value, name) => {
+                          formatter={(value, name, { payload }) => {
                             if (value === null || value === undefined) {
                               return ['—', name];
                             }
-                            const total = Number(value).toLocaleString('pt-BR');
+                            const tempo = Math.abs(value);
+                            const quantidade =
+                              name === 'Origem' ? payload.origemQtd : payload.destinoQtd;
                             const contexto =
                               name === 'Origem'
-                                ? `${total} regulações originadas`
-                                : `${total} regulações recebidas`;
-                            return [`${total} regulações`, contexto];
+                                ? `${quantidade} regulações originadas`
+                                : `${quantidade} regulações recebidas`;
+                            return [formatMinutes(tempo), contexto];
                           }}
                           labelFormatter={(label) => label}
                         />
                         <Legend />
                         <Bar
-                          dataKey="origemCount"
+                          dataKey="barOrigem"
                           name="Origem"
                           fill="#0ea5e9"
                           radius={[4, 4, 4, 4]}
                           isAnimationActive={false}
-                          yAxisId="setores"
-                          xAxisId="origem"
                         />
                         <Bar
-                          dataKey="destinoCount"
+                          dataKey="barDestino"
                           name="Destino"
                           fill="#059669"
                           radius={[4, 4, 4, 4]}
                           isAnimationActive={false}
-                          yAxisId="setores"
-                          xAxisId="destino"
                         />
                       </BarChart>
                     </ResponsiveContainer>
