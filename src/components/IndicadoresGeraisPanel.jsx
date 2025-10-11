@@ -3,105 +3,238 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { 
-  TrendingUp, 
-  Users, 
-  Bed, 
-  Clock, 
+import {
+  TrendingUp,
   AlertTriangle,
   Activity
 } from 'lucide-react';
 
-const IndicadoresGeraisPanel = ({ setores, leitos, pacientes }) => {
-  // Função para calcular tempo médio no status
-  const calcularTempoMedio = (leitosFiltrados) => {
-    if (leitosFiltrados.length === 0) return "0m";
-    
-    const agora = new Date();
-    let tempoTotalMs = 0;
-    
-    leitosFiltrados.forEach(leito => {
-      if (leito.historico && leito.historico.length > 0) {
-        const ultimoRegistro = leito.historico[leito.historico.length - 1];
-        if (ultimoRegistro.timestamp) {
-          const timestamp = ultimoRegistro.timestamp.toDate 
-            ? ultimoRegistro.timestamp.toDate() 
-            : new Date(ultimoRegistro.timestamp);
-          tempoTotalMs += agora - timestamp;
-        }
-      }
-    });
-    
-    const tempoMedioMs = tempoTotalMs / leitosFiltrados.length;
-    const horas = Math.floor(tempoMedioMs / (1000 * 60 * 60));
-    const minutos = Math.floor((tempoMedioMs % (1000 * 60 * 60)) / (1000 * 60));
-    const dias = Math.floor(horas / 24);
-    
-    if (dias > 0) {
-      return `${dias}d ${horas % 24}h`;
-    } else if (horas > 0) {
-      return `${horas}h ${minutos}m`;
-    } else {
-      return `${minutos}m`;
-    }
-  };
+const STRINGS_SEM_ISOLAMENTO = new Set([
+  'NAO',
+  'NÃO',
+  'N/A',
+  'NAO INFORMADO',
+  'NÃO INFORMADO',
+  'NAO APLICAVEL',
+  'NAO APLICÁVEL',
+  'SEM ISOLAMENTO',
+  'SEM ISOLAMENTO ATIVO',
+  'SEM',
+  '0',
+  'NA'
+]);
 
+const normalizarColecaoParaArray = (valor) => {
+  if (!valor) return [];
+  if (Array.isArray(valor)) return valor.filter(Boolean);
+  if (typeof valor === 'object') return Object.values(valor).filter(Boolean);
+  return [];
+};
+
+const valorStringIndicaIsolamentoAtivo = (valor) => {
+  if (!valor) return false;
+  const normalizado = String(valor).trim().toUpperCase();
+  if (!normalizado) return false;
+  return !STRINGS_SEM_ISOLAMENTO.has(normalizado);
+};
+
+const registroIndicaIsolamentoAtivo = (registro) => {
+  if (!registro) return false;
+
+  if (Array.isArray(registro)) {
+    return registro.some(item => registroIndicaIsolamentoAtivo(item));
+  }
+
+  if (typeof registro === 'object') {
+    if ('statusConsideradoAtivo' in registro) {
+      return Boolean(registro.statusConsideradoAtivo);
+    }
+
+    if ('ativo' in registro) {
+      return Boolean(registro.ativo);
+    }
+
+    if ('status' in registro) {
+      const statusNormalizado = String(registro.status).trim().toLowerCase();
+      if (['finalizado', 'finalizada', 'encerrado', 'encerrada', 'liberado', 'liberada', 'descartado', 'descartada', 'cancelado', 'cancelada'].includes(statusNormalizado)) {
+        return false;
+      }
+      if (['confirmado', 'confirmada', 'suspeito', 'suspeita', 'ativo', 'ativa', 'em andamento'].includes(statusNormalizado)) {
+        return true;
+      }
+    }
+
+    const camposPossiveis = [
+      'sigla',
+      'siglaInfeccao',
+      'siglaInfeccoes',
+      'nome',
+      'nomeInfeccao',
+      'descricao',
+      'label',
+      'valor',
+      'coorte'
+    ];
+
+    return camposPossiveis.some(chave => registroIndicaIsolamentoAtivo(registro[chave]));
+  }
+
+  if (typeof registro === 'string') {
+    return valorStringIndicaIsolamentoAtivo(registro);
+  }
+
+  return false;
+};
+
+const temOcupanteComIsolamentoAtivo = (ocupante) => {
+  if (!ocupante) return false;
+
+  const camposOcupante = [
+    ocupante?.isolamentos,
+    ocupante?.isolamento,
+    ocupante?.coorteIsolamento,
+    ocupante?.isolamentosAtivos
+  ];
+
+  const pacienteRelacionado = typeof ocupante === 'object'
+    ? (ocupante.paciente || ocupante.dadosPaciente || ocupante.infoPaciente)
+    : null;
+
+  if (pacienteRelacionado && typeof pacienteRelacionado === 'object') {
+    camposOcupante.push(
+      pacienteRelacionado.isolamentos,
+      pacienteRelacionado.isolamento,
+      pacienteRelacionado.coorteIsolamento,
+      pacienteRelacionado.isolamentosAtivos
+    );
+  }
+
+  return camposOcupante.some(registro => registroIndicaIsolamentoAtivo(registro));
+};
+
+const quartoPossuiIsolamentoAtivo = (leito) => {
+  const contexto = leito?.contextoQuarto;
+  if (!contexto) return false;
+
+  const camposContexto = [
+    contexto?.isolamentos,
+    contexto?.isolamentosAtivos,
+    contexto?.coorteIsolamento,
+    contexto?.restricaoIsolamento,
+    contexto?.isolamento
+  ];
+
+  if (camposContexto.some(registro => registroIndicaIsolamentoAtivo(registro))) {
+    return true;
+  }
+
+  const indicadoresBooleanos = [
+    'possuiIsolamentoAtivo',
+    'temIsolamentoAtivo',
+    'quartoPossuiIsolamento',
+    'haIsolamentoAtivo',
+    'possuiPacientesIsolados'
+  ];
+
+  if (indicadoresBooleanos.some(flag => Boolean(contexto?.[flag]))) {
+    return true;
+  }
+
+  const colecoesOcupantes = [
+    contexto?.ocupantes,
+    contexto?.ocupantesInfo,
+    contexto?.ocupantesAtivos,
+    contexto?.pacientes,
+    contexto?.pacientesNoQuarto,
+    contexto?.leitosOcupados
+  ];
+
+  return colecoesOcupantes.some(colecao =>
+    normalizarColecaoParaArray(colecao).some(temOcupanteComIsolamentoAtivo)
+  );
+};
+
+const leitoSemRestricaoDeIsolamento = (leito) => {
+  if (!leito) return false;
+
+  const camposLeito = [
+    leito?.restricaoCoorte?.isolamentos,
+    leito?.restricaoCoorte?.isolamento,
+    leito?.restricaoCoorte?.isolamentosAtivos
+  ];
+
+  if (camposLeito.some(registro => registroIndicaIsolamentoAtivo(registro))) {
+    return false;
+  }
+
+  if (quartoPossuiIsolamentoAtivo(leito)) {
+    return false;
+  }
+
+  return true;
+};
+
+const IndicadoresGeraisPanel = ({ setores, leitos, pacientes }) => {
   const indicadores = useMemo(() => {
-    if (!setores?.length || !leitos?.length || !pacientes) {
+    const setoresLista = Array.isArray(setores) ? setores : [];
+    const leitosLista = Array.isArray(leitos) ? leitos : [];
+    const pacientesLista = Array.isArray(pacientes) ? pacientes : [];
+
+    const contagensIniciais = {
+      totalLeitos: leitosLista.length,
+      vagosTotal: 0,
+      vagosRegulaveis: { total: 0, semIsolamento: 0 },
+      ocupados: 0,
+      higienizacao: 0,
+      bloqueados: 0,
+      reservasExternas: 0
+    };
+
+    if (leitosLista.length === 0) {
       return {
         taxaOcupacao: 0,
         nivelPCP: { nivel: 'Rotina Diária', cor: 'blue', ocupados: 0 },
-        resumoStatus: {
-          ocupados: { total: 0, tempo: "0m" },
-          bloqueados: { total: 0, tempo: "0m" },
-          higienizacao: { total: 0, tempo: "0m" },
-          vagosTotal: { total: 0, tempo: "0m" },
-          vagosRegulaveis: { total: 0, tempo: "0m" }
-        }
+        contagens: contagensIniciais
       };
     }
 
-    // Criar mapa de pacientes por leitoId
     const pacientesPorLeito = {};
-    (pacientes || []).forEach(paciente => {
-      if (paciente.leitoId) {
+    pacientesLista.forEach(paciente => {
+      if (paciente?.leitoId) {
         pacientesPorLeito[paciente.leitoId] = paciente;
       }
     });
 
-    // Adicionar informações de paciente aos leitos e definir status
-    const leitosComPacientes = (leitos || []).map(leito => ({
+    const leitosComPacientes = leitosLista.map(leito => ({
       ...leito,
       paciente: pacientesPorLeito[leito.id] || null,
       status: pacientesPorLeito[leito.id] ? 'Ocupado' : leito.status
     }));
 
-    // 1. Taxa de Ocupação Geral
-    const setoresOperacionais = (setores || []).filter(setor => 
+    const setoresOperacionais = setoresLista.filter(setor =>
       ['UTI', 'Enfermaria', 'Emergência'].includes(setor.tipoSetor)
     );
     const leitosOperacionais = leitosComPacientes.filter(leito =>
       setoresOperacionais.some(setor => setor.id === leito.setorId)
     );
-    
+
     const leitosOcupados = leitosOperacionais.filter(leito => leito.status === 'Ocupado');
-    const totalOperacional = leitosOperacionais.filter(leito => 
+    const totalOperacional = leitosOperacionais.filter(leito =>
       ['Ocupado', 'Vago', 'Higienização'].includes(leito.status)
     );
-    
-    const taxaOcupacao = totalOperacional.length > 0 
-      ? (leitosOcupados.length / totalOperacional.length) * 100 
+
+    const taxaOcupacao = totalOperacional.length > 0
+      ? (leitosOcupados.length / totalOperacional.length) * 100
       : 0;
 
-    // 2. Status PCP
-    const setoresPCP = (setores || []).filter(setor => 
+    const setoresPCP = setoresLista.filter(setor =>
       setor.nomeSetor === 'PS DECISÃO CIRURGICA' || setor.nomeSetor === 'PS DECISÃO CLINICA'
     );
     const leitosPCP = leitosComPacientes.filter(leito =>
       setoresPCP.some(setor => setor.id === leito.setorId)
     );
     const totalPcpOcupado = leitosPCP.filter(leito => leito.status === 'Ocupado').length;
-    
+
     let nivelPCP = { nivel: 'Rotina Diária', cor: 'blue', ocupados: totalPcpOcupado };
     if (totalPcpOcupado >= 23 && totalPcpOcupado <= 28) {
       nivelPCP = { nivel: 'Nível 1', cor: 'green', ocupados: totalPcpOcupado };
@@ -111,54 +244,41 @@ const IndicadoresGeraisPanel = ({ setores, leitos, pacientes }) => {
       nivelPCP = { nivel: 'Nível 3', cor: 'red', ocupados: totalPcpOcupado };
     }
 
-    // 3. Resumo por Status
     const leitosOcupadosTodos = leitosComPacientes.filter(leito => leito.status === 'Ocupado');
     const leitosBloqueados = leitosComPacientes.filter(leito => leito.status === 'Bloqueado');
     const leitosHigienizacao = leitosComPacientes.filter(leito => leito.status === 'Higienização');
     const leitosVagos = leitosComPacientes.filter(leito => leito.status === 'Vago');
-    
-    const setoresRegulaveis = (setores || []).filter(setor => 
+
+    const setoresRegulaveis = setoresLista.filter(setor =>
       ['Enfermaria', 'UTI'].includes(setor.tipoSetor)
     );
     const leitosVagosRegulaveis = leitosVagos.filter(leito =>
       setoresRegulaveis.some(setor => setor.id === leito.setorId)
     );
 
-    const resumoStatus = {
-      ocupados: { 
-        total: leitosOcupadosTodos.length, 
-        tempo: calcularTempoMedio(leitosOcupadosTodos) 
-      },
-      bloqueados: { 
-        total: leitosBloqueados.length, 
-        tempo: calcularTempoMedio(leitosBloqueados) 
-      },
-      higienizacao: { 
-        total: leitosHigienizacao.length, 
-        tempo: calcularTempoMedio(leitosHigienizacao) 
-      },
-      vagosTotal: { 
-        total: leitosVagos.length, 
-        tempo: calcularTempoMedio(leitosVagos) 
-      },
-      vagosRegulaveis: { 
-        total: leitosVagosRegulaveis.length, 
-        tempo: calcularTempoMedio(leitosVagosRegulaveis) 
-      }
-    };
+    const leitosRegulaveisSemIsolamento = leitosVagosRegulaveis.filter(leito =>
+      leitoSemRestricaoDeIsolamento(leito)
+    );
+
+    const reservasExternas = leitosComPacientes.filter(leito => Boolean(leito?.reservaExterna)).length;
 
     return {
       taxaOcupacao,
       nivelPCP,
-      resumoStatus
+      contagens: {
+        totalLeitos: leitosComPacientes.length,
+        vagosTotal: leitosVagos.length,
+        vagosRegulaveis: {
+          total: leitosVagosRegulaveis.length,
+          semIsolamento: leitosRegulaveisSemIsolamento.length
+        },
+        ocupados: leitosOcupadosTodos.length,
+        higienizacao: leitosHigienizacao.length,
+        bloqueados: leitosBloqueados.length,
+        reservasExternas
+      }
     };
   }, [setores, leitos, pacientes]);
-
-  const getCorTaxaOcupacao = (taxa) => {
-    if (taxa <= 50) return 'bg-green-500';
-    if (taxa <= 75) return 'bg-yellow-500';
-    return 'bg-red-500';
-  };
 
   const getCorNivelPCP = (cor) => {
     const cores = {
@@ -178,7 +298,7 @@ const IndicadoresGeraisPanel = ({ setores, leitos, pacientes }) => {
         <h1 className="text-2xl font-bold text-gray-900">Indicadores Estratégicos</h1>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Taxa de Ocupação Geral */}
         <Card className="lg:col-span-1">
           <CardHeader className="pb-3">
@@ -191,14 +311,16 @@ const IndicadoresGeraisPanel = ({ setores, leitos, pacientes }) => {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-2xl font-bold">
-                  {indicadores.taxaOcupacao.toFixed(1)}%
+                  {Number.isFinite(indicadores.taxaOcupacao)
+                    ? indicadores.taxaOcupacao.toFixed(1)
+                    : '0.0'}%
                 </span>
                 <Badge variant="outline" className="text-sm">
                   Operacional
                 </Badge>
               </div>
-              <Progress 
-                value={indicadores.taxaOcupacao} 
+              <Progress
+                value={Number.isFinite(indicadores.taxaOcupacao) ? indicadores.taxaOcupacao : 0}
                 className="h-3"
               />
               <p className="text-sm text-muted-foreground">
@@ -234,176 +356,84 @@ const IndicadoresGeraisPanel = ({ setores, leitos, pacientes }) => {
             </div>
           </CardContent>
         </Card>
-
-        {/* Resumo Rápido */}
-        <Card className="lg:col-span-1">
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-primary" />
-              <CardTitle className="text-lg">Resumo Rápido</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <TooltipProvider>
-              <div className="space-y-2">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-red-600 font-medium">Ocupados:</span>
-                      <span>{indicadores.resumoStatus.ocupados.total}</span>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>
-                      Soma de todos os leitos com status 'Ocupado', 'Regulado' ou que possuem uma
-                      reserva externa confirmada.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-green-600 font-medium">Vagos (Reguláveis):</span>
-                      <span>{indicadores.resumoStatus.vagosRegulaveis.total}</span>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>
-                      Soma de todos os leitos com status 'Vago' que não possuem nenhuma regulação ou
-                      reserva pendente.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-yellow-600 font-medium">Higienização:</span>
-                      <span>{indicadores.resumoStatus.higienizacao.total}</span>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Soma de todos os leitos com status 'Higienização'.</p>
-                  </TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-gray-600 font-medium">Bloqueados:</span>
-                      <span>{indicadores.resumoStatus.bloqueados.total}</span>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Soma de todos os leitos com status 'Bloqueado'.</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-            </TooltipProvider>
-          </CardContent>
-        </Card>
       </div>
 
-      {/* Cards Detalhados por Status */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card className="border-red-200 bg-red-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg text-red-700 flex items-center gap-2">
-              <Bed className="h-4 w-4" />
-              Ocupados
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-1">
-              <p className="text-2xl font-bold text-red-800">
-                {indicadores.resumoStatus.ocupados.total}
-              </p>
-              <div className="flex items-center gap-1 text-sm text-red-600">
-                <Clock className="h-3 w-3" />
-                <span>Média: {indicadores.resumoStatus.ocupados.tempo}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-gray-200 bg-gray-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg text-gray-700 flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4" />
-              Bloqueados
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-1">
-              <p className="text-2xl font-bold text-gray-800">
-                {indicadores.resumoStatus.bloqueados.total}
-              </p>
-              <div className="flex items-center gap-1 text-sm text-gray-600">
-                <Clock className="h-3 w-3" />
-                <span>Média: {indicadores.resumoStatus.bloqueados.tempo}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-yellow-200 bg-yellow-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg text-yellow-700 flex items-center gap-2">
-              <Activity className="h-4 w-4" />
-              Higienização
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-1">
-              <p className="text-2xl font-bold text-yellow-800">
-                {indicadores.resumoStatus.higienizacao.total}
-              </p>
-              <div className="flex items-center gap-1 text-sm text-yellow-600">
-                <Clock className="h-3 w-3" />
-                <span>Média: {indicadores.resumoStatus.higienizacao.tempo}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-green-200 bg-green-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg text-green-700 flex items-center gap-2">
-              <Bed className="h-4 w-4" />
-              Vagos (Total)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-1">
-              <p className="text-2xl font-bold text-green-800">
-                {indicadores.resumoStatus.vagosTotal.total}
-              </p>
-              <div className="flex items-center gap-1 text-sm text-green-600">
-                <Clock className="h-3 w-3" />
-                <span>Média: {indicadores.resumoStatus.vagosTotal.tempo}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-blue-200 bg-blue-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg text-blue-700 flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" />
-              Vagos (Reguláveis)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-1">
-              <p className="text-2xl font-bold text-blue-800">
-                {indicadores.resumoStatus.vagosRegulaveis.total}
-              </p>
-              <div className="flex items-center gap-1 text-sm text-blue-600">
-                <Clock className="h-3 w-3" />
-                <span>Média: {indicadores.resumoStatus.vagosRegulaveis.tempo}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <TooltipProvider delayDuration={150}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+          {[
+            {
+              id: 'total-leitos',
+              titulo: 'Total de Leitos',
+              valor: indicadores.contagens.totalLeitos,
+              tooltip: 'Exibe o número total de leitos operacionais cadastrados no sistema, independentemente do status.'
+            },
+            {
+              id: 'vagos-total',
+              titulo: 'Vagos (Total)',
+              valor: indicadores.contagens.vagosTotal,
+              tooltip: "Total de leitos com status 'Vago' em todos os setores do hospital."
+            },
+            {
+              id: 'vagos-regulaveis',
+              titulo: 'Vagos (Reguláveis)',
+              valor: indicadores.contagens.vagosRegulaveis.total,
+              valorSecundario: indicadores.contagens.vagosRegulaveis.semIsolamento,
+              labelSecundario: 'Sem isolamento',
+              tooltip: 'Exibe o total de leitos vagos em Enfermarias e UTIs. O número menor indica quantos destes estão aptos a receber pacientes sem isolamento.'
+            },
+            {
+              id: 'ocupados',
+              titulo: 'Ocupados',
+              valor: indicadores.contagens.ocupados,
+              tooltip: 'Total de leitos atualmente ocupados por pacientes.'
+            },
+            {
+              id: 'higienizacao',
+              titulo: 'Higienização',
+              valor: indicadores.contagens.higienizacao,
+              tooltip: 'Total de leitos que receberam alta e estão em processo de limpeza e preparação.'
+            },
+            {
+              id: 'bloqueados',
+              titulo: 'Bloqueados',
+              valor: indicadores.contagens.bloqueados,
+              tooltip: 'Total de leitos indisponíveis para uso por motivos de manutenção, reforma ou outras razões administrativas.'
+            },
+            {
+              id: 'reservas-externas',
+              titulo: 'Reservas Externas',
+              valor: indicadores.contagens.reservasExternas,
+              tooltip: 'Total de leitos com reserva para pacientes externos, como Oncologia ou transferências via SISREG.'
+            }
+          ].map(card => (
+            <Tooltip key={card.id}>
+              <TooltipTrigger asChild>
+                <Card className="h-full cursor-help transition-shadow hover:shadow-md">
+                  <CardContent className="p-4">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-muted-foreground">{card.titulo}</p>
+                      <p className="text-2xl font-semibold text-foreground">
+                        {Number(card.valor || 0).toLocaleString('pt-BR')}
+                      </p>
+                      {typeof card.valorSecundario === 'number' && (
+                        <div className="text-xs text-muted-foreground">
+                          {card.labelSecundario}: {' '}
+                          <span className="font-semibold text-foreground">
+                            {Number(card.valorSecundario).toLocaleString('pt-BR')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p>{card.tooltip}</p>
+              </TooltipContent>
+            </Tooltip>
+          ))}
+        </div>
+      </TooltipProvider>
     </div>
   );
 };
