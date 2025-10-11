@@ -203,7 +203,11 @@ export const AuthProvider = ({ children }) => {
 
   const hasPermission = (route) => {
     if (!currentUser) return false;
-    
+
+    if (route === '/informacoes') {
+      return true;
+    }
+
     // Administradores têm acesso a tudo
     if (currentUser.tipoUsuario === 'Administrador') {
       return true;
