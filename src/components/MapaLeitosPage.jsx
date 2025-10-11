@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { 
@@ -42,6 +42,7 @@ const MapaLeitosPage = () => {
   const [showRelatorioIsolamentosModal, setShowRelatorioIsolamentosModal] = useState(false);
   const [showRelatorioLeitosVagosModal, setShowRelatorioLeitosVagosModal] = useState(false);
   const [showReservasLeitosModal, setShowReservasLeitosModal] = useState(false);
+  const mapaLeitosRef = useRef(null);
 
   // Carregar dados do Firestore
   useEffect(() => {
@@ -157,6 +158,7 @@ const MapaLeitosPage = () => {
               variant="outline"
               size="sm"
               className="flex items-center gap-2"
+              onClick={() => mapaLeitosRef.current?.openBoletimDiario?.()}
             >
               <Activity className="h-4 w-4" />
               Boletim diário
@@ -184,7 +186,7 @@ const MapaLeitosPage = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-6">
-          <MapaLeitosPanel />
+          <MapaLeitosPanel ref={mapaLeitosRef} />
         </CardContent>
       </Card>
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useImperativeHandle, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -60,6 +60,8 @@ import AltaNoLeitoModal from './modals/AltaNoLeitoModal';
 import CancelarReservaExternaModal from './modals/CancelarReservaExternaModal';
 import ConfirmarInternacaoExternaModal from './modals/ConfirmarInternacaoExternaModal';
 import InternacaoManualModal from './modals/InternacaoManualModal';
+import BoletimDiarioInputModal from './modals/BoletimDiarioInputModal';
+import BoletimDiarioRelatorioModal from './modals/BoletimDiarioRelatorioModal';
 
 // Color mapping for sector types
 const getSectorTypeColor = (tipoSetor) => {
@@ -757,7 +759,7 @@ const LeitoCard = ({
 };
 
 // Componente principal MapaLeitosPanel
-const MapaLeitosPanel = () => {
+const MapaLeitosPanel = React.forwardRef((_, ref) => {
   const {
     estrutura,
     pacientesEnriquecidos,
@@ -797,6 +799,31 @@ const MapaLeitosPanel = () => {
   const [modalCancelarReservaExterna, setModalCancelarReservaExterna] = useState({ open: false, reserva: null, leito: null });
   const [modalConfirmarInternacaoExterna, setModalConfirmarInternacaoExterna] = useState({ open: false, reserva: null, leito: null });
   const [modalInternacaoManual, setModalInternacaoManual] = useState({ open: false, leito: null });
+  const [modalBoletimInputAberto, setModalBoletimInputAberto] = useState(false);
+  const [modalBoletimRelatorioAberto, setModalBoletimRelatorioAberto] = useState(false);
+  const [dadosBoletimManuais, setDadosBoletimManuais] = useState(null);
+
+  const abrirBoletimDiario = useCallback(() => {
+    setModalBoletimInputAberto(true);
+  }, []);
+
+  const fecharBoletimInput = useCallback(() => {
+    setModalBoletimInputAberto(false);
+  }, []);
+
+  const fecharBoletimRelatorio = useCallback(() => {
+    setModalBoletimRelatorioAberto(false);
+  }, []);
+
+  const handleBoletimSubmit = useCallback((dados) => {
+    setDadosBoletimManuais(dados);
+    setModalBoletimInputAberto(false);
+    setModalBoletimRelatorioAberto(true);
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    openBoletimDiario: abrirBoletimDiario
+  }), [abrirBoletimDiario]);
 
   const construirContextoReservaExterna = (leitoAtual) => {
     const dadosReserva = leitoAtual?.reservaExterna || {};
@@ -2028,9 +2055,22 @@ const MapaLeitosPanel = () => {
         leito={modalInternacaoManual.leito}
       />
 
+      <BoletimDiarioInputModal
+        isOpen={modalBoletimInputAberto}
+        onClose={fecharBoletimInput}
+        onSubmit={handleBoletimSubmit}
+      />
+
+      <BoletimDiarioRelatorioModal
+        isOpen={modalBoletimRelatorioAberto}
+        onClose={fecharBoletimRelatorio}
+        dadosManuais={dadosBoletimManuais}
+        dadosEstruturados={dadosEstruturados}
+      />
+
     </div>
   );
-};
+});
 
 // Memoizar LeitoCard para melhorar performance
 const MemoizedLeitoCard = React.memo(LeitoCard);
