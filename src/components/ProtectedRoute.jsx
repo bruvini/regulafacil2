@@ -27,18 +27,24 @@ const ProtectedRoute = ({ children, requiredRoute }) => {
     return null;
   }
 
+  const isPublicAuthenticatedRoute = requiredRoute === '/informacoes';
+
+  if (isPublicAuthenticatedRoute) {
+    return children;
+  }
+
   // Verificar permissões para a rota atual
   const hasAccess = () => {
     // Administradores têm acesso a tudo
     if (currentUser.tipoUsuario === 'Administrador') {
       return true;
     }
-    
+
     // Usuários comuns precisam ter permissão específica
     if (currentUser.tipoUsuario === 'Comum') {
       return currentUser.permissoes && currentUser.permissoes.includes(requiredRoute);
     }
-    
+
     return false;
   };
 

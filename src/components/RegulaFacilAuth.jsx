@@ -54,6 +54,7 @@ import {
   ClipboardList,
   Newspaper,
   ArrowRightLeft,
+  Info,
 } from 'lucide-react';
 import {
   getSetoresCollection,
@@ -86,6 +87,7 @@ import GestaoUsuariosPage from './GestaoUsuariosPage';
 import GestaoEstrategicaPage from '../pages/GestaoEstrategicaPage';
 import AuditoriaPage from '../pages/AuditoriaPage';
 import GestaoPacientesPage from './GestaoPacientesPage';
+import InformacoesPage from '../pages/InformacoesPage';
 
 // Dados de navegação
 const navigationItems = [
@@ -100,6 +102,7 @@ const navigationItems = [
   { id: "auditoria", label: "Auditoria", icon: FileSearch, route: "/auditoria" },
   { id: "gestao-usuarios", label: "Gestão de Usuários", icon: UserCog, route: "/gestao-usuarios" },
   { id: "gestao-pacientes", label: "Gestão de Pacientes", icon: UserCheck, route: "/gestao-pacientes" },
+  { id: "informacoes", label: "Informações", icon: Info, route: "/informacoes" },
 ];
 
 // Dados dos módulos para a página inicial
@@ -297,6 +300,7 @@ const getPageTitle = (pageId) => {
     auditoria: "Auditoria",
     "gestao-usuarios": "Gestão de Usuários",
     "gestao-pacientes": "Gestão de Pacientes",
+    informacoes: "Informações",
   };
   return titles[pageId] || "RegulaFacil";
 };
@@ -1508,6 +1512,8 @@ const RegulaFacilApp = () => {
               return <AuditoriaPage />;
             case "gestao-pacientes":
               return <GestaoPacientesPage />;
+            case "informacoes":
+              return <InformacoesPage />;
             default:
               return <HomePage onNavigate={handleNavigate} currentUser={currentUser} />;
           }
