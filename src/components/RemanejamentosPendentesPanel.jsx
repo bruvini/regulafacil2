@@ -57,7 +57,11 @@ const RemanejamentosPendentesPanel = ({ filtros, sortConfig }) => {
   const [loading, setLoading] = useState(true);
 
   // Estados para modais
-  const [modalRegular, setModalRegular] = useState({ isOpen: false, paciente: null });
+  const [modalRegular, setModalRegular] = useState({
+    isOpen: false,
+    paciente: null,
+    modoRemanejamento: null,
+  });
   const [modalCancelar, setModalCancelar] = useState({ isOpen: false, paciente: null });
   
   const { toast } = useToast();
@@ -358,7 +362,10 @@ const RemanejamentosPendentesPanel = ({ filtros, sortConfig }) => {
 
   // Ação para iniciar regulação
   const handleRemanejarPaciente = (paciente) => {
-    setModalRegular({ isOpen: true, paciente });
+    const motivoRemanejamento = paciente?.pedidoRemanejamento?.motivo;
+    const modoRemanejamento = motivoRemanejamento === 'Contra Fluxo' ? 'contraFluxo' : null;
+
+    setModalRegular({ isOpen: true, paciente, modoRemanejamento });
   };
 
   // Componente do card do paciente
@@ -500,10 +507,11 @@ const RemanejamentosPendentesPanel = ({ filtros, sortConfig }) => {
       {modalRegular.paciente && (
         <RegularPacienteModal
           isOpen={modalRegular.isOpen}
-          onClose={() => setModalRegular({ isOpen: false, paciente: null })}
+          onClose={() => setModalRegular({ isOpen: false, paciente: null, modoRemanejamento: null })}
           paciente={modalRegular.paciente}
           modo="remanejamento"
           infeccoes={infeccoes}
+          modoRemanejamento={modalRegular.modoRemanejamento}
         />
       )}
 

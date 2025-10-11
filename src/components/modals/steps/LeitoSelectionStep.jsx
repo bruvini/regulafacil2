@@ -3,7 +3,10 @@ import { Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { encontrarLeitosCompativeis } from '@/lib/compatibilidadeUtils';
+import {
+  encontrarLeitosCompativeis,
+  SETORES_CRITICOS_CONTRA_FLUXO,
+} from '@/lib/compatibilidadeUtils';
 
 const formatarStatus = (status) => {
   if (!status) return 'Sem status';
@@ -22,6 +25,7 @@ const LeitoSelectionStep = ({
   excludedLeitoIds = [],
   loading = false,
   onLeitoSelect,
+  modoRemanejamento = null,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -65,7 +69,17 @@ const LeitoSelectionStep = ({
   const leitosCompativeis = useMemo(() => {
     if (loading || !dadosPaciente) return [];
 
-    const base = encontrarLeitosCompativeis(dadosPaciente, { estrutura: hospitalData?.estrutura || {} }, modo);
+    const opcoesCompatibilidade =
+      modoRemanejamento === 'contraFluxo'
+        ? { filtroSetoresEspecial: SETORES_CRITICOS_CONTRA_FLUXO }
+        : undefined;
+
+    const base = encontrarLeitosCompativeis(
+      dadosPaciente,
+      { estrutura: hospitalData?.estrutura || {} },
+      modo,
+      opcoesCompatibilidade,
+    );
 
     return base
       .filter((leito) => leito && !excludedLeitoIds.includes(leito.id))
@@ -77,7 +91,15 @@ const LeitoSelectionStep = ({
           nomeSetor: leito.nomeSetor || setor?.nomeSetor || setor?.nome || 'Setor não informado',
         };
       });
-  }, [loading, dadosPaciente, hospitalData?.estrutura, modo, excludedLeitoIds, setoresMap]);
+  }, [
+    loading,
+    dadosPaciente,
+    hospitalData?.estrutura,
+    modo,
+    excludedLeitoIds,
+    setoresMap,
+    modoRemanejamento,
+  ]);
 
   const gruposLeitos = useMemo(() => {
     if (!dadosPaciente) return [];

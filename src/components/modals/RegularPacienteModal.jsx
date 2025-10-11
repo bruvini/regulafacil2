@@ -13,7 +13,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useDadosHospitalares } from '@/hooks/useDadosHospitalares';
-import { encontrarLeitosCompativeis } from '@/lib/compatibilidadeUtils';
+import {
+  encontrarLeitosCompativeis,
+  SETORES_CRITICOS_CONTRA_FLUXO,
+} from '@/lib/compatibilidadeUtils';
 import ConfirmarRegulacaoModal from './ConfirmarRegulacaoModal';
 
 const RegularPacienteModal = ({
@@ -22,6 +25,7 @@ const RegularPacienteModal = ({
   paciente: pacienteAlvo,
   modo = 'enfermaria',
   leitoSugerido = null,
+  modoRemanejamento = null,
 }) => {
   const [modalStep, setModalStep] = useState('selecao');
   const [leitoSelecionado, setLeitoSelecionado] = useState(null);
@@ -46,8 +50,18 @@ const RegularPacienteModal = ({
   // 3. CALCULA OS LEITOS COMPATÍVEIS USANDO O MOTOR DE REGRAS PURO
   const leitosCompativeis = useMemo(() => {
     if (loading || !pacienteEnriquecido) return [];
-    return encontrarLeitosCompativeis(pacienteEnriquecido, { estrutura }, modo);
-  }, [pacienteEnriquecido, estrutura, modo, loading]);
+    const opcoesCompatibilidade =
+      modoRemanejamento === 'contraFluxo'
+        ? { filtroSetoresEspecial: SETORES_CRITICOS_CONTRA_FLUXO }
+        : undefined;
+
+    return encontrarLeitosCompativeis(
+      pacienteEnriquecido,
+      { estrutura },
+      modo,
+      opcoesCompatibilidade,
+    );
+  }, [pacienteEnriquecido, estrutura, modo, loading, modoRemanejamento]);
 
   const setoresMap = useMemo(() => new Map(setores.map(setor => [setor.id, setor])), [setores]);
 
