@@ -318,8 +318,36 @@ export const encontrarLeitosCompativeis = (pacienteAlvo, hospitalData, modo = 'e
 
   const statusLivre = new Set(['Vago', 'Higienização']);
 
-  const avaliarLeito = (leito, leitosDoQuarto = [leito]) => {
+  const avaliarLeito = (leito, leitosDoQuarto = [leito], contextoLocal = {}) => {
     if (!statusLivre.has(leito.status)) return;
+
+    const setorNomeUpper = textoUpper(
+      contextoLocal?.setorNome
+        || contextoLocal?.setor?.nomeSetor
+        || contextoLocal?.setor?.nome
+        || contextoLocal?.setor?.siglaSetor
+        || leito?.setorNome
+        || '',
+    );
+
+    const quartoNomeBruto = normalizarTexto(
+      contextoLocal?.quartoNome
+        || contextoLocal?.quarto?.nomeQuarto
+        || leito?.quartoNome
+        || '',
+    );
+
+    const quartoIdentificador = normalizarTexto(quartoNomeBruto.replace(/^quarto\s+/i, ''));
+    const quartoIdentificadorUpper = textoUpper(quartoIdentificador);
+
+    const isQuarto504Especial =
+      setorNomeUpper === 'UNID. CLINICA MEDICA'
+      && quartoIdentificadorUpper === '504';
+
+    if (isQuarto504Especial) {
+      leitosCompativeis.push(leito);
+      return;
+    }
 
     if (modo === 'uti') {
       leitosCompativeis.push(leito);
@@ -411,10 +439,22 @@ export const encontrarLeitosCompativeis = (pacienteAlvo, hospitalData, modo = 'e
 
     (setor.quartos || []).forEach(quarto => {
       const leitosQuarto = quarto.leitos || [];
-      leitosQuarto.forEach(leitoQuarto => avaliarLeito(leitoQuarto, leitosQuarto));
+      const contextoBase = {
+        setorNome: setor?.nomeSetor || setor?.nome || setor?.siglaSetor || '',
+        setor,
+        quartoNome: quarto?.nomeQuarto || quarto?.nome || '',
+        quarto,
+      };
+      leitosQuarto.forEach(leitoQuarto => avaliarLeito(leitoQuarto, leitosQuarto, contextoBase));
     });
 
-    (setor.leitosSemQuarto || []).forEach(leitoIsolado => avaliarLeito(leitoIsolado, [leitoIsolado]));
+    (setor.leitosSemQuarto || []).forEach(leitoIsolado => {
+      const contextoBase = {
+        setorNome: setor?.nomeSetor || setor?.nome || setor?.siglaSetor || '',
+        setor,
+      };
+      avaliarLeito(leitoIsolado, [leitoIsolado], contextoBase);
+    });
   });
 
   return leitosCompativeis;
