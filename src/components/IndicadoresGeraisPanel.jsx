@@ -8,177 +8,15 @@ import {
   AlertTriangle,
   Activity
 } from 'lucide-react';
+import { getLeitosVagosPorSetor } from '@/lib/leitosDisponiveisUtils';
 
-const STRINGS_SEM_ISOLAMENTO = new Set([
-  'NAO',
-  'NÃO',
-  'N/A',
-  'NAO INFORMADO',
-  'NÃO INFORMADO',
-  'NAO APLICAVEL',
-  'NAO APLICÁVEL',
-  'SEM ISOLAMENTO',
-  'SEM ISOLAMENTO ATIVO',
-  'SEM',
-  '0',
-  'NA'
-]);
-
-const normalizarColecaoParaArray = (valor) => {
-  if (!valor) return [];
-  if (Array.isArray(valor)) return valor.filter(Boolean);
-  if (typeof valor === 'object') return Object.values(valor).filter(Boolean);
-  return [];
-};
-
-const valorStringIndicaIsolamentoAtivo = (valor) => {
-  if (!valor) return false;
-  const normalizado = String(valor).trim().toUpperCase();
-  if (!normalizado) return false;
-  return !STRINGS_SEM_ISOLAMENTO.has(normalizado);
-};
-
-const registroIndicaIsolamentoAtivo = (registro) => {
-  if (!registro) return false;
-
-  if (Array.isArray(registro)) {
-    return registro.some(item => registroIndicaIsolamentoAtivo(item));
-  }
-
-  if (typeof registro === 'object') {
-    if ('statusConsideradoAtivo' in registro) {
-      return Boolean(registro.statusConsideradoAtivo);
-    }
-
-    if ('ativo' in registro) {
-      return Boolean(registro.ativo);
-    }
-
-    if ('status' in registro) {
-      const statusNormalizado = String(registro.status).trim().toLowerCase();
-      if (['finalizado', 'finalizada', 'encerrado', 'encerrada', 'liberado', 'liberada', 'descartado', 'descartada', 'cancelado', 'cancelada'].includes(statusNormalizado)) {
-        return false;
-      }
-      if (['confirmado', 'confirmada', 'suspeito', 'suspeita', 'ativo', 'ativa', 'em andamento'].includes(statusNormalizado)) {
-        return true;
-      }
-    }
-
-    const camposPossiveis = [
-      'sigla',
-      'siglaInfeccao',
-      'siglaInfeccoes',
-      'nome',
-      'nomeInfeccao',
-      'descricao',
-      'label',
-      'valor',
-      'coorte'
-    ];
-
-    return camposPossiveis.some(chave => registroIndicaIsolamentoAtivo(registro[chave]));
-  }
-
-  if (typeof registro === 'string') {
-    return valorStringIndicaIsolamentoAtivo(registro);
-  }
-
-  return false;
-};
-
-const temOcupanteComIsolamentoAtivo = (ocupante) => {
-  if (!ocupante) return false;
-
-  const camposOcupante = [
-    ocupante?.isolamentos,
-    ocupante?.isolamento,
-    ocupante?.coorteIsolamento,
-    ocupante?.isolamentosAtivos
-  ];
-
-  const pacienteRelacionado = typeof ocupante === 'object'
-    ? (ocupante.paciente || ocupante.dadosPaciente || ocupante.infoPaciente)
-    : null;
-
-  if (pacienteRelacionado && typeof pacienteRelacionado === 'object') {
-    camposOcupante.push(
-      pacienteRelacionado.isolamentos,
-      pacienteRelacionado.isolamento,
-      pacienteRelacionado.coorteIsolamento,
-      pacienteRelacionado.isolamentosAtivos
-    );
-  }
-
-  return camposOcupante.some(registro => registroIndicaIsolamentoAtivo(registro));
-};
-
-const quartoPossuiIsolamentoAtivo = (leito) => {
-  const contexto = leito?.contextoQuarto;
-  if (!contexto) return false;
-
-  const camposContexto = [
-    contexto?.isolamentos,
-    contexto?.isolamentosAtivos,
-    contexto?.coorteIsolamento,
-    contexto?.restricaoIsolamento,
-    contexto?.isolamento
-  ];
-
-  if (camposContexto.some(registro => registroIndicaIsolamentoAtivo(registro))) {
-    return true;
-  }
-
-  const indicadoresBooleanos = [
-    'possuiIsolamentoAtivo',
-    'temIsolamentoAtivo',
-    'quartoPossuiIsolamento',
-    'haIsolamentoAtivo',
-    'possuiPacientesIsolados'
-  ];
-
-  if (indicadoresBooleanos.some(flag => Boolean(contexto?.[flag]))) {
-    return true;
-  }
-
-  const colecoesOcupantes = [
-    contexto?.ocupantes,
-    contexto?.ocupantesInfo,
-    contexto?.ocupantesAtivos,
-    contexto?.pacientes,
-    contexto?.pacientesNoQuarto,
-    contexto?.leitosOcupados
-  ];
-
-  return colecoesOcupantes.some(colecao =>
-    normalizarColecaoParaArray(colecao).some(temOcupanteComIsolamentoAtivo)
-  );
-};
-
-const leitoSemRestricaoDeIsolamento = (leito) => {
-  if (!leito) return false;
-
-  const camposLeito = [
-    leito?.restricaoCoorte?.isolamentos,
-    leito?.restricaoCoorte?.isolamento,
-    leito?.restricaoCoorte?.isolamentosAtivos
-  ];
-
-  if (camposLeito.some(registro => registroIndicaIsolamentoAtivo(registro))) {
-    return false;
-  }
-
-  if (quartoPossuiIsolamentoAtivo(leito)) {
-    return false;
-  }
-
-  return true;
-};
-
-const IndicadoresGeraisPanel = ({ setores, leitos, pacientes }) => {
+const IndicadoresGeraisPanel = ({ setores, leitos, pacientes, quartos, infeccoes }) => {
   const indicadores = useMemo(() => {
     const setoresLista = Array.isArray(setores) ? setores : [];
     const leitosLista = Array.isArray(leitos) ? leitos : [];
     const pacientesLista = Array.isArray(pacientes) ? pacientes : [];
+    const quartosLista = Array.isArray(quartos) ? quartos : [];
+    const infeccoesLista = Array.isArray(infeccoes) ? infeccoes : [];
 
     const contagensIniciais = {
       totalLeitos: leitosLista.length,
@@ -252,13 +90,31 @@ const IndicadoresGeraisPanel = ({ setores, leitos, pacientes }) => {
     const setoresRegulaveis = setoresLista.filter(setor =>
       ['Enfermaria', 'UTI'].includes(setor.tipoSetor)
     );
-    const leitosVagosRegulaveis = leitosVagos.filter(leito =>
+    const leitosVagosRegulaveis = leitosComPacientes.filter(leito =>
+      ['Vago', 'Higienização'].includes(leito.status) &&
       setoresRegulaveis.some(setor => setor.id === leito.setorId)
     );
 
-    const leitosRegulaveisSemIsolamento = leitosVagosRegulaveis.filter(leito =>
-      leitoSemRestricaoDeIsolamento(leito)
+    const setoresComLeitosDetalhados = getLeitosVagosPorSetor({
+      setores: setoresLista,
+      leitos: leitosLista,
+      quartos: quartosLista,
+      pacientes: pacientesLista,
+      infeccoes: infeccoesLista,
+    });
+
+    const leitosDetalhadosPorId = new Map(
+      setoresComLeitosDetalhados
+        .flatMap(setor => setor.leitosVagos || [])
+        .map(leito => [leito.id, leito])
     );
+
+    const leitosRegulaveisSemIsolamento = leitosVagosRegulaveis.filter((leito) => {
+      if (leito.status !== 'Vago') return false;
+      const leitoDetalhado = leitosDetalhadosPorId.get(leito.id);
+      if (!leitoDetalhado) return false;
+      return leitoDetalhado.compatibilidade === 'Livre';
+    });
 
     const reservasExternas = leitosComPacientes.filter(leito => Boolean(leito?.reservaExterna)).length;
 
@@ -269,7 +125,7 @@ const IndicadoresGeraisPanel = ({ setores, leitos, pacientes }) => {
         totalLeitos: leitosComPacientes.length,
         vagosTotal: leitosVagos.length,
         vagosRegulaveis: {
-          total: leitosVagosRegulaveis.length,
+          total: leitosVagosRegulaveis.filter(leito => leito.status === 'Vago').length,
           semIsolamento: leitosRegulaveisSemIsolamento.length
         },
         ocupados: leitosOcupadosTodos.length,
@@ -278,7 +134,7 @@ const IndicadoresGeraisPanel = ({ setores, leitos, pacientes }) => {
         reservasExternas
       }
     };
-  }, [setores, leitos, pacientes]);
+  }, [setores, leitos, pacientes, quartos, infeccoes]);
 
   const getCorNivelPCP = (cor) => {
     const cores = {
@@ -345,7 +201,7 @@ const IndicadoresGeraisPanel = ({ setores, leitos, pacientes }) => {
                   {indicadores.nivelPCP.ocupados} ocupados
                 </span>
               </div>
-              <Badge 
+              <Badge
                 className={`${getCorNivelPCP(indicadores.nivelPCP.cor)} px-3 py-1 text-sm font-medium`}
               >
                 {indicadores.nivelPCP.nivel}

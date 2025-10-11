@@ -10,10 +10,11 @@ import {
   Map
 } from 'lucide-react';
 import { 
-  getSetoresCollection, 
+  getSetoresCollection,
   getLeitosCollection,
   getPacientesCollection,
   getInfeccoesCollection,
+  getQuartosCollection,
   onSnapshot
 } from '@/lib/firebase';
 
@@ -31,6 +32,7 @@ const MapaLeitosPage = () => {
     setores: [],
     leitos: [],
     pacientes: [],
+    quartos: [],
     infeccoes: [],
     loading: true
   });
@@ -65,6 +67,16 @@ const MapaLeitosPage = () => {
     });
     unsubscribes.push(unsubLeitos);
 
+    // Quartos
+    const unsubQuartos = onSnapshot(getQuartosCollection(), (snapshot) => {
+      const quartosData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setDados(prev => ({ ...prev, quartos: quartosData }));
+    });
+    unsubscribes.push(unsubQuartos);
+
     // Pacientes
     const unsubPacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
       const pacientesData = snapshot.docs.map(doc => ({
@@ -93,10 +105,12 @@ const MapaLeitosPage = () => {
   return (
     <div className="space-y-6">
       {/* Indicadores Gerais */}
-      <IndicadoresGeraisPanel 
+      <IndicadoresGeraisPanel
         setores={dados.setores}
         leitos={dados.leitos}
         pacientes={dados.pacientes}
+        quartos={dados.quartos}
+        infeccoes={dados.infeccoes}
       />
 
       {/* Caixa de Ferramentas */}
