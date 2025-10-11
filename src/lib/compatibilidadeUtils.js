@@ -153,6 +153,12 @@ const conjuntosIguais = (setA, setB) => {
   return true;
 };
 
+export const SETORES_CRITICOS_CONTRA_FLUXO = [
+  'SALA DE EMERGENCIA',
+  'SALA LARANJA',
+  'UNID. AVC AGUDO',
+];
+
 export const TIPOS_RISCO_CONTAMINACAO = {
   SETOR_ABERTO: 'setor_aberto',
   FALTA_COHORTE: 'falta_coorte',
@@ -302,13 +308,31 @@ export const identificarRiscosContaminacao = (hospitalData = {}) => {
   return riscosPorPaciente;
 };
 
-export const encontrarLeitosCompativeis = (pacienteAlvo, hospitalData, modo = 'enfermaria') => {
+export const encontrarLeitosCompativeis = (
+  pacienteAlvo,
+  hospitalData,
+  modo = 'enfermaria',
+  opcoesEspeciais = {},
+) => {
   const { estrutura } = hospitalData;
   if (!pacienteAlvo || !estrutura) return [];
 
-  const setoresIterable = Array.isArray(estrutura)
+  const { filtroSetoresEspecial } = opcoesEspeciais || {};
+
+  const setoresIterableBase = Array.isArray(estrutura)
     ? estrutura
     : Object.values(estrutura).flat();
+
+  const filtroSetoresUpper = Array.isArray(filtroSetoresEspecial) && filtroSetoresEspecial.length > 0
+    ? new Set(filtroSetoresEspecial.map((nome) => textoUpper(nome)))
+    : null;
+
+  const setoresIterable = filtroSetoresUpper
+    ? setoresIterableBase.filter((setor) => {
+        const nomeSetor = textoUpper(setor?.nomeSetor || setor?.nome || setor?.siglaSetor);
+        return filtroSetoresUpper.has(nomeSetor);
+      })
+    : setoresIterableBase;
 
   const tipoSetorAlvo = (modo === 'uti' ? 'UTI' : 'ENFERMARIA');
   const idade = calcularIdade(pacienteAlvo.dataNascimento);
