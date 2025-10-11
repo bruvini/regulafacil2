@@ -327,6 +327,8 @@ export const encontrarLeitosCompativeis = (
     ? new Set(filtroSetoresEspecial.map((nome) => textoUpper(nome)))
     : null;
 
+  const modoContraFluxoAtivo = Boolean(filtroSetoresUpper);
+
   const setoresIterable = filtroSetoresUpper
     ? setoresIterableBase.filter((setor) => {
         const nomeSetor = textoUpper(setor?.nomeSetor || setor?.nome || setor?.siglaSetor);
@@ -344,6 +346,11 @@ export const encontrarLeitosCompativeis = (
 
   const avaliarLeito = (leito, leitosDoQuarto = [leito], contextoLocal = {}) => {
     if (!statusLivre.has(leito.status)) return;
+
+    if (modoContraFluxoAtivo) {
+      leitosCompativeis.push(leito);
+      return;
+    }
 
     const setorNomeUpper = textoUpper(
       contextoLocal?.setorNome
@@ -459,7 +466,7 @@ export const encontrarLeitosCompativeis = (
   };
 
   setoresIterable.forEach(setor => {
-    if ((setor.tipoSetor || '').toUpperCase() !== tipoSetorAlvo) return;
+    if (!modoContraFluxoAtivo && (setor.tipoSetor || '').toUpperCase() !== tipoSetorAlvo) return;
 
     (setor.quartos || []).forEach(quarto => {
       const leitosQuarto = quarto.leitos || [];
