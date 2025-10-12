@@ -31,6 +31,64 @@ const formatarMensagemRestricaoCoorte = (restricao) => {
   return `Permitido apenas pacientes do sexo ${sexo}`;
 };
 
+const normalizarTexto = (texto = '') =>
+  texto.normalize('NFD').replace(/\p{Diacritic}/gu, '').toUpperCase();
+
+const obterIdSetor = (setor) => setor?.id ?? setor?.idSetor ?? setor?.nomeSetor;
+
+const obterObservacaoTexto = (observacoes) => {
+  if (!observacoes) return '';
+  if (typeof observacoes === 'string') {
+    return observacoes.trim();
+  }
+
+  if (Array.isArray(observacoes)) {
+    const ultima = [...observacoes]
+      .reverse()
+      .map((item) => {
+        if (!item) return '';
+        if (typeof item === 'string') return item.trim();
+        if (typeof item.texto === 'string') return item.texto.trim();
+        return '';
+      })
+      .find((texto) => texto.length > 0);
+
+    return ultima || '';
+  }
+
+  if (typeof observacoes.texto === 'string') {
+    return observacoes.texto.trim();
+  }
+
+  return '';
+};
+
+const obterIsolamentosSiglas = (isolamentos) => {
+  if (!Array.isArray(isolamentos)) return [];
+  return isolamentos
+    .map((iso) => {
+      if (!iso) return '';
+      if (typeof iso === 'string') return iso;
+      return iso.sigla || iso.siglaInfeccao || iso.codigo || iso.nome || '';
+    })
+    .filter((valor) => valor && valor.trim().length > 0);
+};
+
+const PendenciaLista = ({ titulo, itens }) => {
+  if (!Array.isArray(itens) || itens.length === 0) return null;
+
+  return (
+    <div>
+      <h5 className="font-semibold text-gray-700 mb-1">{titulo}</h5>
+      <ul className="list-disc list-inside space-y-1 pl-2 text-gray-600">
+        {itens.map((item, index) => (
+          <li key={`${titulo}-${index}`}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
 const PassagemPlantaoModal = ({ isOpen, onClose }) => {
   const [loading, setLoading] = useState(true);
   const [reservasExternas, setReservasExternas] = useState([]);
@@ -99,234 +157,516 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
     }
   };
 
-  const estruturaOrdenada = useMemo(() => {
-    if (!estrutura) return [];
+  const relatorioPorTipo = useMemo(() => {
+    if (!estrutura) {
+      return {
+        uti: [],
+        centroCirurgico: {
+          recuperacao: null,
+          salasCirurgicas: null,
+        },
+        emergencia: {
+          avcAgudo: null,
+          salaEmergencia: null,
+          salaLaranja: null,
+          psDecisaoCirurgica: null,
+          psDecisaoClinica: null,
+        },
+        enfermaria: [],
+        outros: [],
+      };
+    }
 
-    const infeccoesMap = new Map(infeccoesDados.map(i => [i.id, i]));
+    const infeccoesMap = new Map(infeccoesDados.map((i) => [i.id, i]));
 
-    const ordenarSetores = (tipoSetor, setores) => {
-      const ordemParaTipo = ORDEM_SETORES[tipoSetor] || [];
-      const setoresFiltrados = tipoSetor === 'Centro Cirúrgico'
-        ? setores.filter((setor) =>
-            ['CC - RECUPERAÇÃO', 'CC - SALAS CIRURGICAS'].includes(setor?.nomeSetor),
-          )
-        : setores;
+    const obterLeitosDoSetor = (setor) => [
+      ...((setor?.quartos || []).flatMap((q) => q.leitos || [])),
+      ...(setor?.leitosSemQuarto || []),
+    ];
 
-      return [...setoresFiltrados].sort((a, b) => {
-        const indexA = ordemParaTipo.indexOf(a.nomeSetor);
-        const indexB = ordemParaTipo.indexOf(b.nomeSetor);
+    const leitosPorId = new Map();
+    const leitosPorSetorId = new Map();
+    const pacientesInfo = [];
 
+    Object.entries(estrutura).forEach(([tipoSetor, setores = []]) => {
+      setores.forEach((setor) => {
+        if (!setor) return;
+        const setorId = obterIdSetor(setor);
+        const leitosDoSetor = obterLeitosDoSetor(setor);
+        leitosPorSetorId.set(setorId, leitosDoSetor);
+        leitosDoSetor.forEach((leito) => {
+          if (!leito) return;
+          leitosPorId.set(leito.id, { leito, setor });
+          if (leito.paciente) {
+            pacientesInfo.push({
+              paciente: leito.paciente,
+              leito,
+              setor,
+              setorId,
+              tipoSetor,
+            });
+          }
+        });
+      });
+    });
+
+    const formatarDescricaoLeito = (leitoId) => {
+      if (!leitoId) return 'N/A';
+      const info = leitosPorId.get(leitoId);
+      if (!info) return 'N/A';
+      const { leito, setor } = info;
+      const setorNome = setor?.nomeSetor || 'Setor não informado';
+      const codigo = leito?.codigoLeito;
+      return codigo ? `${setorNome} / ${codigo}` : setorNome;
+    };
+
+    const pacientesComRegulacao = pacientesInfo.filter(
+      ({ paciente }) => paciente?.regulacaoAtiva,
+    );
+
+    const montarRegulacoesPara = (leitoIds) => {
+      if (!leitoIds || leitoIds.size === 0) return [];
+      return pacientesComRegulacao
+        .filter(({ paciente }) => {
+          const origem = paciente.regulacaoAtiva?.leitoOrigemId;
+          const destino = paciente.regulacaoAtiva?.leitoDestinoId;
+          return leitoIds.has(origem) || leitoIds.has(destino);
+        })
+        .map(({ paciente }) => {
+          const origemDesc = formatarDescricaoLeito(
+            paciente.regulacaoAtiva?.leitoOrigemId,
+          );
+          const destinoDesc = formatarDescricaoLeito(
+            paciente.regulacaoAtiva?.leitoDestinoId,
+          );
+          return `${paciente.nomePaciente} - De: ${origemDesc} -> Para: ${destinoDesc}`;
+        });
+    };
+
+    const uti = (estrutura['UTI'] || []).map((setor) => {
+      const setorId = obterIdSetor(setor);
+      const leitos = leitosPorSetorId.get(setorId) || [];
+      const leitoIds = new Set(leitos.map((leito) => leito?.id));
+      const pacientesSetor = pacientesInfo.filter((info) => info.setorId === setorId);
+
+      const provaveisAltas = pacientesSetor
+        .filter(({ paciente }) => paciente?.provavelAlta)
+        .map(({ paciente, leito }) =>
+          `${leito?.codigoLeito || ''} ${paciente.nomePaciente}`.trim(),
+        );
+
+      const remanejamentos = pacientesSetor
+        .filter(({ paciente }) => paciente?.pedidoRemanejamento)
+        .map(
+          ({ paciente }) =>
+            `${paciente.nomePaciente} - Motivo: ${paciente.pedidoRemanejamento.tipo}`,
+        );
+
+      const transferencias = pacientesSetor
+        .filter(({ paciente }) => paciente?.transferenciaExterna)
+        .map(({ paciente }) => {
+          const status = paciente.transferenciaExterna.status || 'Sem status';
+          return `${paciente.nomePaciente} - Status: ${status}`;
+        });
+
+      const observacoes = pacientesSetor
+        .map(({ paciente }) => {
+          const texto = obterObservacaoTexto(paciente.observacoes);
+          if (!texto) return null;
+          return `${paciente.nomePaciente}: "${texto}"`;
+        })
+        .filter(Boolean);
+
+      return {
+        id: setorId,
+        nome: setor?.nomeSetor || 'UTI',
+        provaveisAltas,
+        regulacoes: montarRegulacoesPara(leitoIds),
+        remanejamentos,
+        transferencias,
+        observacoes,
+      };
+    });
+
+    const setoresCentro = estrutura['Centro Cirúrgico'] || [];
+
+    const obterSetorPorNome = (nome) =>
+      setoresCentro.find(
+        (setor) => normalizarTexto(setor?.nomeSetor) === normalizarTexto(nome),
+      );
+
+    const montarBlocoCentro = (nome) => {
+      const setor = obterSetorPorNome(nome);
+      if (!setor) {
+        return {
+          nome,
+          existe: false,
+          pacientesInternados: 0,
+          regulacoes: [],
+          transferencias: [],
+          observacoes: [],
+          aguardandoUti: [],
+        };
+      }
+
+      const setorId = obterIdSetor(setor);
+      const leitos = leitosPorSetorId.get(setorId) || [];
+      const leitoIds = new Set(leitos.map((leito) => leito?.id));
+      const pacientesSetor = pacientesInfo.filter((info) => info.setorId === setorId);
+
+      const transferencias = pacientesSetor
+        .filter(({ paciente }) => paciente?.transferenciaExterna)
+        .map(({ paciente }) => {
+          const status = paciente.transferenciaExterna.status || 'Sem status';
+          return `${paciente.nomePaciente} - Status: ${status}`;
+        });
+
+      const observacoes = pacientesSetor
+        .map(({ paciente }) => {
+          const texto = obterObservacaoTexto(paciente.observacoes);
+          if (!texto) return null;
+          return `${paciente.nomePaciente}: "${texto}"`;
+        })
+        .filter(Boolean);
+
+      const aguardandoUti = pacientesSetor
+        .filter(({ paciente }) => paciente?.pedidoUTI)
+        .map(({ paciente }) => paciente.nomePaciente);
+
+      return {
+        nome,
+        existe: true,
+        setorId,
+        pacientesInternados: pacientesSetor.length,
+        regulacoes: montarRegulacoesPara(leitoIds),
+        transferencias,
+        observacoes,
+        aguardandoUti,
+      };
+    };
+
+    const centroCirurgico = {
+      recuperacao: montarBlocoCentro('CC - RECUPERAÇÃO'),
+      salasCirurgicas: montarBlocoCentro('CC - SALAS CIRURGICAS'),
+    };
+
+    const setoresEmergencia = estrutura['Emergência'] || [];
+
+    const obterSetorEmergencia = (nome) =>
+      setoresEmergencia.find(
+        (setor) => normalizarTexto(setor?.nomeSetor) === normalizarTexto(nome),
+      );
+
+    const montarBlocoEmergencia = (nome, configuracoes = {}) => {
+      const setor = obterSetorEmergencia(nome);
+      if (!setor) {
+        return {
+          nome,
+          existe: false,
+          pacientesInternados: 0,
+          aguardandoUti: [],
+          remanejamentos: [],
+          isolamentos: [],
+          transferencias: [],
+          observacoes: [],
+        };
+      }
+
+      const { incluirAguardandoUti, incluirRemanejamento, incluirIsolamentos } =
+        configuracoes;
+
+      const setorId = obterIdSetor(setor);
+      const pacientesSetor = pacientesInfo.filter((info) => info.setorId === setorId);
+
+      const aguardandoUti = incluirAguardandoUti
+        ? pacientesSetor
+            .filter(({ paciente }) => paciente?.pedidoUTI)
+            .map(({ paciente }) => paciente.nomePaciente)
+        : [];
+
+      const remanejamentos = incluirRemanejamento
+        ? pacientesSetor
+            .filter(({ paciente }) => paciente?.pedidoRemanejamento)
+            .map(({ paciente }) => {
+              const motivo = paciente.pedidoRemanejamento.tipo;
+              return `${paciente.nomePaciente} - Motivo: ${motivo}`;
+            })
+        : [];
+
+      const isolamentos = incluirIsolamentos
+        ? pacientesSetor
+            .map(({ paciente }) => {
+              const siglas = obterIsolamentosSiglas(paciente.isolamentos);
+              if (siglas.length === 0) return null;
+              return `${paciente.nomePaciente} - Isolamento(s): ${siglas.join(', ')}`;
+            })
+            .filter(Boolean)
+        : [];
+
+      const transferencias = pacientesSetor
+        .filter(({ paciente }) => paciente?.transferenciaExterna)
+        .map(({ paciente }) => {
+          const status = paciente.transferenciaExterna.status || 'Sem status';
+          return `${paciente.nomePaciente} - Status: ${status}`;
+        });
+
+      const observacoes = pacientesSetor
+        .map(({ paciente }) => {
+          const texto = obterObservacaoTexto(paciente.observacoes);
+          if (!texto) return null;
+          return `${paciente.nomePaciente}: "${texto}"`;
+        })
+        .filter(Boolean);
+
+      return {
+        nome,
+        existe: true,
+        pacientesInternados: pacientesSetor.length,
+        aguardandoUti,
+        remanejamentos,
+        isolamentos,
+        transferencias,
+        observacoes,
+      };
+    };
+
+    const emergencia = {
+      avcAgudo: montarBlocoEmergencia('UNID. AVC AGUDO', {
+        incluirAguardandoUti: true,
+        incluirRemanejamento: true,
+      }),
+      salaEmergencia: montarBlocoEmergencia('SALA DE EMERGENCIA', {
+        incluirAguardandoUti: true,
+        incluirRemanejamento: true,
+      }),
+      salaLaranja: montarBlocoEmergencia('SALA LARANJA', {
+        incluirIsolamentos: true,
+      }),
+      psDecisaoCirurgica: montarBlocoEmergencia('PS DECISÃO CIRURGICA', {
+        incluirIsolamentos: true,
+      }),
+      psDecisaoClinica: montarBlocoEmergencia('PS DECISÃO CLINICA', {
+        incluirIsolamentos: true,
+      }),
+    };
+
+    const ordenarEnfermaria = (setores = []) => {
+      const ordemParaTipo = ORDEM_SETORES.Enfermaria || [];
+      return [...setores].sort((a, b) => {
+        const nomeA = a?.nomeSetor || '';
+        const nomeB = b?.nomeSetor || '';
+        const indexA = ordemParaTipo.indexOf(nomeA);
+        const indexB = ordemParaTipo.indexOf(nomeB);
         if (ordemParaTipo.length === 0) {
-          return a.nomeSetor.localeCompare(b.nomeSetor);
+          return nomeA.localeCompare(nomeB);
         }
-
         if (indexA === -1 && indexB === -1) {
-          return a.nomeSetor.localeCompare(b.nomeSetor);
+          return nomeA.localeCompare(nomeB);
         }
-
         if (indexA === -1) return 1;
         if (indexB === -1) return -1;
-
         return indexA - indexB;
       });
     };
 
-    const tiposEstrutura = Object.keys(estrutura);
+    const enfermaria = ordenarEnfermaria(estrutura['Enfermaria'] || []).map((setor) => {
+      const dadosPlantao = {
+        isolamentos: [],
+        leitosRegulados: [],
+        leitosVagos: [],
+        pedidosUTI: [],
+        transferencias: [],
+        observacoes: [],
+        provaveisAltas: [],
+        altasNoLeito: [],
+        reservasExternas: [],
+        listaEsperaOncologia: [],
+      };
 
-    const processarSetores = (tipoSetor, setoresLista) => {
-      const setoresOrdenados = ordenarSetores(tipoSetor, setoresLista);
+      const todosOsLeitosDoSetor = obterLeitosDoSetor(setor);
+      const leitosMap = new Map(
+        todosOsLeitosDoSetor.map((leito) => [leito?.id, leito]),
+      );
 
-      const setoresProcessados = setoresOrdenados.map(setor => {
-        if (tipoSetor !== 'Enfermaria' && tipoSetor !== 'UTI') {
-          return { ...setor, dadosPlantao: null };
-        }
+      todosOsLeitosDoSetor.forEach((leito) => {
+        if (!leito) return;
+        const paciente = leito.paciente;
 
-        if (tipoSetor === 'UTI') {
-          const dadosPlantaoUTI = {
-            provaveisAltas: [],
-            altasDaUTI: [],
-            regulacoesEntrada: [],
-            regulacoesSaida: []
-          };
-
-          const leitosDoSetor = [
-            ...(setor.quartos || []).flatMap(q => q.leitos),
-            ...(setor.leitosSemQuarto || [])
-          ];
-
-          leitosDoSetor.forEach(leito => {
-            const paciente = leito.paciente;
-
-            if (paciente) {
-              if (paciente.provavelAlta) {
-                dadosPlantaoUTI.provaveisAltas.push(`${leito.codigoLeito} ${paciente.nomePaciente}`);
-              }
-              if (paciente.pedidoRemanejamento?.tipo === 'Alta do setor' && paciente.pedidoRemanejamento?.detalhe === 'UTI') {
-                dadosPlantaoUTI.altasDaUTI.push(`${leito.codigoLeito} ${paciente.nomePaciente}`);
-              }
-            }
-
-            if (leito.regulacaoEmAndamento) {
-              const infoReg = leito.regulacaoEmAndamento;
-              const tempo = infoReg.iniciadoEm?.toDate ? format(infoReg.iniciadoEm.toDate(), 'dd/MM HH:mm') : '';
-              if (infoReg.tipo === 'ORIGEM') {
-                dadosPlantaoUTI.regulacoesSaida.push(
-                  `${leito.codigoLeito} ${paciente?.nomePaciente || 'N/A'} -> PARA ${infoReg.leitoParceiroSetorNome} ${infoReg.leitoParceiroCodigo} (${tempo})`
-                );
-              }
-              if (infoReg.tipo === 'DESTINO') {
-                dadosPlantaoUTI.regulacoesEntrada.push(
-                  `${leito.codigoLeito} (Reservado para ${infoReg.pacienteNome}) <- DE ${infoReg.leitoParceiroSetorNome} ${infoReg.leitoParceiroCodigo} (${tempo})`
-                );
-              }
-            }
+        if (leito.status === 'Vago' || leito.status === 'Higienização') {
+          const compatibilidade =
+            leito.status === 'Vago'
+              ? formatarMensagemRestricaoCoorte(leito.restricaoCoorte) || 'Livre'
+              : 'N/A';
+          dadosPlantao.leitosVagos.push({
+            id: leito.id,
+            codigoLeito: leito.codigoLeito,
+            status: leito.status,
+            compatibilidade,
           });
-
-          return { ...setor, dadosPlantao: dadosPlantaoUTI };
         }
 
-        // INÍCIO DA LÓGICA CORRIGIDA
-        const dadosPlantao = {
-          isolamentos: [],
-          leitosRegulados: [],
-          leitosVagos: [],
-          pedidosUTI: [],
-          transferencias: [],
-          observacoes: [],
-          provaveisAltas: [],
-          altasNoLeito: [],
-          reservasExternas: [],
-          listaEsperaOncologia: []
-        };
+        if (leito.status === 'Reservado' && leito.regulacaoEmAndamento) {
+          const infoReg = leito.regulacaoEmAndamento;
+          const tempo = infoReg.iniciadoEm?.toDate
+            ? format(infoReg.iniciadoEm.toDate(), 'dd/MM HH:mm')
+            : '';
+          dadosPlantao.leitosRegulados.push(
+            `${leito.codigoLeito} ${infoReg.pacienteNome} / VEM DE ${infoReg.leitoParceiroSetorNome} ${infoReg.leitoParceiroCodigo} (${tempo})`,
+          );
+        }
 
-        // A estrutura já contém os leitos dentro dos quartos ou como leitosSemQuarto
-        const todosOsLeitosDoSetor = [
-          ...(setor.quartos || []).flatMap(q => q.leitos),
-          ...(setor.leitosSemQuarto || [])
-        ];
+        if (!paciente) {
+          return;
+        }
 
-        const leitosMap = new Map(todosOsLeitosDoSetor.map(leito => [leito.id, leito]));
+        if (paciente.provavelAlta) {
+          dadosPlantao.provaveisAltas.push(
+            `${leito.codigoLeito} ${paciente.nomePaciente}`,
+          );
+        }
 
-        todosOsLeitosDoSetor.forEach(leito => {
-          // --- ESTA É A CORREÇÃO PRINCIPAL ---
-          const paciente = leito.paciente; // Acessa o paciente aninhado diretamente!
+        if (paciente.altaNoLeito) {
+          const motivo = paciente.altaNoLeito.motivo
+            ? ` - Motivo: ${paciente.altaNoLeito.motivo}`
+            : '';
+          dadosPlantao.altasNoLeito.push(
+            `${leito.codigoLeito} ${paciente.nomePaciente}${motivo}`,
+          );
+        }
 
-          // 1. Leitos Vagos (agora com a coorte correta)
-          if (leito.status === 'Vago' || leito.status === 'Higienização') {
-              const compatibilidade = leito.status === 'Vago' 
-                ? (formatarMensagemRestricaoCoorte(leito.restricaoCoorte) || 'Livre') 
-                : 'N/A';
-              dadosPlantao.leitosVagos.push({
-                  id: leito.id, codigoLeito: leito.codigoLeito,
-                  status: leito.status, compatibilidade: compatibilidade
-              });
-          }
-
-          // 2. Leitos Regulados (Reservados)
-          if (leito.status === 'Reservado' && leito.regulacaoEmAndamento) {
-              const infoReg = leito.regulacaoEmAndamento;
-              const tempo = infoReg.iniciadoEm?.toDate ? format(infoReg.iniciadoEm.toDate(), 'dd/MM HH:mm') : '';
-              dadosPlantao.leitosRegulados.push(
-                  `${leito.codigoLeito} ${infoReg.pacienteNome} / VEM DE ${infoReg.leitoParceiroSetorNome} ${infoReg.leitoParceiroCodigo} (${tempo})`
+        if (paciente.isolamentos?.length > 0) {
+          const nomesIsolamentos = paciente.isolamentos
+            .map((iso) => {
+              const infeccao = infeccoesMap.get(iso.infeccaoId);
+              return (
+                infeccao?.siglaInfeccao ||
+                infeccao?.sigla ||
+                iso.sigla ||
+                'Desconhecido'
               );
-          }
-
-          // 3. Processa dados APENAS se houver um paciente no leito
-          if (paciente) {
-              if (paciente.provavelAlta) {
-                  dadosPlantao.provaveisAltas.push(`${leito.codigoLeito} ${paciente.nomePaciente}`);
-              }
-
-              if (paciente.altaNoLeito) {
-                  const motivo = paciente.altaNoLeito.motivo ? ` - Motivo: ${paciente.altaNoLeito.motivo}` : '';
-                  dadosPlantao.altasNoLeito.push(`${leito.codigoLeito} ${paciente.nomePaciente}${motivo}`);
-              }
-
-              // Isolamentos
-              if (paciente.isolamentos?.length > 0) {
-                  const nomesIsolamentos = paciente.isolamentos.map(iso => {
-                      const infeccao = infeccoesMap.get(iso.infeccaoId);
-                      return infeccao?.siglaInfeccao || infeccao?.sigla || 'Desconhecido';
-                  }).join(', ');
-                  dadosPlantao.isolamentos.push(`${leito.codigoLeito} ${paciente.nomePaciente}: ${nomesIsolamentos}`);
-              }
-
-              // Pedidos de UTI
-              if (paciente.pedidoUTI) {
-                  dadosPlantao.pedidosUTI.push(`${leito.codigoLeito} ${paciente.nomePaciente}`);
-              }
-
-              // Transferências Externas
-              if (paciente.pedidoTransferenciaExterna) {
-                  const ped = paciente.pedidoTransferenciaExterna;
-                  const ultimoStatus = ped.historicoStatus?.slice(-1)[0];
-                  const ultimaAtualizacao = ultimoStatus ? ` | Última Info: ${ultimoStatus.texto}` : '';
-                  dadosPlantao.transferencias.push(
-                      `${leito.codigoLeito} ${paciente.nomePaciente} | Motivo: ${ped.motivo} | Destino: ${ped.destino}${ultimaAtualizacao}`
-                  );
-              }
-
-              // Observações
-              if (paciente.observacoes?.length > 0) {
-                  const obsMaisRecente = [...paciente.observacoes].sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis())[0];
-                  dadosPlantao.observacoes.push(`${leito.codigoLeito} ${paciente.nomePaciente}: ${obsMaisRecente.texto}`);
-              }
-          }
-        });
-
-        reservasExternas.forEach(reserva => {
-          if (reserva.status === 'Reservado' && reserva.leitoReservadoId) {
-            const leitoDaReserva = leitosMap.get(reserva.leitoReservadoId);
-            if (leitoDaReserva && leitoDaReserva.setorId === setor.id) {
-              dadosPlantao.reservasExternas.push(`${leitoDaReserva.codigoLeito} ${reserva.nomeCompleto}`);
-            }
-          }
-        });
-
-        if (setor.nomeSetor === 'UNID. ONCOLOGIA') {
-          const hoje = new Date();
-          hoje.setHours(0, 0, 0, 0);
-
-          dadosPlantao.listaEsperaOncologia = reservasExternas
-            .filter(r => r.origem === 'ONCOLOGIA' && r.status === 'Aguardando Leito')
-            .sort((a, b) => {
-              const dataA = a.dataPrevistaInternacao?.toDate ? a.dataPrevistaInternacao.toDate() : null;
-              const dataB = b.dataPrevistaInternacao?.toDate ? b.dataPrevistaInternacao.toDate() : null;
-              if (!dataA && !dataB) return 0;
-              if (!dataA) return 1;
-              if (!dataB) return -1;
-              return dataA - dataB;
             })
-            .map(r => {
-              const dataPrevista = r.dataPrevistaInternacao?.toDate ? r.dataPrevistaInternacao.toDate() : null;
-              const isAtrasado = dataPrevista ? dataPrevista < hoje : false;
-              return {
-                id: r.id,
-                texto: `${r.nomeCompleto} (${r.especialidadeOncologia}) - Previsto para: ${dataPrevista ? format(dataPrevista, 'dd/MM/yyyy') : 'Sem data'}`,
-                atrasado: isAtrasado
-              };
-            });
+            .join(', ');
+          dadosPlantao.isolamentos.push(
+            `${leito.codigoLeito} ${paciente.nomePaciente}: ${nomesIsolamentos}`,
+          );
         }
 
-        return { ...setor, dadosPlantao };
+        if (paciente.pedidoUTI) {
+          dadosPlantao.pedidosUTI.push(
+            `${leito.codigoLeito} ${paciente.nomePaciente}`,
+          );
+        }
+
+        if (paciente.pedidoTransferenciaExterna) {
+          const ped = paciente.pedidoTransferenciaExterna;
+          const ultimoStatus = ped.historicoStatus?.slice(-1)[0];
+          const ultimaAtualizacao = ultimoStatus
+            ? ` | Última Info: ${ultimoStatus.texto}`
+            : '';
+          dadosPlantao.transferencias.push(
+            `${leito.codigoLeito} ${paciente.nomePaciente} | Motivo: ${ped.motivo} | Destino: ${ped.destino}${ultimaAtualizacao}`,
+          );
+        }
+
+        if (Array.isArray(paciente.observacoes) && paciente.observacoes.length > 0) {
+          const obsMaisRecente = [...paciente.observacoes]
+            .sort((a, b) => {
+              const tempoA = a.timestamp?.toMillis?.() || 0;
+              const tempoB = b.timestamp?.toMillis?.() || 0;
+              return tempoB - tempoA;
+            })[0];
+          if (obsMaisRecente?.texto) {
+            dadosPlantao.observacoes.push(
+              `${leito.codigoLeito} ${paciente.nomePaciente}: ${obsMaisRecente.texto}`,
+            );
+          }
+        }
       });
 
-      return { tipoSetor, setores: setoresProcessados };
+      reservasExternas.forEach((reserva) => {
+        if (reserva.status === 'Reservado' && reserva.leitoReservadoId) {
+          const leitoDaReserva = leitosMap.get(reserva.leitoReservadoId);
+          if (leitoDaReserva && leitoDaReserva.setorId === setor.id) {
+            dadosPlantao.reservasExternas.push(
+              `${leitoDaReserva.codigoLeito} ${reserva.nomeCompleto}`,
+            );
+          }
+        }
+      });
+
+      if (setor.nomeSetor === 'UNID. ONCOLOGIA') {
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
+
+        dadosPlantao.listaEsperaOncologia = reservasExternas
+          .filter(
+            (r) => r.origem === 'ONCOLOGIA' && r.status === 'Aguardando Leito',
+          )
+          .sort((a, b) => {
+            const dataA = a.dataPrevistaInternacao?.toDate
+              ? a.dataPrevistaInternacao.toDate()
+              : null;
+            const dataB = b.dataPrevistaInternacao?.toDate
+              ? b.dataPrevistaInternacao.toDate()
+              : null;
+            if (!dataA && !dataB) return 0;
+            if (!dataA) return 1;
+            if (!dataB) return -1;
+            return dataA - dataB;
+          })
+          .map((r) => {
+            const dataPrevista = r.dataPrevistaInternacao?.toDate
+              ? r.dataPrevistaInternacao.toDate()
+              : null;
+            const isAtrasado = dataPrevista ? dataPrevista < hoje : false;
+            return {
+              id: r.id,
+              texto: `${r.nomeCompleto} (${r.especialidadeOncologia}) - Previsto para: ${
+                dataPrevista ? format(dataPrevista, 'dd/MM/yyyy') : 'Sem data'
+              }`,
+              atrasado: isAtrasado,
+            };
+          });
+      }
+
+      return { ...setor, dadosPlantao };
+    });
+
+    const tiposConhecidos = new Set([
+      'Enfermaria',
+      'UTI',
+      'Centro Cirúrgico',
+      'Emergência',
+    ]);
+
+    const outros = Object.entries(estrutura)
+      .filter(([tipo]) => !tiposConhecidos.has(tipo))
+      .map(([tipo, setores = []]) => ({
+        tipo,
+        setores: setores.map((setor) => ({
+          id: obterIdSetor(setor),
+          nome: setor?.nomeSetor || 'Setor sem nome',
+        })),
+      }));
+
+    return {
+      uti,
+      centroCirurgico,
+      emergencia,
+      enfermaria,
+      outros,
     };
-
-    const gruposOrdenados = ORDEM_TIPO_SETOR.filter(
-      (tipoSetor) => Array.isArray(estrutura[tipoSetor]) && estrutura[tipoSetor].length > 0,
-    ).map((tipoSetor) => processarSetores(tipoSetor, estrutura[tipoSetor]));
-
-    const tiposExtras = tiposEstrutura
-      .filter((tipoSetor) => !ORDEM_TIPO_SETOR.includes(tipoSetor))
-      .filter((tipoSetor) => Array.isArray(estrutura[tipoSetor]) && estrutura[tipoSetor].length > 0)
-      .sort((a, b) => a.localeCompare(b));
-
-    const gruposExtras = tiposExtras.map((tipoSetor) => processarSetores(tipoSetor, estrutura[tipoSetor]));
-
-    return [...gruposOrdenados, ...gruposExtras];
   }, [estrutura, infeccoesDados, reservasExternas]);
+
+  const { uti, centroCirurgico, emergencia, enfermaria, outros } = relatorioPorTipo;
+
+  const nenhumDadoDisponivel =
+    uti.length === 0 &&
+    enfermaria.length === 0 &&
+    outros.every((grupo) => (grupo.setores || []).length === 0) &&
+    !centroCirurgico?.recuperacao?.existe &&
+    !centroCirurgico?.salasCirurgicas?.existe &&
+    Object.values(emergencia || {}).every((bloco) => !bloco?.existe);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
@@ -345,78 +685,214 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
             </div>
           ) : (
             <div className="space-y-4">
-              {estruturaOrdenada.length === 0 ? (
+              {nenhumDadoDisponivel ? (
                 <p className="text-sm text-muted-foreground">
                   Nenhum setor disponível no momento.
                 </p>
               ) : (
                 <Accordion type="multiple" className="w-full space-y-4">
-                  {estruturaOrdenada.map(({ tipoSetor, setores }) => (
-                    <AccordionItem key={tipoSetor} value={tipoSetor}>
+                  {uti.length > 0 && (
+                    <AccordionItem value="uti">
                       <AccordionTrigger className="text-xl font-semibold">
-                        {tipoSetor}
+                        Unidades de Terapia Intensiva (UTI)
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <div className="flex flex-col space-y-3 pt-2">
+                          {uti.map((setor) => {
+                            const setorKey = setor?.id || setor?.nome;
+                            const pendenciasVazias =
+                              setor.provaveisAltas.length === 0 &&
+                              setor.regulacoes.length === 0 &&
+                              setor.remanejamentos.length === 0 &&
+                              setor.transferencias.length === 0 &&
+                              setor.observacoes.length === 0;
+
+                            return (
+                              <div key={setorKey} className="border rounded-md p-4">
+                                <h4 className="font-medium text-md mb-3">{setor.nome}</h4>
+                                <div className="space-y-3 text-sm">
+                                  <PendenciaLista
+                                    titulo="Prováveis Altas"
+                                    itens={setor.provaveisAltas}
+                                  />
+                                  <PendenciaLista
+                                    titulo="Regulações em Andamento"
+                                    itens={setor.regulacoes}
+                                  />
+                                  <PendenciaLista
+                                    titulo="Pedidos de Remanejamento"
+                                    itens={setor.remanejamentos}
+                                  />
+                                  <PendenciaLista
+                                    titulo="Transferências Externas"
+                                    itens={setor.transferencias}
+                                  />
+                                  <PendenciaLista
+                                    titulo="Observações Relevantes"
+                                    itens={setor.observacoes}
+                                  />
+                                  {pendenciasVazias && (
+                                    <p className="text-sm text-muted-foreground italic">
+                                      Nenhuma pendência registrada.
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  )}
+
+                  {(centroCirurgico?.recuperacao || centroCirurgico?.salasCirurgicas) && (
+                    <AccordionItem value="centro-cirurgico">
+                      <AccordionTrigger className="text-xl font-semibold">
+                        Centro Cirúrgico
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <div className="flex flex-col space-y-3 pt-2">
+                          {[centroCirurgico?.recuperacao, centroCirurgico?.salasCirurgicas]
+                            .filter(Boolean)
+                            .map((bloco) => {
+                              const pendenciasVazias =
+                                (bloco.aguardandoUti?.length ?? 0) === 0 &&
+                                bloco.regulacoes.length === 0 &&
+                                bloco.transferencias.length === 0 &&
+                                bloco.observacoes.length === 0;
+
+                              return (
+                                <div key={bloco.nome} className="border rounded-md p-4">
+                                  <h4 className="font-medium text-md mb-3">{bloco.nome}</h4>
+                                  {bloco.existe ? (
+                                    <div className="space-y-3 text-sm">
+                                      <p className="text-sm text-gray-700">
+                                        <span className="font-semibold">Pacientes Internados:</span>{' '}
+                                        {bloco.pacientesInternados}
+                                      </p>
+                                      {bloco.nome === 'CC - SALAS CIRURGICAS' && (
+                                        <PendenciaLista
+                                          titulo="Aguardando UTI"
+                                          itens={bloco.aguardandoUti}
+                                        />
+                                      )}
+                                      <PendenciaLista
+                                        titulo="Regulações em Andamento"
+                                        itens={bloco.regulacoes}
+                                      />
+                                      <PendenciaLista
+                                        titulo="Transferências Externas"
+                                        itens={bloco.transferencias}
+                                      />
+                                      <PendenciaLista
+                                        titulo="Observações"
+                                        itens={bloco.observacoes}
+                                      />
+                                      {pendenciasVazias && (
+                                        <p className="text-sm text-muted-foreground italic">
+                                          Nenhuma pendência registrada.
+                                        </p>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm text-muted-foreground italic">
+                                      Setor não disponível no momento.
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  )}
+
+                  {Object.values(emergencia || {}).some((bloco) => bloco) && (
+                    <AccordionItem value="emergencia">
+                      <AccordionTrigger className="text-xl font-semibold">
+                        Emergência
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <div className="flex flex-col space-y-3 pt-2">
+                          {[emergencia?.avcAgudo, emergencia?.salaEmergencia, emergencia?.salaLaranja, emergencia?.psDecisaoCirurgica, emergencia?.psDecisaoClinica]
+                            .filter(Boolean)
+                            .map((bloco) => {
+                              const pendenciasVazias =
+                                bloco.aguardandoUti.length === 0 &&
+                                bloco.remanejamentos.length === 0 &&
+                                bloco.isolamentos.length === 0 &&
+                                bloco.transferencias.length === 0 &&
+                                bloco.observacoes.length === 0;
+
+                              return (
+                                <div key={bloco.nome} className="border rounded-md p-4">
+                                  <h4 className="font-medium text-md mb-3">{bloco.nome}</h4>
+                                  {bloco.existe ? (
+                                    <div className="space-y-3 text-sm">
+                                      <p className="text-sm text-gray-700">
+                                        <span className="font-semibold">Pacientes Internados:</span>{' '}
+                                        {bloco.pacientesInternados}
+                                      </p>
+                                      <PendenciaLista
+                                        titulo="Aguardando UTI"
+                                        itens={bloco.aguardandoUti}
+                                      />
+                                      <PendenciaLista
+                                        titulo="Pedidos de Remanejamento"
+                                        itens={bloco.remanejamentos}
+                                      />
+                                      <PendenciaLista
+                                        titulo="Pacientes em Isolamento"
+                                        itens={bloco.isolamentos}
+                                      />
+                                      <PendenciaLista
+                                        titulo="Transferências Externas"
+                                        itens={bloco.transferencias}
+                                      />
+                                      <PendenciaLista
+                                        titulo="Observações"
+                                        itens={bloco.observacoes}
+                                      />
+                                      {pendenciasVazias && (
+                                        <p className="text-sm text-muted-foreground italic">
+                                          Nenhuma pendência registrada.
+                                        </p>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm text-muted-foreground italic">
+                                      Setor não disponível no momento.
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  )}
+
+                  {enfermaria.length > 0 && (
+                    <AccordionItem value="enfermaria">
+                      <AccordionTrigger className="text-xl font-semibold">
+                        Enfermaria
                       </AccordionTrigger>
                       <AccordionContent>
                         <div className="flex flex-col space-y-2 pt-2">
-                          {setores.map((setor) => {
+                          {enfermaria.map((setor) => {
                             const setorKey = setor?.id ?? setor?.idSetor ?? setor?.nomeSetor;
                             return (
                               <div key={setorKey} className="p-4 border rounded-md">
                                 <h4 className="font-medium text-md mb-3">{setor.nomeSetor}</h4>
-
-                                {setor.tipoSetor === 'UTI' && setor.dadosPlantao ? (
-                                  <div className="space-y-4 text-sm">
-                                    {setor.dadosPlantao.provaveisAltas.length > 0 && (
-                                      <div>
-                                        <h5 className="font-semibold text-gray-700 mb-1">Prováveis Altas:</h5>
-                                        <ul className="list-disc list-inside space-y-1 pl-2 text-gray-600">
-                                          {setor.dadosPlantao.provaveisAltas.map((item, index) => (
-                                            <li key={index}>{item}</li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-
-                                    {setor.dadosPlantao.altasDaUTI.length > 0 && (
-                                      <div>
-                                        <h5 className="font-semibold text-gray-700 mb-1">Altas da UTI:</h5>
-                                        <ul className="list-disc list-inside space-y-1 pl-2 text-gray-600">
-                                          {setor.dadosPlantao.altasDaUTI.map((item, index) => (
-                                            <li key={index}>{item}</li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-
-                                    {setor.dadosPlantao.regulacoesEntrada.length > 0 && (
-                                      <div>
-                                        <h5 className="font-semibold text-blue-700 mb-1">Regulações de Entrada:</h5>
-                                        <ul className="list-disc list-inside space-y-1 pl-2 text-blue-600">
-                                          {setor.dadosPlantao.regulacoesEntrada.map((item, index) => (
-                                            <li key={index}>{item}</li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-
-                                    {setor.dadosPlantao.regulacoesSaida.length > 0 && (
-                                      <div>
-                                        <h5 className="font-semibold text-orange-700 mb-1">Regulações de Saída:</h5>
-                                        <ul className="list-disc list-inside space-y-1 pl-2 text-orange-600">
-                                          {setor.dadosPlantao.regulacoesSaida.map((item, index) => (
-                                            <li key={index}>{item}</li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : setor.dadosPlantao ? (
+                                {setor.dadosPlantao ? (
                                   <div className="space-y-4 text-sm">
                                     {setor.dadosPlantao.isolamentos.length > 0 && (
                                       <div>
                                         <h5 className="font-semibold text-gray-700 mb-1">Isolamentos:</h5>
                                         <ul className="list-disc list-inside space-y-1 pl-2 text-gray-600">
-                                          {setor.dadosPlantao.isolamentos.map((item, index) => <li key={index}>{item}</li>)}
+                                          {setor.dadosPlantao.isolamentos.map((item, index) => (
+                                            <li key={index}>{item}</li>
+                                          ))}
                                         </ul>
                                       </div>
                                     )}
@@ -425,7 +901,9 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
                                       <div>
                                         <h5 className="font-semibold text-gray-700 mb-1">Leitos Regulados (Reservados):</h5>
                                         <ul className="list-disc list-inside space-y-1 pl-2 text-gray-600">
-                                          {setor.dadosPlantao.leitosRegulados.map((item, index) => <li key={index}>{item}</li>)}
+                                          {setor.dadosPlantao.leitosRegulados.map((item, index) => (
+                                            <li key={index}>{item}</li>
+                                          ))}
                                         </ul>
                                       </div>
                                     )}
@@ -434,7 +912,9 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
                                       <div>
                                         <h5 className="font-semibold text-destructive mb-1">Pedidos de UTI:</h5>
                                         <ul className="list-disc list-inside space-y-1 pl-2 text-destructive">
-                                          {setor.dadosPlantao.pedidosUTI.map((item, index) => <li key={index}>{item}</li>)}
+                                          {setor.dadosPlantao.pedidosUTI.map((item, index) => (
+                                            <li key={index}>{item}</li>
+                                          ))}
                                         </ul>
                                       </div>
                                     )}
@@ -443,7 +923,9 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
                                       <div>
                                         <h5 className="font-semibold text-gray-700 mb-1">Transferências Externas:</h5>
                                         <ul className="list-disc list-inside space-y-1 pl-2 text-gray-600">
-                                          {setor.dadosPlantao.transferencias.map((item, index) => <li key={index}>{item}</li>)}
+                                          {setor.dadosPlantao.transferencias.map((item, index) => (
+                                            <li key={index}>{item}</li>
+                                          ))}
                                         </ul>
                                       </div>
                                     )}
@@ -485,7 +967,9 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
                                       <div>
                                         <h5 className="font-semibold text-gray-700 mb-1">Observações Relevantes:</h5>
                                         <ul className="list-disc list-inside space-y-1 pl-2 text-gray-600">
-                                          {setor.dadosPlantao.observacoes.map((item, index) => <li key={index}>{item}</li>)}
+                                          {setor.dadosPlantao.observacoes.map((item, index) => (
+                                            <li key={index}>{item}</li>
+                                          ))}
                                         </ul>
                                       </div>
                                     )}
@@ -494,7 +978,7 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
                                       <div>
                                         <h5 className="font-semibold text-green-700 mb-1">Leitos Vagos:</h5>
                                         <ul className="list-disc list-inside space-y-1 pl-2 text-green-600">
-                                          {setor.dadosPlantao.leitosVagos.map(leito => (
+                                          {setor.dadosPlantao.leitosVagos.map((leito) => (
                                             <li key={leito.id}>
                                               {leito.codigoLeito} ({leito.status})
                                               {leito.compatibilidade !== 'Livre' && ` - ${leito.compatibilidade}`}
@@ -504,21 +988,29 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
                                       </div>
                                     )}
 
-                                    {setor.nomeSetor === 'UNID. ONCOLOGIA' && setor.dadosPlantao.listaEsperaOncologia.length > 0 && (
-                                      <div>
-                                        <h5 className="font-semibold text-blue-700 mb-1">Lista de Espera (Oncologia):</h5>
-                                        <ul className="list-disc list-inside space-y-1 pl-2 text-blue-600">
-                                          {setor.dadosPlantao.listaEsperaOncologia.map(item => (
-                                            <li key={item.id} className={item.atrasado ? 'font-bold text-red-600' : ''}>
-                                              {item.texto}
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
+                                    {setor.nomeSetor === 'UNID. ONCOLOGIA' &&
+                                      setor.dadosPlantao.listaEsperaOncologia.length > 0 && (
+                                        <div>
+                                          <h5 className="font-semibold text-blue-700 mb-1">
+                                            Lista de Espera (Oncologia):
+                                          </h5>
+                                          <ul className="list-disc list-inside space-y-1 pl-2 text-blue-600">
+                                            {setor.dadosPlantao.listaEsperaOncologia.map((item) => (
+                                              <li
+                                                key={item.id}
+                                                className={item.atrasado ? 'font-bold text-red-600' : ''}
+                                              >
+                                                {item.texto}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
                                   </div>
                                 ) : (
-                                  <p className="text-sm text-muted-foreground">Dados não aplicáveis para este tipo de setor.</p>
+                                  <p className="text-sm text-muted-foreground">
+                                    Dados não aplicáveis para este tipo de setor.
+                                  </p>
                                 )}
                               </div>
                             );
@@ -526,7 +1018,29 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
                         </div>
                       </AccordionContent>
                     </AccordionItem>
-                  ))}
+                  )}
+
+                  {outros
+                    .filter((grupo) => (grupo.setores || []).length > 0)
+                    .map((grupo) => (
+                      <AccordionItem key={grupo.tipo} value={grupo.tipo}>
+                        <AccordionTrigger className="text-xl font-semibold">
+                          {grupo.tipo}
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="flex flex-col space-y-2 pt-2">
+                            {grupo.setores.map((setor) => (
+                              <div key={setor.id} className="p-4 border rounded-md">
+                                <h4 className="font-medium text-md mb-2">{setor.nome}</h4>
+                                <p className="text-sm text-muted-foreground">
+                                  Informações específicas não configuradas para este tipo de setor.
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    ))}
                 </Accordion>
               )}
             </div>
