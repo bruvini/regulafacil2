@@ -306,10 +306,10 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
       return;
     }
 
-    const reportElement = pdfLayoutRef.current;
+    const reportElement = document.getElementById('pdf-layout');
 
     if (!reportElement) {
-      console.error('Elemento do layout do PDF não encontrado.');
+      console.error('Elemento do layout do PDF não encontrado!');
       toast({
         title: 'Erro ao gerar PDF',
         description: 'Não foi possível localizar o conteúdo do relatório.',
@@ -320,25 +320,42 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
 
     try {
       setIsGeneratingPdf(true);
+
       const canvas = await html2canvas(reportElement, {
         scale: 2,
-        backgroundColor: '#ffffff',
+        useCORS: true,
       });
 
       const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
 
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      const pdfPageWidth = 210;
+      const pdfPageHeight = 297;
 
-      const pdfUrl = pdf.output('bloburl');
-      if (pdfUrl) {
-        window.open(pdfUrl, '_blank', 'noopener,noreferrer');
-      } else {
-        throw new Error('URL do PDF não pôde ser gerada.');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const ratio = imgWidth / pdfPageWidth;
+      const scaledImgHeight = imgHeight / ratio;
+
+      let heightLeft = scaledImgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, 'PNG', 0, position, pdfPageWidth, scaledImgHeight);
+      heightLeft -= pdfPageHeight;
+
+      while (heightLeft > 0) {
+        position = -heightLeft;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, pdfPageWidth, scaledImgHeight);
+        heightLeft -= pdfPageHeight;
       }
 
+      window.open(pdf.output('bloburl'), '_blank');
       setIsPdfInfoModalOpen(false);
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);
@@ -1426,7 +1443,7 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
     </AlertDialog>
 
     <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
-      <div ref={pdfLayoutRef}>
+      <div id="pdf-layout" ref={pdfLayoutRef}>
         <PassagemPlantaoPDFLayout data={pdfData} pdfInfo={pdfInfo} />
       </div>
     </div>
