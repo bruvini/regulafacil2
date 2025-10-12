@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import {
   Dialog,
@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -16,10 +17,36 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Loader2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Calendar } from "@/components/ui/calendar";
+import { FileDown, Loader2, Calendar as CalendarIcon } from "lucide-react";
 import { useDadosHospitalares } from "@/hooks/useDadosHospitalares";
 import { useToast } from "@/hooks/use-toast";
 import { collection, db, doc, getDoc, onSnapshot, setDoc } from "@/lib/firebase";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
+import PassagemPlantaoPDFLayout from "@/components/pdf/PassagemPlantaoPDFLayout";
 
 const formatarMensagemRestricaoCoorte = (restricao) => {
   if (!restricao) {
@@ -92,12 +119,28 @@ const PendenciaLista = ({ titulo, itens }) => {
   );
 };
 
+const TURNOS = [
+  { value: 'DIURNO', label: 'Diurno' },
+  { value: 'MATUTINO', label: 'Matutino' },
+  { value: 'VESPERTINO', label: 'Vespertino' },
+  { value: 'NOTURNO', label: 'Noturno' },
+];
+
 const PassagemPlantaoModal = ({ isOpen, onClose }) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [reservasExternas, setReservasExternas] = useState([]);
   const [observacoes, setObservacoes] = useState('');
   const [observacoesLoading, setObservacoesLoading] = useState(true);
+  const [isPdfInfoModalOpen, setIsPdfInfoModalOpen] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [pdfInfo, setPdfInfo] = useState(() => ({
+    enfermeiro: '',
+    medico: '',
+    data: new Date(),
+    turno: '',
+  }));
+  const pdfLayoutRef = useRef(null);
   const {
     estrutura,
     infeccoes: infeccoesDados = [],
@@ -243,6 +286,71 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
       setObservacoesLoading(false);
     }
   };
+
+  const handleGeneratePdf = useCallback(async () => {
+    if (!pdfInfo.enfermeiro.trim() || !pdfInfo.medico.trim() || !pdfInfo.turno) {
+      toast({
+        title: 'Informações incompletas',
+        description: 'Preencha todos os campos para gerar o PDF.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!(pdfInfo.data instanceof Date) || Number.isNaN(pdfInfo.data.getTime())) {
+      toast({
+        title: 'Data inválida',
+        description: 'Selecione uma data válida para o plantão.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const reportElement = pdfLayoutRef.current;
+
+    if (!reportElement) {
+      console.error('Elemento do layout do PDF não encontrado.');
+      toast({
+        title: 'Erro ao gerar PDF',
+        description: 'Não foi possível localizar o conteúdo do relatório.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setIsGeneratingPdf(true);
+      const canvas = await html2canvas(reportElement, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+
+      const pdfUrl = pdf.output('bloburl');
+      if (pdfUrl) {
+        window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        throw new Error('URL do PDF não pôde ser gerada.');
+      }
+
+      setIsPdfInfoModalOpen(false);
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+      toast({
+        title: 'Erro ao gerar PDF',
+        description: 'Ocorreu um erro ao gerar o documento. Tente novamente.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  }, [pdfInfo, toast]);
 
   const relatorioPorTipo = useMemo(() => {
     if (!estrutura) {
@@ -755,8 +863,28 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
     !centroCirurgico?.salasCirurgicas?.existe &&
     Object.values(emergencia || {}).every((bloco) => !bloco?.existe);
 
+  const pdfData = useMemo(
+    () => ({
+      uti,
+      centroCirurgico,
+      emergencia,
+      enfermaria,
+      outros,
+      observacoesGerais: observacoes,
+    }),
+    [uti, centroCirurgico, emergencia, enfermaria, outros, observacoes],
+  );
+
+  const isPdfInfoValid =
+    pdfInfo.enfermeiro.trim().length > 0 &&
+    pdfInfo.medico.trim().length > 0 &&
+    pdfInfo.turno &&
+    pdfInfo.data instanceof Date &&
+    !Number.isNaN(pdfInfo.data.getTime());
+
   return (
-    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+    <>
+      <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-5xl">
         <DialogHeader>
           <DialogTitle>Relatório de Passagem de Plantão</DialogTitle>
@@ -1171,10 +1299,138 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
           <Button variant="outline" onClick={onClose}>
             Fechar
           </Button>
-          <Button disabled>Gerar PDF</Button>
+          <Button
+            onClick={() => setIsPdfInfoModalOpen(true)}
+            disabled={loading || isGeneratingPdf}
+          >
+            {isGeneratingPdf ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <FileDown className="mr-2 h-4 w-4" />
+            )}
+            Gerar PDF
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <AlertDialog
+      open={isPdfInfoModalOpen}
+      onOpenChange={(open) => {
+        if (!isGeneratingPdf) {
+          setIsPdfInfoModalOpen(open);
+        }
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Informações para o Relatório</AlertDialogTitle>
+          <AlertDialogDescription>
+            Preencha os dados do plantão para gerar o PDF.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="enfermeiro-nome">Nome do(a) Enfermeiro(a)</Label>
+            <Input
+              id="enfermeiro-nome"
+              value={pdfInfo.enfermeiro}
+              onChange={(e) =>
+                setPdfInfo((prev) => ({ ...prev, enfermeiro: e.target.value }))
+              }
+              disabled={isGeneratingPdf}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="medico-nome">Nome do(a) Médico(a)</Label>
+            <Input
+              id="medico-nome"
+              value={pdfInfo.medico}
+              onChange={(e) =>
+                setPdfInfo((prev) => ({ ...prev, medico: e.target.value }))
+              }
+              disabled={isGeneratingPdf}
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Data do Plantão</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={`w-full justify-start ${
+                      pdfInfo.data instanceof Date ? '' : 'text-muted-foreground'
+                    }`}
+                    disabled={isGeneratingPdf}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {pdfInfo.data instanceof Date
+                      ? format(pdfInfo.data, 'dd/MM/yyyy')
+                      : 'Selecione uma data'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="p-0">
+                  <Calendar
+                    mode="single"
+                    selected={pdfInfo.data instanceof Date ? pdfInfo.data : undefined}
+                    onSelect={(date) => {
+                      if (date) {
+                        setPdfInfo((prev) => ({ ...prev, data: date }));
+                      }
+                    }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="space-y-2">
+              <Label>Turno</Label>
+              <Select
+                value={pdfInfo.turno}
+                onValueChange={(value) =>
+                  setPdfInfo((prev) => ({ ...prev, turno: value }))
+                }
+                disabled={isGeneratingPdf}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o turno" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TURNOS.map((turno) => (
+                    <SelectItem key={turno.value} value={turno.value}>
+                      {turno.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isGeneratingPdf}>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={isGeneratingPdf || !isPdfInfoValid}
+            onClick={(event) => {
+              event.preventDefault();
+              handleGeneratePdf();
+            }}
+          >
+            {isGeneratingPdf ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : null}
+            {isGeneratingPdf ? 'Gerando...' : 'Confirmar e Gerar'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
+      <div ref={pdfLayoutRef}>
+        <PassagemPlantaoPDFLayout data={pdfData} pdfInfo={pdfInfo} />
+      </div>
+    </div>
+    </>
   );
 };
 
