@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import {
   Dialog,
@@ -8,6 +8,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Accordion,
   AccordionContent,
@@ -16,7 +18,8 @@ import {
 } from "@/components/ui/accordion";
 import { Loader2 } from "lucide-react";
 import { useDadosHospitalares } from "@/hooks/useDadosHospitalares";
-import { collection, db, onSnapshot } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
+import { collection, db, doc, getDoc, onSnapshot, setDoc } from "@/lib/firebase";
 
 const formatarMensagemRestricaoCoorte = (restricao) => {
   if (!restricao) {
@@ -90,8 +93,11 @@ const PendenciaLista = ({ titulo, itens }) => {
 };
 
 const PassagemPlantaoModal = ({ isOpen, onClose }) => {
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [reservasExternas, setReservasExternas] = useState([]);
+  const [observacoes, setObservacoes] = useState('');
+  const [observacoesLoading, setObservacoesLoading] = useState(true);
   const {
     estrutura,
     infeccoes: infeccoesDados = [],
@@ -119,6 +125,38 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
       "PS DECISão CLINICA",
     ],
   };
+
+  const observacoesDocRef = useMemo(
+    () => doc(db, 'artifacts/regulafacil/public/data/configuracoes/passagemDePlantao'),
+    [],
+  );
+
+  const fetchObservacoes = useCallback(async () => {
+    setObservacoesLoading(true);
+    try {
+      const docSnap = await getDoc(observacoesDocRef);
+      if (docSnap.exists()) {
+        setObservacoes(docSnap.data().observacoesGerais || '');
+      } else {
+        setObservacoes('');
+      }
+    } catch (error) {
+      console.error('Erro ao buscar observações:', error);
+      toast({
+        title: 'Erro ao carregar anotações',
+        description: 'Não foi possível buscar as observações salvas.',
+        variant: 'destructive',
+      });
+    } finally {
+      setObservacoesLoading(false);
+    }
+  }, [observacoesDocRef, toast]);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchObservacoes();
+    }
+  }, [isOpen, fetchObservacoes]);
 
   useEffect(() => {
     let timeoutId;
@@ -154,6 +192,55 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
   const handleOpenChange = (open) => {
     if (!open) {
       onClose?.();
+    }
+  };
+
+  const handleSalvarObservacoes = async () => {
+    setObservacoesLoading(true);
+    try {
+      await setDoc(
+        observacoesDocRef,
+        { observacoesGerais: observacoes },
+        { merge: true },
+      );
+      toast({
+        title: 'Sucesso!',
+        description: 'As observações foram salvas.',
+      });
+    } catch (error) {
+      console.error('Erro ao salvar observações:', error);
+      toast({
+        title: 'Erro ao salvar',
+        description: 'Não foi possível salvar as anotações.',
+        variant: 'destructive',
+      });
+    } finally {
+      setObservacoesLoading(false);
+    }
+  };
+
+  const handleLimparObservacoes = async () => {
+    setObservacoesLoading(true);
+    try {
+      await setDoc(
+        observacoesDocRef,
+        { observacoesGerais: '' },
+        { merge: true },
+      );
+      setObservacoes('');
+      toast({
+        title: 'Anotações limpas',
+        description: 'O campo de observações foi esvaziado.',
+      });
+    } catch (error) {
+      console.error('Erro ao limpar observações:', error);
+      toast({
+        title: 'Erro ao limpar',
+        description: 'Não foi possível limpar as anotações.',
+        variant: 'destructive',
+      });
+    } finally {
+      setObservacoesLoading(false);
     }
   };
 
@@ -1045,6 +1132,39 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
               )}
             </div>
           )}
+        </div>
+
+        <div className="mt-6 pt-4 border-t">
+          <h3 className="text-lg font-semibold mb-3">Observações Gerais</h3>
+          <div className="space-y-2">
+            <Label htmlFor="observacoes-gerais">
+              Anotações da equipe de regulação:
+            </Label>
+            <Textarea
+              id="observacoes-gerais"
+              placeholder="Digite aqui anotações, pendências ou informações importantes para a próxima equipe..."
+              value={observacoes}
+              onChange={(e) => setObservacoes(e.target.value)}
+              rows={5}
+              disabled={observacoesLoading}
+            />
+          </div>
+          <div className="flex justify-end gap-2 mt-3">
+            <Button
+              variant="outline"
+              onClick={handleLimparObservacoes}
+              disabled={observacoesLoading || !observacoes}
+            >
+              Limpar
+            </Button>
+            <Button onClick={handleSalvarObservacoes} disabled={observacoesLoading}>
+              {observacoesLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                'Salvar Observações'
+              )}
+            </Button>
+          </div>
         </div>
 
         <DialogFooter className="pt-2">
