@@ -87,34 +87,28 @@ const IndicadoresGeraisPanel = ({ setores, leitos, pacientes, quartos, infeccoes
     const leitosHigienizacao = leitosComPacientes.filter(leito => leito.status === 'Higienização');
     const leitosVagos = leitosComPacientes.filter(leito => leito.status === 'Vago');
 
-    const setoresRegulaveis = setoresLista.filter(setor =>
-      ['Enfermaria', 'UTI'].includes(setor.tipoSetor)
-    );
-    const leitosVagosRegulaveis = leitosComPacientes.filter(leito =>
-      ['Vago', 'Higienização'].includes(leito.status) &&
-      setoresRegulaveis.some(setor => setor.id === leito.setorId)
-    );
-
     const setoresComLeitosDetalhados = getLeitosVagosPorSetor({
       setores: setoresLista,
       leitos: leitosLista,
       quartos: quartosLista,
       pacientes: pacientesLista,
       infeccoes: infeccoesLista,
-    });
+    }) || [];
 
-    const leitosDetalhadosPorId = new Map(
-      setoresComLeitosDetalhados
-        .flatMap(setor => setor.leitosVagos || [])
-        .map(leito => [leito.id, leito])
+    const totalLeitosRegulaveis = setoresComLeitosDetalhados.reduce(
+      (acc, setor) => acc + (setor?.leitosVagos || []).filter(leito => leito.status === 'Vago').length,
+      0
     );
 
-    const leitosRegulaveisSemIsolamento = leitosVagosRegulaveis.filter((leito) => {
-      if (leito.status !== 'Vago') return false;
-      const leitoDetalhado = leitosDetalhadosPorId.get(leito.id);
-      if (!leitoDetalhado) return false;
-      return leitoDetalhado.compatibilidade === 'Livre';
-    });
+    const totalLeitosRegulaveisSemIsolamento = setoresComLeitosDetalhados
+      .filter(setor => setor?.tipoSetor === 'Enfermaria')
+      .flatMap(setor => setor?.leitosVagos || [])
+      .filter(leito => {
+        if (leito.status !== 'Vago') return false;
+        const restricao = leito?.restricaoCoorte;
+        const hasIsolationRestriction = Array.isArray(restricao?.isolamentos) && restricao.isolamentos.length > 0;
+        return !hasIsolationRestriction;
+      }).length;
 
     const reservasExternas = leitosComPacientes.filter(leito => Boolean(leito?.reservaExterna)).length;
 
@@ -125,8 +119,8 @@ const IndicadoresGeraisPanel = ({ setores, leitos, pacientes, quartos, infeccoes
         totalLeitos: leitosComPacientes.length,
         vagosTotal: leitosVagos.length,
         vagosRegulaveis: {
-          total: leitosVagosRegulaveis.filter(leito => leito.status === 'Vago').length,
-          semIsolamento: leitosRegulaveisSemIsolamento.length
+          total: totalLeitosRegulaveis,
+          semIsolamento: totalLeitosRegulaveisSemIsolamento
         },
         ocupados: leitosOcupadosTodos.length,
         higienizacao: leitosHigienizacao.length,
