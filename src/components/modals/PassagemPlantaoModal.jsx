@@ -243,6 +243,23 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
         });
     };
 
+    const obterStatusTransferenciaExterna = (transferencia) => {
+      if (!transferencia) return 'Sem status';
+
+      const historico = transferencia.historicoStatus;
+      const ultimoStatus = Array.isArray(historico)
+        ? historico[historico.length - 1]
+        : undefined;
+
+      const textoStatus = ultimoStatus?.texto || transferencia.status;
+
+      if (typeof textoStatus === 'string' && textoStatus.trim().length > 0) {
+        return textoStatus.trim();
+      }
+
+      return 'Sem status';
+    };
+
     const uti = (estrutura['UTI'] || []).map((setor) => {
       const setorId = obterIdSetor(setor);
       const leitos = leitosPorSetorId.get(setorId) || [];
@@ -263,9 +280,14 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
         );
 
       const transferencias = pacientesSetor
-        .filter(({ paciente }) => paciente?.transferenciaExterna)
+        .filter(
+          ({ paciente }) =>
+            paciente?.pedidoTransferenciaExterna || paciente?.transferenciaExterna,
+        )
         .map(({ paciente }) => {
-          const status = paciente.transferenciaExterna.status || 'Sem status';
+          const transferencia =
+            paciente.pedidoTransferenciaExterna || paciente.transferenciaExterna;
+          const status = obterStatusTransferenciaExterna(transferencia);
           return `${paciente.nomePaciente} - Status: ${status}`;
         });
 
@@ -315,9 +337,14 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
       const pacientesSetor = pacientesInfo.filter((info) => info.setorId === setorId);
 
       const transferencias = pacientesSetor
-        .filter(({ paciente }) => paciente?.transferenciaExterna)
+        .filter(
+          ({ paciente }) =>
+            paciente?.pedidoTransferenciaExterna || paciente?.transferenciaExterna,
+        )
         .map(({ paciente }) => {
-          const status = paciente.transferenciaExterna.status || 'Sem status';
+          const transferencia =
+            paciente.pedidoTransferenciaExterna || paciente.transferenciaExterna;
+          const status = obterStatusTransferenciaExterna(transferencia);
           return `${paciente.nomePaciente} - Status: ${status}`;
         });
 
@@ -404,9 +431,14 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
         : [];
 
       const transferencias = pacientesSetor
-        .filter(({ paciente }) => paciente?.transferenciaExterna)
+        .filter(
+          ({ paciente }) =>
+            paciente?.pedidoTransferenciaExterna || paciente?.transferenciaExterna,
+        )
         .map(({ paciente }) => {
-          const status = paciente.transferenciaExterna.status || 'Sem status';
+          const transferencia =
+            paciente.pedidoTransferenciaExterna || paciente.transferenciaExterna;
+          const status = obterStatusTransferenciaExterna(transferencia);
           return `${paciente.nomePaciente} - Status: ${status}`;
         });
 
