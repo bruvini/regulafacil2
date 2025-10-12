@@ -343,16 +343,17 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
       const scaledImgHeight = imgHeight / ratio;
 
       let heightLeft = scaledImgHeight;
-      let position = 0;
+      let yOffset = 0;
 
-      pdf.addImage(imgData, 'PNG', 0, position, pdfPageWidth, scaledImgHeight);
+      pdf.addImage(imgData, 'PNG', 0, yOffset, pdfPageWidth, scaledImgHeight);
       heightLeft -= pdfPageHeight;
+      yOffset += pdfPageHeight;
 
       while (heightLeft > 0) {
-        position = -heightLeft;
         pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, pdfPageWidth, scaledImgHeight);
+        pdf.addImage(imgData, 'PNG', 0, -yOffset, pdfPageWidth, scaledImgHeight);
         heightLeft -= pdfPageHeight;
+        yOffset += pdfPageHeight;
       }
 
       window.open(pdf.output('bloburl'), '_blank');
