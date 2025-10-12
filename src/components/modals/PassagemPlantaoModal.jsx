@@ -349,7 +349,7 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
       heightLeft -= pdfPageHeight;
 
       while (heightLeft > 0) {
-        position = -heightLeft;
+        position -= pdfPageHeight;
         pdf.addPage();
         pdf.addImage(imgData, 'PNG', 0, position, pdfPageWidth, scaledImgHeight);
         heightLeft -= pdfPageHeight;
