@@ -155,7 +155,7 @@ const BoletimDiarioRelatorioModal = ({
   const pedidosUti = useMemo(() => {
     const alvoSalaEmergencia = normalizarTexto('SALA DE EMERGENCIA');
     const alvoAvc = normalizarTexto('UNID. AVC AGUDO');
-    const alvoCentroCirurgico = normalizarTexto('CENTRO CIRÚRGICO');
+    const alvoCentroCirurgico = normalizarTexto('CC - SALAS CIRURGICAS');
 
     return leitos.reduce((acc, leito) => {
       if (!leito?.paciente?.pedidoUTI) {
@@ -177,8 +177,7 @@ const BoletimDiarioRelatorioModal = ({
     }, { salaEmergencia: 0, unidAvc: 0, centroCirurgico: 0 });
   }, [leitos]);
 
-  const pcpEnfermariasOcupados = useMemo(() => leitos.filter((leito) =>
-    normalizarTexto(leito?.tipoSetor) === normalizarTexto('Enfermaria') &&
+  const leitosPcpOcupados = useMemo(() => leitos.filter((leito) =>
     leito?.status === 'Ocupado' &&
     Boolean(leito?.isPCP)
   ).length, [leitos]);
@@ -220,7 +219,6 @@ const BoletimDiarioRelatorioModal = ({
 
     const linhas = [
       '*Boletim Diário Consolidado*',
-      '',
       `*${dataGeracao}*`,
       `*Status PCP: ${statusPcp.nivel} ${statusPcp.emoji}*`,
       '',
@@ -261,14 +259,9 @@ const BoletimDiarioRelatorioModal = ({
 
     linhas.push(
       `• Pacientes aguardando UTI: ${pedidosUti.centroCirurgico}`,
-      `• CC - Recuperação (ocupados): ${contagemOcupacao['CC - RECUPERAÇÃO'] || 0}`,
       `• CC - Recuperação (aguardando leito): ${pacientesCcRecuperacaoSemRegulacao}`,
       '',
-      '*Indicadores em Tempo Real*',
-      `• PCP em Enfermarias (Ocupados): ${pcpEnfermariasOcupados}`,
-      `• PCP (PS) Internados: ${totalPcpInternados}`,
-      `• Aguardando UTI - Sala de Emergência: ${pedidosUti.salaEmergencia}`,
-      `• Aguardando UTI - UNID. AVC Agudo: ${pedidosUti.unidAvc}`,
+      `• Leitos PCP ocupados: ${leitosPcpOcupados}`,
       '',
       '*Previsões de Alta UTI*'
     );
@@ -278,7 +271,7 @@ const BoletimDiarioRelatorioModal = ({
     });
 
     return linhas.join('\n');
-  }, [contagemOcupacao, manualData, pedidosUti, pacientesCcRecuperacaoSemRegulacao, previsoesAlta, pcpEnfermariasOcupados, statusPcp, totalPcpInternados]);
+  }, [contagemOcupacao, manualData, pedidosUti, pacientesCcRecuperacaoSemRegulacao, previsoesAlta, leitosPcpOcupados, statusPcp, totalPcpInternados]);
 
   const handleCopiarWhatsapp = useCallback(async () => {
     try {
@@ -377,23 +370,10 @@ const BoletimDiarioRelatorioModal = ({
             </section>
 
             <section className="space-y-2">
-              <h4 className="text-base font-semibold">Indicadores em Tempo Real</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="rounded-lg border p-4 space-y-1">
-                  <p className="font-medium">PCP em Enfermarias (Ocupados)</p>
-                  <p><strong>{pcpEnfermariasOcupados}</strong></p>
-                </div>
-                <div className="rounded-lg border p-4 space-y-1">
-                  <p className="font-medium">PCP (PS) Internados</p>
-                  <p><strong>{totalPcpInternados}</strong></p>
-                </div>
-                <div className="rounded-lg border p-4 space-y-1">
-                  <p className="font-medium">Aguardando UTI - Sala de Emergência</p>
-                  <p><strong>{pedidosUti.salaEmergencia}</strong></p>
-                </div>
-                <div className="rounded-lg border p-4 space-y-1">
-                  <p className="font-medium">Aguardando UTI - UNID. AVC Agudo</p>
-                  <p><strong>{pedidosUti.unidAvc}</strong></p>
+                  <p className="font-medium">Leitos PCP ocupados</p>
+                  <p><strong>{leitosPcpOcupados}</strong></p>
                 </div>
               </div>
             </section>
