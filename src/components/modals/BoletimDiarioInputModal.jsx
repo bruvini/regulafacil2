@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,12 @@ const initialFormState = {
 
 const BoletimDiarioInputModal = ({ isOpen, onClose, onSubmit }) => {
   const [formData, setFormData] = useState(initialFormState);
+
+  useEffect(() => {
+    if (isOpen) {
+      setFormData({ ...initialFormState });
+    }
+  }, [isOpen]);
 
   const handleNumberChange = (field) => (event) => {
     const { value } = event.target;

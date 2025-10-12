@@ -1,4 +1,5 @@
 import React, { useMemo, useCallback } from 'react';
+import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -34,7 +35,8 @@ const extrairLeitos = (dadosEstruturados) => {
         lista.push({
           ...leito,
           nomeSetor: leito?.nomeSetor || setor?.nomeSetor || '',
-          siglaSetor: leito?.siglaSetor || setor?.siglaSetor || ''
+          siglaSetor: leito?.siglaSetor || setor?.siglaSetor || '',
+          tipoSetor: leito?.tipoSetor || setor?.tipoSetor || ''
         });
       });
     });
@@ -97,6 +99,22 @@ const agruparPrevisoesAlta = (leitos) => {
   return grupos;
 };
 
+const determinarNivelPCP = (total) => {
+  if (total >= 23 && total <= 28) {
+    return { nivel: 'Nível 1', emoji: '🟡' };
+  }
+
+  if (total >= 29 && total <= 32) {
+    return { nivel: 'Nível 2', emoji: '🟠' };
+  }
+
+  if (total > 32) {
+    return { nivel: 'Nível 3', emoji: '🔴' };
+  }
+
+  return { nivel: 'Rotina Diária', emoji: '🟢' };
+};
+
 const BoletimDiarioRelatorioModal = ({
   isOpen,
   onClose,
@@ -137,6 +155,7 @@ const BoletimDiarioRelatorioModal = ({
   const pedidosUti = useMemo(() => {
     const alvoSalaEmergencia = normalizarTexto('SALA DE EMERGENCIA');
     const alvoAvc = normalizarTexto('UNID. AVC AGUDO');
+    const alvoCentroCirurgico = normalizarTexto('CENTRO CIRÚRGICO');
 
     return leitos.reduce((acc, leito) => {
       if (!leito?.paciente?.pedidoUTI) {
@@ -150,10 +169,19 @@ const BoletimDiarioRelatorioModal = ({
       if (setor === alvoAvc) {
         acc.unidAvc += 1;
       }
+      if (setor === alvoCentroCirurgico) {
+        acc.centroCirurgico += 1;
+      }
 
       return acc;
-    }, { salaEmergencia: 0, unidAvc: 0 });
+    }, { salaEmergencia: 0, unidAvc: 0, centroCirurgico: 0 });
   }, [leitos]);
+
+  const pcpEnfermariasOcupados = useMemo(() => leitos.filter((leito) =>
+    normalizarTexto(leito?.tipoSetor) === normalizarTexto('Enfermaria') &&
+    leito?.status === 'Ocupado' &&
+    Boolean(leito?.isPCP)
+  ).length, [leitos]);
 
   const pacientesCcRecuperacaoSemRegulacao = useMemo(() => {
     const alvo = normalizarTexto('CC - RECUPERAÇÃO');
@@ -166,7 +194,7 @@ const BoletimDiarioRelatorioModal = ({
 
   const previsoesAlta = useMemo(() => agruparPrevisoesAlta(leitos), [leitos]);
 
-  const manualData = {
+  const manualData = useMemo(() => ({
     psDecisaoClinica: dadosManuais?.psDecisaoClinica ?? 0,
     psDecisaoCirurgica: dadosManuais?.psDecisaoCirurgica ?? 0,
     psDecisaoCirurgicaNeuro: dadosManuais?.psDecisaoCirurgicaNeuro ?? 0,
@@ -178,21 +206,49 @@ const BoletimDiarioRelatorioModal = ({
     centroCirurgicoSalasAtivas: dadosManuais?.centroCirurgicoSalasAtivas ?? 0,
     centroCirurgicoSalasBloqueadas: dadosManuais?.centroCirurgicoSalasBloqueadas ?? 0,
     centroCirurgicoMotivoBloqueio: dadosManuais?.centroCirurgicoMotivoBloqueio || '',
-  };
+  }), [dadosManuais]);
+
+  const totalPcpInternados = useMemo(() => (
+    (contagemOcupacao['PS DECISÃO CLINICA'] || 0) +
+    (contagemOcupacao['PS DECISÃO CIRURGICA'] || 0)
+  ), [contagemOcupacao]);
+
+  const statusPcp = useMemo(() => determinarNivelPCP(totalPcpInternados), [totalPcpInternados]);
 
   const textoWhatsapp = useMemo(() => {
+    const dataGeracao = format(new Date(), 'dd/MM/yyyy HH:mm');
+
     const linhas = [
       '*Boletim Diário Consolidado*',
       '',
+      `*${dataGeracao}*`,
+      `*Status PCP: ${statusPcp.nivel} ${statusPcp.emoji}*`,
+      '',
       '*Setores de Emergência*',
-      `• PS Decisão Clínica: ${manualData.psDecisaoClinica} paciente(s) (ocupados: ${contagemOcupacao['PS DECISÃO CLINICA'] || 0})`,
-      `• PS Decisão Cirúrgica: ${manualData.psDecisaoCirurgica} paciente(s) (ocupados: ${contagemOcupacao['PS DECISÃO CIRURGICA'] || 0})`,
-      `   _Neuroclínica:_ ${manualData.psDecisaoCirurgicaNeuro} paciente(s)`,
-      `• Sala Laranja: ${manualData.salaLaranja} paciente(s) (ocupados: ${contagemOcupacao['SALA LARANJA'] || 0})`,
-      `• Sala de Emergência: ${manualData.salaEmergencia} paciente(s) (ocupados: ${contagemOcupacao['SALA DE EMERGENCIA'] || 0})`,
-      `   _Em VM:_ ${manualData.salaEmergenciaVm} paciente(s)`,
-      `• UNID. AVC Agudo: ${manualData.unidAvcAgudo} paciente(s) (ocupados: ${contagemOcupacao['UNID. AVC AGUDO'] || 0})`,
-      `   _Em VM:_ ${manualData.unidAvcAgudoVm} paciente(s)`,
+      '• *PS Decisão Clínica:*',
+      `   - _Internados:_ ${contagemOcupacao['PS DECISÃO CLINICA'] || 0}`,
+      `   - _Observados:_ ${manualData.psDecisaoClinica}`,
+      '',
+      '• *PS Decisão Cirúrgica:*',
+      `   - _Internados:_ ${contagemOcupacao['PS DECISÃO CIRURGICA'] || 0}`,
+      `   - _Observados:_ ${manualData.psDecisaoCirurgica}`,
+      `   - _Observados (Neuroclínica):_ ${manualData.psDecisaoCirurgicaNeuro}`,
+      '',
+      '• *Sala Laranja:*',
+      `   - _Internados:_ ${contagemOcupacao['SALA LARANJA'] || 0}`,
+      `   - _Observados:_ ${manualData.salaLaranja}`,
+      '',
+      '• *Sala de Emergência:*',
+      `   - _Internados:_ ${contagemOcupacao['SALA DE EMERGENCIA'] || 0}`,
+      `   - _Observados:_ ${manualData.salaEmergencia}`,
+      `   - _Em VM:_ ${manualData.salaEmergenciaVm}`,
+      `   - _Aguardando UTI:_ ${pedidosUti.salaEmergencia}`,
+      '',
+      '• *UNID. AVC Agudo:*',
+      `   - _Internados:_ ${contagemOcupacao['UNID. AVC AGUDO'] || 0}`,
+      `   - _Observados:_ ${manualData.unidAvcAgudo}`,
+      `   - _Em VM:_ ${manualData.unidAvcAgudoVm}`,
+      `   - _Aguardando UTI:_ ${pedidosUti.unidAvc}`,
       '',
       '*Centro Cirúrgico*',
       `• Salas ativas: ${manualData.centroCirurgicoSalasAtivas}`,
@@ -200,17 +256,19 @@ const BoletimDiarioRelatorioModal = ({
     ];
 
     if (manualData.centroCirurgicoSalasBloqueadas > 0 && manualData.centroCirurgicoMotivoBloqueio) {
-      linhas.push(`   _Motivo:_ ${manualData.centroCirurgicoMotivoBloqueio}`);
+      linhas.push(`• Motivo: ${manualData.centroCirurgicoMotivoBloqueio}`);
     }
 
     linhas.push(
+      `• Pacientes aguardando UTI: ${pedidosUti.centroCirurgico}`,
+      `• CC - Recuperação (ocupados): ${contagemOcupacao['CC - RECUPERAÇÃO'] || 0}`,
+      `• CC - Recuperação (aguardando leito): ${pacientesCcRecuperacaoSemRegulacao}`,
       '',
       '*Indicadores em Tempo Real*',
-      `• PCP na Sala Laranja: ${pcpSalaLaranja}`,
-      `• Pedido de UTI - Sala de Emergência: ${pedidosUti.salaEmergencia}`,
-      `• Pedido de UTI - UNID. AVC Agudo: ${pedidosUti.unidAvc}`,
-      `• Pacientes em CC - Recuperação sem regulação: ${pacientesCcRecuperacaoSemRegulacao}`,
-      `• CC - Recuperação (ocupados): ${contagemOcupacao['CC - RECUPERAÇÃO'] || 0}`,
+      `• PCP em Enfermarias (Ocupados): ${pcpEnfermariasOcupados}`,
+      `• PCP (PS) Internados: ${totalPcpInternados}`,
+      `• Aguardando UTI - Sala de Emergência: ${pedidosUti.salaEmergencia}`,
+      `• Aguardando UTI - UNID. AVC Agudo: ${pedidosUti.unidAvc}`,
       '',
       '*Previsões de Alta UTI*'
     );
@@ -220,7 +278,7 @@ const BoletimDiarioRelatorioModal = ({
     });
 
     return linhas.join('\n');
-  }, [contagemOcupacao, manualData, pcpSalaLaranja, pedidosUti, pacientesCcRecuperacaoSemRegulacao, previsoesAlta]);
+  }, [contagemOcupacao, manualData, pedidosUti, pacientesCcRecuperacaoSemRegulacao, previsoesAlta, pcpEnfermariasOcupados, statusPcp, totalPcpInternados]);
 
   const handleCopiarWhatsapp = useCallback(async () => {
     try {
@@ -260,34 +318,34 @@ const BoletimDiarioRelatorioModal = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="rounded-lg border p-4 space-y-1">
                   <p className="font-medium">PS Decisão Clínica</p>
-                  <p>Manual: <strong>{manualData.psDecisaoClinica}</strong></p>
+                  <p>Observados: <strong>{manualData.psDecisaoClinica}</strong></p>
                   <p>Ocupados: <strong>{contagemOcupacao['PS DECISÃO CLINICA'] || 0}</strong></p>
                 </div>
                 <div className="rounded-lg border p-4 space-y-1">
                   <p className="font-medium">PS Decisão Cirúrgica</p>
-                  <p>Manual: <strong>{manualData.psDecisaoCirurgica}</strong></p>
+                  <p>Observados: <strong>{manualData.psDecisaoCirurgica}</strong></p>
                   <p>Ocupados: <strong>{contagemOcupacao['PS DECISÃO CIRURGICA'] || 0}</strong></p>
                   <p className="text-muted-foreground text-xs">Neuroclínica: {manualData.psDecisaoCirurgicaNeuro}</p>
                 </div>
                 <div className="rounded-lg border p-4 space-y-1">
                   <p className="font-medium">Sala Laranja</p>
-                  <p>Manual: <strong>{manualData.salaLaranja}</strong></p>
+                  <p>Observados: <strong>{manualData.salaLaranja}</strong></p>
                   <p>Ocupados: <strong>{contagemOcupacao['SALA LARANJA'] || 0}</strong></p>
                   <p className="text-muted-foreground text-xs">Leitos PCP: {pcpSalaLaranja}</p>
                 </div>
                 <div className="rounded-lg border p-4 space-y-1">
                   <p className="font-medium">Sala de Emergência</p>
-                  <p>Manual: <strong>{manualData.salaEmergencia}</strong></p>
+                  <p>Observados: <strong>{manualData.salaEmergencia}</strong></p>
                   <p>Ocupados: <strong>{contagemOcupacao['SALA DE EMERGENCIA'] || 0}</strong></p>
                   <p className="text-muted-foreground text-xs">Em VM: {manualData.salaEmergenciaVm}</p>
-                  <p className="text-muted-foreground text-xs">Pedidos de UTI: {pedidosUti.salaEmergencia}</p>
+                  <p className="text-muted-foreground text-xs">Aguardando UTI: {pedidosUti.salaEmergencia}</p>
                 </div>
                 <div className="rounded-lg border p-4 space-y-1">
                   <p className="font-medium">UNID. AVC Agudo</p>
-                  <p>Manual: <strong>{manualData.unidAvcAgudo}</strong></p>
+                  <p>Observados: <strong>{manualData.unidAvcAgudo}</strong></p>
                   <p>Ocupados: <strong>{contagemOcupacao['UNID. AVC AGUDO'] || 0}</strong></p>
                   <p className="text-muted-foreground text-xs">Em VM: {manualData.unidAvcAgudoVm}</p>
-                  <p className="text-muted-foreground text-xs">Pedidos de UTI: {pedidosUti.unidAvc}</p>
+                  <p className="text-muted-foreground text-xs">Aguardando UTI: {pedidosUti.unidAvc}</p>
                 </div>
               </div>
             </section>
@@ -309,7 +367,33 @@ const BoletimDiarioRelatorioModal = ({
                 <div className="rounded-lg border p-4 space-y-1">
                   <p className="font-medium">CC - Recuperação</p>
                   <p>Ocupados: <strong>{contagemOcupacao['CC - RECUPERAÇÃO'] || 0}</strong></p>
-                  <p className="text-muted-foreground text-xs">Sem regulação: {pacientesCcRecuperacaoSemRegulacao}</p>
+                  <p className="text-muted-foreground text-xs">Aguardando leito: {pacientesCcRecuperacaoSemRegulacao}</p>
+                </div>
+                <div className="rounded-lg border p-4 space-y-1">
+                  <p className="font-medium">Pacientes aguardando UTI</p>
+                  <p><strong>{pedidosUti.centroCirurgico}</strong></p>
+                </div>
+              </div>
+            </section>
+
+            <section className="space-y-2">
+              <h4 className="text-base font-semibold">Indicadores em Tempo Real</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-lg border p-4 space-y-1">
+                  <p className="font-medium">PCP em Enfermarias (Ocupados)</p>
+                  <p><strong>{pcpEnfermariasOcupados}</strong></p>
+                </div>
+                <div className="rounded-lg border p-4 space-y-1">
+                  <p className="font-medium">PCP (PS) Internados</p>
+                  <p><strong>{totalPcpInternados}</strong></p>
+                </div>
+                <div className="rounded-lg border p-4 space-y-1">
+                  <p className="font-medium">Aguardando UTI - Sala de Emergência</p>
+                  <p><strong>{pedidosUti.salaEmergencia}</strong></p>
+                </div>
+                <div className="rounded-lg border p-4 space-y-1">
+                  <p className="font-medium">Aguardando UTI - UNID. AVC Agudo</p>
+                  <p><strong>{pedidosUti.unidAvc}</strong></p>
                 </div>
               </div>
             </section>
