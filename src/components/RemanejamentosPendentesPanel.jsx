@@ -362,8 +362,8 @@ const RemanejamentosPendentesPanel = ({ filtros, sortConfig }) => {
 
   // Ação para iniciar regulação
   const handleRemanejarPaciente = (paciente) => {
-    const motivoRemanejamento = paciente?.pedidoRemanejamento?.motivo;
-    const modoRemanejamento = motivoRemanejamento === 'Contra Fluxo' ? 'contraFluxo' : null;
+    const tipoRemanejamento = paciente?.pedidoRemanejamento?.tipo;
+    const modoRemanejamento = tipoRemanejamento === 'Contra Fluxo' ? 'contraFluxo' : null;
 
     setModalRegular({ isOpen: true, paciente, modoRemanejamento });
   };
