@@ -101,7 +101,7 @@ const IndicadoresGeraisPanel = ({ setores, leitos, pacientes, quartos, infeccoes
     );
 
     const totalLeitosRegulaveisSemIsolamento = setoresComLeitosDetalhados
-      .filter(setor => setor?.tipoSetor === 'Enfermaria')
+      .filter(setor => ['Enfermaria', 'UTI'].includes(setor?.tipoSetor))
       .flatMap(setor => setor?.leitosVagos || [])
       .filter(leito => {
         if (leito.status !== 'Vago') return false;
