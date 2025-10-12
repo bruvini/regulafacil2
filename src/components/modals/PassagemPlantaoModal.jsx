@@ -325,12 +325,52 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
         backgroundColor: '#ffffff',
       });
 
-      const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      const pdfHeight = pdf.internal.pageSize.getHeight();
 
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      const canvasWidth = canvas.width;
+      const canvasHeight = canvas.height;
+      const scaleFactor = pdfWidth / canvasWidth;
+      const pageHeightPx = pdfHeight / scaleFactor;
+      const pageCount = Math.ceil(canvasHeight / pageHeightPx);
+
+      for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+        const pageCanvas = document.createElement('canvas');
+        const pageContext = pageCanvas.getContext('2d');
+
+        if (!pageContext) {
+          throw new Error('Contexto do canvas não pôde ser criado.');
+        }
+
+        const startY = pageIndex * pageHeightPx;
+        const remainingHeight = canvasHeight - startY;
+        const pageCanvasHeight = Math.min(pageHeightPx, remainingHeight);
+
+        pageCanvas.width = canvasWidth;
+        pageCanvas.height = pageCanvasHeight;
+
+        pageContext.drawImage(
+          canvas,
+          0,
+          startY,
+          canvasWidth,
+          pageCanvasHeight,
+          0,
+          0,
+          canvasWidth,
+          pageCanvasHeight,
+        );
+
+        const pageImgData = pageCanvas.toDataURL('image/png');
+        const renderedPageHeight = pageCanvasHeight * scaleFactor;
+
+        if (pageIndex > 0) {
+          pdf.addPage();
+        }
+
+        pdf.addImage(pageImgData, 'PNG', 0, 0, pdfWidth, renderedPageHeight);
+      }
 
       const pdfUrl = pdf.output('bloburl');
       if (pdfUrl) {
