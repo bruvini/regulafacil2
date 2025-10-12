@@ -48,20 +48,22 @@ const RegularPacienteModal = ({
   }, [pacientesEnriquecidos, pacienteAlvo]);
 
   // 3. CALCULA OS LEITOS COMPATÍVEIS USANDO O MOTOR DE REGRAS PURO
+  const isContraFluxo = modoRemanejamento === 'contraFluxo';
   const leitosCompativeis = useMemo(() => {
     if (loading || !pacienteEnriquecido) return [];
+    const modoDeBusca = isContraFluxo ? 'emergencia' : modo;
     const opcoesCompatibilidade =
-      modoRemanejamento === 'contraFluxo'
+      isContraFluxo
         ? { filtroSetoresEspecial: SETORES_CRITICOS_CONTRA_FLUXO }
         : undefined;
 
     return encontrarLeitosCompativeis(
       pacienteEnriquecido,
       { estrutura },
-      modo,
+      modoDeBusca,
       opcoesCompatibilidade,
     );
-  }, [pacienteEnriquecido, estrutura, modo, loading, modoRemanejamento]);
+  }, [pacienteEnriquecido, estrutura, modo, loading, modoRemanejamento, isContraFluxo]);
 
   const setoresMap = useMemo(() => new Map(setores.map(setor => [setor.id, setor])), [setores]);
 

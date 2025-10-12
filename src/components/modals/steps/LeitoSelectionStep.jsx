@@ -66,18 +66,21 @@ const LeitoSelectionStep = ({
     return mapa;
   }, [leitos, pacientesPorLeito]);
 
+  const isContraFluxo = modoRemanejamento === 'contraFluxo';
+
   const leitosCompativeis = useMemo(() => {
     if (loading || !dadosPaciente) return [];
 
-    const opcoesCompatibilidade =
-      modoRemanejamento === 'contraFluxo'
-        ? { filtroSetoresEspecial: SETORES_CRITICOS_CONTRA_FLUXO }
-        : undefined;
+    const modoDeBusca = isContraFluxo ? 'emergencia' : modo;
+
+    const opcoesCompatibilidade = isContraFluxo
+      ? { filtroSetoresEspecial: SETORES_CRITICOS_CONTRA_FLUXO }
+      : undefined;
 
     const base = encontrarLeitosCompativeis(
       dadosPaciente,
       { estrutura: hospitalData?.estrutura || {} },
-      modo,
+      modoDeBusca,
       opcoesCompatibilidade,
     );
 
@@ -99,6 +102,7 @@ const LeitoSelectionStep = ({
     excludedLeitoIds,
     setoresMap,
     modoRemanejamento,
+    isContraFluxo,
   ]);
 
   const gruposLeitos = useMemo(() => {
@@ -190,6 +194,11 @@ const LeitoSelectionStep = ({
         <p className="text-xs text-muted-foreground">
           Escolha um novo leito para reservar ao paciente. Apenas leitos compatíveis e vagos são exibidos.
         </p>
+        {isContraFluxo && (
+          <p className="text-xs text-muted-foreground">
+            Remanejamento contra fluxo: exibindo somente leitos vagos ou em higienização nos setores de emergência autorizados.
+          </p>
+        )}
       </div>
       <Input
         value={searchTerm}

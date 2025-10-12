@@ -143,7 +143,12 @@ const SETORES_PS_ABERTOS = new Set([
 
 const normalizarTexto = (valor) => (valor || '').toString().trim();
 
-const textoUpper = (valor) => normalizarTexto(valor).toUpperCase();
+const textoUpper = (valor) => removerAcentos(normalizarTexto(valor)).toUpperCase();
+
+const normalizarParaComparacao = (texto) =>
+  removerAcentos(String(texto || ''))
+    .trim()
+    .toLowerCase();
 
 const conjuntosIguais = (setA, setB) => {
   if (setA.size !== setB.size) return false;
@@ -342,10 +347,10 @@ export const encontrarLeitosCompativeis = (
 
   const leitosCompativeis = [];
 
-  const statusLivre = new Set(['Vago', 'Higienização']);
+  const statusLivre = new Set(['vago', 'higienizacao']);
 
   const avaliarLeito = (leito, leitosDoQuarto = [leito], contextoLocal = {}) => {
-    if (!statusLivre.has(leito.status)) return;
+    if (!statusLivre.has(normalizarParaComparacao(leito.status))) return;
 
     if (modoContraFluxoAtivo) {
       leitosCompativeis.push(leito);
@@ -414,7 +419,9 @@ export const encontrarLeitosCompativeis = (
     }
 
     const outrosLeitosDoQuarto = (leitosDoQuarto || []).filter((outro) => outro?.id !== leito.id);
-    const todosLivres = outrosLeitosDoQuarto.every((outro) => statusLivre.has(outro?.status) || !outro?.paciente);
+    const todosLivres = outrosLeitosDoQuarto.every((outro) =>
+      statusLivre.has(normalizarParaComparacao(outro?.status)) || !outro?.paciente,
+    );
 
     if (todosLivres) {
       leitosCompativeis.push(leito);
