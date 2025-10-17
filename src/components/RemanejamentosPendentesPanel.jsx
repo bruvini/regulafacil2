@@ -368,73 +368,58 @@ const RemanejamentosPendentesPanel = ({ filtros, sortConfig }) => {
     setModalRegular({ isOpen: true, paciente, modoRemanejamento });
   };
 
-  // Componente do card do paciente
-  const PacienteRemanejamentoCard = ({ paciente }) => {
+  // Componente de linha do paciente
+  const PacienteRemanejamentoRow = ({ paciente }) => {
     const localizacao = obterLocalizacaoAtual(paciente);
     const tempoSolicitacao = calcularTempoSolicitacao(paciente.pedidoRemanejamento.timestamp);
     const isCancelavel = paciente.pedidoRemanejamento?.tipo !== 'Risco de Contaminação Cruzada';
 
     return (
-      <Card className="p-4 hover:shadow-md transition-shadow border border-muted">
-        <div className="space-y-3">
-          {/* Nome do Paciente */}
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <h4 className="font-semibold text-sm leading-tight truncate">
-                {paciente.nomePaciente}
-              </h4>
-            </div>
-            <Badge variant="outline" className="text-xs font-medium bg-blue-100 text-blue-800 border-blue-300">
-              <ArrowRightLeft className="h-3 w-3 mr-1" />
+      <div className="flex flex-col gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-muted/50 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <div className="flex-1 space-y-1">
+          <div className="flex items-center gap-2">
+            <p className="font-semibold text-sm truncate">{paciente.nomePaciente}</p>
+            <Badge variant="outline" className="flex items-center gap-1 text-[11px] font-medium">
+              <ArrowRightLeft className="h-3 w-3" />
               Pendente
             </Badge>
           </div>
-
-          {/* Localização Atual */}
-          <div className="text-xs text-muted-foreground flex items-center gap-1">
-            <MapPin className="h-3 w-3" />
-            <span className="font-medium">Localização Atual: </span>
-            <span className="font-semibold">{localizacao.setor} - {localizacao.leito}</span>
-          </div>
-
-          {/* Tempo de Solicitação */}
-          <div className="text-xs text-muted-foreground flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            <span className="font-medium">Solicitado: </span>
-            <span>{tempoSolicitacao}</span>
-          </div>
-
-          {/* Justificativa */}
-          {(paciente.pedidoRemanejamento?.detalhe || paciente.pedidoRemanejamento?.descricao) && (
-            <div className="text-xs text-muted-foreground">
-              <span className="font-medium">Justificativa: </span>
-              <span className="italic">
-                {paciente.pedidoRemanejamento?.detalhe || paciente.pedidoRemanejamento?.descricao}
-              </span>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <MapPin className="h-3 w-3" />
+              <span>{localizacao.setor} - {localizacao.leito}</span>
             </div>
-          )}
-
-          {/* Ações */}
-          <div className="flex justify-end gap-2 pt-2 border-t">
-            {isCancelavel && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setModalCancelar({ isOpen: true, paciente })}
-              >
-                Cancelar
-              </Button>
-            )}
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() => handleRemanejarPaciente(paciente)}
-            >
-              Remanejar Paciente
-            </Button>
+            <div className="flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              <span>Solicitado {tempoSolicitacao}</span>
+            </div>
           </div>
+          {(paciente.pedidoRemanejamento?.detalhe || paciente.pedidoRemanejamento?.descricao) && (
+            <p className="text-xs italic text-muted-foreground truncate">
+              Justificativa: {paciente.pedidoRemanejamento?.detalhe || paciente.pedidoRemanejamento?.descricao}
+            </p>
+          )}
         </div>
-      </Card>
+
+        <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:justify-end">
+          {isCancelavel && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setModalCancelar({ isOpen: true, paciente })}
+            >
+              Cancelar
+            </Button>
+          )}
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => handleRemanejarPaciente(paciente)}
+          >
+            Remanejar
+          </Button>
+        </div>
+      </div>
     );
   };
 
@@ -490,9 +475,9 @@ const RemanejamentosPendentesPanel = ({ filtros, sortConfig }) => {
                     </div>
                   </AccordionTrigger>
                   <AccordionContent>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2">
+                    <div className="space-y-2 pt-2">
                       {pacientesGrupo.map((paciente) => (
-                        <PacienteRemanejamentoCard key={paciente.id} paciente={paciente} />
+                        <PacienteRemanejamentoRow key={paciente.id} paciente={paciente} />
                       ))}
                     </div>
                   </AccordionContent>
