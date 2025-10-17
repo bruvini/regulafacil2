@@ -4,8 +4,8 @@ import { format } from 'date-fns';
 const styles = {
   page: {
     width: '210mm',
-    minHeight: '297mm',
-    padding: '20mm',
+    minHeight: '296mm',
+    padding: '15mm',
     backgroundColor: '#ffffff',
     color: '#000000',
     fontFamily: 'Arial, Helvetica, sans-serif',
@@ -26,6 +26,10 @@ const styles = {
   },
   section: {
     marginBottom: '10mm',
+  },
+  itemContainer: {
+    pageBreakInside: 'avoid',
+    marginBottom: '8px',
   },
   sectionTitle: {
     fontWeight: 'bold',
@@ -61,10 +65,18 @@ const styles = {
   },
   listItem: {
     marginBottom: '1mm',
+    pageBreakInside: 'avoid',
   },
   emptyText: {
     fontStyle: 'italic',
     color: '#333333',
+  },
+  observacoesText: {
+    whiteSpace: 'pre-wrap',
+    fontSize: '12px',
+    color: '#333333',
+    lineHeight: 1.5,
+    margin: 0,
   },
 };
 
@@ -81,7 +93,7 @@ const renderList = (label, items) => {
   }
 
   return (
-    <div style={styles.listBlock}>
+    <div style={{ ...styles.listBlock, ...styles.itemContainer }}>
       <p style={styles.listTitle}>{label}</p>
       <ul style={styles.list}>
         {items.map((item, index) => (
@@ -103,6 +115,7 @@ const PassagemPlantaoPDFLayout = ({ data, pdfInfo }) => {
     uti = [],
     centroCirurgico = {},
     emergencia = {},
+    emergenciaOrdenada = [],
     enfermaria = [],
     outros = [],
     observacoesGerais = '',
@@ -117,13 +130,16 @@ const PassagemPlantaoPDFLayout = ({ data, pdfInfo }) => {
     centroCirurgico?.salasCirurgicas,
   ].filter(Boolean);
 
-  const emergenciaBlocos = [
+  const emergenciaFallback = [
     emergencia?.avcAgudo,
     emergencia?.salaEmergencia,
     emergencia?.salaLaranja,
-    emergencia?.psDecisaoCirurgica,
     emergencia?.psDecisaoClinica,
+    emergencia?.psDecisaoCirurgica,
   ].filter(Boolean);
+  const emergenciaBlocos = Array.isArray(emergenciaOrdenada) && emergenciaOrdenada.length > 0
+    ? emergenciaOrdenada
+    : emergenciaFallback;
 
   return (
     <div style={styles.page}>
@@ -142,10 +158,75 @@ const PassagemPlantaoPDFLayout = ({ data, pdfInfo }) => {
       </div>
 
       <div style={styles.section}>
+        <h2 style={styles.sectionTitle}>Enfermaria</h2>
+        {enfermaria.length === 0 &&
+          renderEmptyMessage('Nenhum setor de enfermaria disponível.')}
+        {enfermaria.map((setor) => {
+          const dados = setor?.dadosPlantao;
+          const todasListas = dados
+            ? [
+                dados.isolamentos,
+                dados.leitosRegulados,
+                dados.pedidosUTI,
+                dados.transferencias,
+                dados.provaveisAltas,
+                dados.altasNoLeito,
+                dados.reservasExternas,
+                dados.observacoes,
+                dados.leitosVagos,
+                dados.listaEsperaOncologia,
+              ]
+            : [];
+
+          return (
+            <div
+              key={setor.id || setor.nomeSetor}
+              style={{ ...styles.subSection, ...styles.itemContainer }}
+            >
+              <h3 style={styles.subSectionTitle}>{setor.nomeSetor}</h3>
+              {dados ? (
+                <>
+                  {renderList('Isolamentos', dados.isolamentos)}
+                  {renderList('Leitos Regulados (Reservados)', dados.leitosRegulados)}
+                  {renderList('Pedidos de UTI', dados.pedidosUTI)}
+                  {renderList('Transferências Externas', dados.transferencias)}
+                  {renderList('Prováveis Altas', dados.provaveisAltas)}
+                  {renderList('Altas no Leito', dados.altasNoLeito)}
+                  {renderList('Reservas Externas', dados.reservasExternas)}
+                  {renderList('Observações Relevantes', dados.observacoes)}
+                  {renderList(
+                    'Leitos Vagos',
+                    dados.leitosVagos?.map((leito) => {
+                      const compat =
+                        leito.compatibilidade && leito.compatibilidade !== 'Livre'
+                          ? ` - ${leito.compatibilidade}`
+                          : '';
+                      return `${leito.codigoLeito} (${leito.status})${compat}`;
+                    }),
+                  )}
+                  {renderList(
+                    'Lista de Espera (Oncologia)',
+                    dados.listaEsperaOncologia?.map((item) => item.texto),
+                  )}
+                  {todasListas.every((lista) => !lista || lista.length === 0) &&
+                    renderEmptyMessage('Nenhuma pendência registrada para este setor.')}
+                </>
+              ) : (
+                renderEmptyMessage('Dados não disponíveis para este setor.')
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={styles.section}>
         <h2 style={styles.sectionTitle}>Unidades de Terapia Intensiva (UTI)</h2>
         {uti.length === 0 && renderEmptyMessage('Nenhum registro disponível para UTIs.')}
         {uti.map((setor) => (
-          <div key={setor.id || setor.nome} style={styles.subSection}>
+          <div
+            key={setor.id || setor.nome}
+            style={{ ...styles.subSection, ...styles.itemContainer }}
+          >
             <h3 style={styles.subSectionTitle}>{setor.nome}</h3>
             {renderList('Prováveis Altas', setor.provaveisAltas)}
             {renderList('Regulações em Andamento', setor.regulacoes)}
@@ -169,7 +250,10 @@ const PassagemPlantaoPDFLayout = ({ data, pdfInfo }) => {
         {centroCirurgicoBlocos.length === 0 &&
           renderEmptyMessage('Nenhum bloco do centro cirúrgico disponível.')}
         {centroCirurgicoBlocos.map((bloco) => (
-          <div key={bloco.nome} style={styles.subSection}>
+          <div
+            key={bloco.nome}
+            style={{ ...styles.subSection, ...styles.itemContainer }}
+          >
             <h3 style={styles.subSectionTitle}>{bloco.nome}</h3>
             {bloco.existe ? (
               <>
@@ -200,7 +284,10 @@ const PassagemPlantaoPDFLayout = ({ data, pdfInfo }) => {
         {emergenciaBlocos.length === 0 &&
           renderEmptyMessage('Nenhum setor de emergência disponível.')}
         {emergenciaBlocos.map((bloco) => (
-          <div key={bloco.nome} style={styles.subSection}>
+          <div
+            key={bloco.nome}
+            style={{ ...styles.subSection, ...styles.itemContainer }}
+          >
             <h3 style={styles.subSectionTitle}>{bloco.nome}</h3>
             {bloco.existe ? (
               <>
@@ -229,68 +316,16 @@ const PassagemPlantaoPDFLayout = ({ data, pdfInfo }) => {
       </div>
 
       <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>Enfermaria</h2>
-        {enfermaria.length === 0 &&
-          renderEmptyMessage('Nenhum setor de enfermaria disponível.')}
-        {enfermaria.map((setor) => {
-          const dados = setor?.dadosPlantao;
-          const todasListas = dados
-            ? [
-                dados.isolamentos,
-                dados.leitosRegulados,
-                dados.pedidosUTI,
-                dados.transferencias,
-                dados.provaveisAltas,
-                dados.altasNoLeito,
-                dados.reservasExternas,
-                dados.observacoes,
-                dados.leitosVagos,
-                dados.listaEsperaOncologia,
-              ]
-            : [];
-
-          return (
-            <div key={setor.id || setor.nomeSetor} style={styles.subSection}>
-              <h3 style={styles.subSectionTitle}>{setor.nomeSetor}</h3>
-              {dados ? (
-                <>
-                  {renderList('Isolamentos', dados.isolamentos)}
-                  {renderList('Leitos Regulados (Reservados)', dados.leitosRegulados)}
-                  {renderList('Pedidos de UTI', dados.pedidosUTI)}
-                  {renderList('Transferências Externas', dados.transferencias)}
-                  {renderList('Prováveis Altas', dados.provaveisAltas)}
-                  {renderList('Altas no Leito', dados.altasNoLeito)}
-                  {renderList('Reservas Externas', dados.reservasExternas)}
-                  {renderList('Observações Relevantes', dados.observacoes)}
-                  {renderList('Leitos Vagos', dados.leitosVagos?.map((leito) => {
-                    const compat = leito.compatibilidade && leito.compatibilidade !== 'Livre'
-                      ? ` - ${leito.compatibilidade}`
-                      : '';
-                    return `${leito.codigoLeito} (${leito.status})${compat}`;
-                  }))}
-                  {renderList(
-                    'Lista de Espera (Oncologia)',
-                    dados.listaEsperaOncologia?.map((item) => item.texto),
-                  )}
-                  {todasListas.every((lista) => !lista || lista.length === 0) &&
-                    renderEmptyMessage('Nenhuma pendência registrada para este setor.')}
-                </>
-              ) : (
-                renderEmptyMessage('Dados não disponíveis para este setor.')
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <div style={styles.section}>
         <h2 style={styles.sectionTitle}>Outros Setores</h2>
         {outros.length === 0 &&
           renderEmptyMessage('Nenhum outro setor cadastrado no momento.')}
         {outros
           .filter((grupo) => Array.isArray(grupo.setores) && grupo.setores.length > 0)
           .map((grupo) => (
-            <div key={grupo.tipo} style={styles.subSection}>
+            <div
+              key={grupo.tipo}
+              style={{ ...styles.subSection, ...styles.itemContainer }}
+            >
               <h3 style={styles.subSectionTitle}>{grupo.tipo}</h3>
               <ul style={styles.list}>
                 {grupo.setores.map((setor) => (
@@ -305,7 +340,9 @@ const PassagemPlantaoPDFLayout = ({ data, pdfInfo }) => {
 
       <div style={styles.section}>
         <h2 style={styles.sectionTitle}>Observações Gerais</h2>
-        <p style={styles.infoText}>{observacoesGerais || 'Nenhuma observação registrada.'}</p>
+        <p style={styles.observacoesText}>
+          {observacoesGerais || 'Nenhuma observação registrada.'}
+        </p>
       </div>
     </div>
   );

@@ -146,10 +146,8 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
     infeccoes: infeccoesDados = [],
   } = useDadosHospitalares();
 
-  const ORDEM_TIPO_SETOR = ["Enfermaria", "UTI", "Centro Cirúrgico", "Emergência"];
-
-  const ORDEM_SETORES = {
-    Enfermaria: [
+  const ordemDosSetores = useMemo(
+    () => [
       "UNID. JS ORTOPEDIA",
       "UNID. INT. GERAL - UIG",
       "UNID. DE AVC - INTEGRAL",
@@ -157,17 +155,24 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
       "UNID. CIRURGICA",
       "UNID. ONCOLOGIA",
       "UNID. CLINICA MEDICA",
-    ],
-    UTI: ["UTI"],
-    "Centro Cirúrgico": ["CC - RECUPERAÇÃO", "CC - SALAS CIRURGICAS"],
-    Emergência: [
       "UNID. AVC AGUDO",
       "SALA DE EMERGENCIA",
       "SALA LARANJA",
+      "PS DECISÃO CLINICA",
       "PS DECISÃO CIRURGICA",
-      "PS DECISão CLINICA",
     ],
-  };
+    [],
+  );
+
+  const ordemEnfermaria = useMemo(
+    () => ordemDosSetores.slice(0, 7),
+    [ordemDosSetores],
+  );
+
+  const ordemEmergencia = useMemo(
+    () => ordemDosSetores.slice(-5),
+    [ordemDosSetores],
+  );
 
   const observacoesDocRef = useMemo(
     () => doc(db, 'artifacts/regulafacil/public/data/configuracoes/passagemDePlantao'),
@@ -663,7 +668,7 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
     };
 
     const ordenarEnfermaria = (setores = []) => {
-      const ordemParaTipo = ORDEM_SETORES.Enfermaria || [];
+      const ordemParaTipo = ordemEnfermaria || [];
       return [...setores].sort((a, b) => {
         const nomeA = a?.nomeSetor || '';
         const nomeB = b?.nomeSetor || '';
@@ -868,7 +873,7 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
       enfermaria,
       outros,
     };
-  }, [estrutura, infeccoesDados, reservasExternas]);
+  }, [estrutura, infeccoesDados, ordemEnfermaria, reservasExternas]);
 
   const { uti, centroCirurgico, emergencia, enfermaria, outros } = relatorioPorTipo;
 
@@ -891,6 +896,56 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
     }),
     [uti, centroCirurgico, emergencia, enfermaria, outros, observacoes],
   );
+
+  const dadosOrdenadosParaPDF = useMemo(() => {
+    const ordenarPorNome = (lista = [], ordem = [], obterNome) => {
+      if (!Array.isArray(lista)) {
+        return [];
+      }
+      const indexMap = new Map(ordem.map((nome, index) => [nome, index]));
+      return [...lista].sort((a, b) => {
+        const nomeA = obterNome(a) || '';
+        const nomeB = obterNome(b) || '';
+        const indexA = indexMap.has(nomeA) ? indexMap.get(nomeA) : Number.MAX_SAFE_INTEGER;
+        const indexB = indexMap.has(nomeB) ? indexMap.get(nomeB) : Number.MAX_SAFE_INTEGER;
+
+        if (indexA === indexB) {
+          return nomeA.localeCompare(nomeB);
+        }
+
+        return indexA - indexB;
+      });
+    };
+
+    const enfermariaOrdenada = ordenarPorNome(
+      pdfData.enfermaria,
+      ordemEnfermaria,
+      (setor) => setor?.nomeSetor || '',
+    );
+
+    const emergenciaValores = Object.values(pdfData.emergencia || {}).filter(Boolean);
+    const emergenciaMapa = new Map(
+      emergenciaValores
+        .filter((bloco) => bloco && bloco.nome)
+        .map((bloco) => [bloco.nome, bloco]),
+    );
+
+    const blocosOrdenados = ordemEmergencia
+      .map((nome) => emergenciaMapa.get(nome))
+      .filter(Boolean);
+
+    const blocosExtras = emergenciaValores.filter(
+      (bloco) => bloco?.nome && !ordemEmergencia.includes(bloco.nome),
+    );
+
+    const emergenciaOrdenada = [...blocosOrdenados, ...blocosExtras];
+
+    return {
+      ...pdfData,
+      enfermaria: enfermariaOrdenada,
+      emergenciaOrdenada,
+    };
+  }, [pdfData, ordemEmergencia, ordemEnfermaria]);
 
   const isPdfInfoValid =
     pdfInfo.enfermeiro.trim().length > 0 &&
@@ -1444,7 +1499,7 @@ const PassagemPlantaoModal = ({ isOpen, onClose }) => {
 
     <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
       <div id="pdf-layout" ref={pdfLayoutRef}>
-        <PassagemPlantaoPDFLayout data={pdfData} pdfInfo={pdfInfo} />
+        <PassagemPlantaoPDFLayout data={dadosOrdenadosParaPDF} pdfInfo={pdfInfo} />
       </div>
     </div>
     </>
