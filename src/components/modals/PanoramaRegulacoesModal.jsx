@@ -639,80 +639,99 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
     : '-';
 
   const copiarPanorama = async () => {
-    const periodoInicioTexto = periodo?.inicio
-      ? formatDateTime(periodo.inicio instanceof Date ? periodo.inicio : new Date(periodo.inicio))
-      : 'Não informado';
-    const periodoFimTexto = periodo?.fim
-      ? formatDateTime(periodo.fim instanceof Date ? periodo.fim : new Date(periodo.fim))
-      : 'Não informado';
+    const gerarTextoPanorama = () => {
+      const normalizarData = (valor) => {
+        if (!valor) return null;
+        if (valor instanceof Date) return valor;
+        if (typeof valor.toDate === 'function') {
+          return valor.toDate();
+        }
+        const data = new Date(valor);
+        return Number.isNaN(data.getTime()) ? null : data;
+      };
 
-    const linhas = [
-      'PANORAMA DE REGULAÇÕES',
-      `Período: ${periodoInicioTexto} - ${periodoFimTexto}`,
-      '',
-      `Total de regulações: ${panorama.resumo.total}`,
-      `Concluídas: ${panorama.resumo.concluidas}`,
-      `Canceladas: ${panorama.resumo.canceladas}`,
-      `Em andamento: ${panorama.resumo.emAndamento}`,
-      `Com alteração: ${panorama.resumo.comAlteracao}`,
-      '',
-    ];
+      const periodoInicio = normalizarData(periodo?.inicio);
+      const periodoFim = normalizarData(periodo?.fim);
 
-    if (panorama.registros.length === 0) {
-      linhas.push('Nenhuma regulação registrada no período.');
-    } else {
-      linhas.push('DETALHAMENTO:');
-      panorama.registros.forEach((registro, index) => {
-        linhas.push(`${index + 1}. ${registro.pacienteNome} — ${registro.statusLabel}`);
-        if (registro.nomeSocial) {
-          linhas.push(`   Nome social: ${registro.nomeSocial}`);
-        }
-        if (registro.dataInicio) {
-          linhas.push(`   Início: ${formatDateTime(registro.dataInicio)}`);
-        }
-        if (registro.status === 'concluida' && registro.dataConclusao) {
-          linhas.push(`   Conclusão: ${formatDateTime(registro.dataConclusao)}`);
-          if (registro.tempoTotalFormatado) {
-            linhas.push(`   Duração: ${registro.tempoTotalFormatado}`);
-          }
-        }
-        if (registro.status === 'cancelada') {
-          if (registro.dataCancelamento) {
-            linhas.push(`   Cancelamento: ${formatDateTime(registro.dataCancelamento)}`);
-          }
-          if (registro.motivoCancelamento) {
-            linhas.push(`   Motivo: ${registro.motivoCancelamento}`);
-          }
-        }
-        if (registro.status === 'em_andamento' && registro.tempoDecorridoFormatado) {
-          linhas.push(`   Em andamento há: ${registro.tempoDecorridoFormatado}`);
-        }
-        linhas.push(
-          `   Origem: ${registro.origem.setor} · ${registro.origem.leito}`
-        );
-        linhas.push(
-          `   Destino atual: ${registro.destinoFinal.setor} · ${registro.destinoFinal.leito}`
-        );
-        if (registro.temAlteracao) {
-          linhas.push('   Alterações:');
-          registro.alteracoes.forEach((alteracao, idx) => {
-            const dataTexto = alteracao.timestamp ? formatDateTime(alteracao.timestamp) : 'Data não informada';
-            linhas.push(
-              `     ${idx + 1}) ${dataTexto} — de ${alteracao.origem.setor} · ${alteracao.origem.leito} para ${alteracao.destino.setor} · ${alteracao.destino.leito}`
-            );
-            if (alteracao.justificativa) {
-              linhas.push(`        Justificativa: ${alteracao.justificativa}`);
-            }
-            if (alteracao.realizadoPor) {
-              linhas.push(`        Responsável: ${alteracao.realizadoPor}`);
-            }
-          });
-        }
-        linhas.push('');
-      });
-    }
+      const registrosOrdenados = panorama.registros
+        .slice()
+        .sort((a, b) => {
+          const dataA = normalizarData(a.dataInicio) || new Date(0);
+          const dataB = normalizarData(b.dataInicio) || new Date(0);
+          return dataA.getTime() - dataB.getTime();
+        });
 
-    const texto = linhas.join('\n').trimEnd();
+      const totalRegulacoes = registrosOrdenados.length;
+      const concluidas = registrosOrdenados.filter((r) => r.status === 'concluida').length;
+      const canceladas = registrosOrdenados.filter((r) => r.status === 'cancelada').length;
+      const emAndamento = registrosOrdenados.filter((r) => r.status === 'em_andamento').length;
+
+      const formatarDataPeriodo = (data) =>
+        data ? format(data, 'dd/MM/yyyy', { locale: ptBR }) : 'Não informado';
+
+      const formatarDataCurta = (data) =>
+        data ? format(data, 'dd/MM HH:mm', { locale: ptBR }) : 'N/A';
+
+      const cabecalho = `*PANORAMA DAS REGULAÇÕES*\nPeríodo: ${formatarDataPeriodo(periodoInicio)} a ${formatarDataPeriodo(periodoFim)}`;
+
+      const resumo = `*Resumo do Período*\nTotal de Regulações: ${totalRegulacoes}\n\nConcluídas: ${concluidas}\n\nCanceladas: ${canceladas}\n\nEm Andamento: ${emAndamento}`;
+
+      const formatarRegulacao = (reg) => {
+        const dataInicio = formatarDataCurta(normalizarData(reg.dataInicio));
+        const paciente = reg.pacienteNome || 'Paciente não informado';
+        const origemSetor = reg.origem?.setor || 'Setor não informado';
+        const origemLeito = reg.origem?.leito || 'Leito não informado';
+        const destinoSetor = reg.destinoFinal?.setor || reg.destino?.setor || 'Setor não informado';
+        const destinoLeito = reg.destinoFinal?.leito || reg.destino?.leito || 'Leito não informado';
+        const usuario = reg.usuarioResponsavel || 'Responsável não informado';
+
+        let linha = `- ${dataInicio} | ${paciente} | De: ${origemSetor} · ${origemLeito} | Para: ${destinoSetor} · ${destinoLeito} | Por: ${usuario}`;
+
+        if (Array.isArray(reg.alteracoes) && reg.alteracoes.length > 0) {
+          const ultimaAlteracao = reg.alteracoes[reg.alteracoes.length - 1];
+          const dataAlteracao = formatarDataCurta(normalizarData(ultimaAlteracao.timestamp));
+          const destinoAlteracaoSetor = ultimaAlteracao?.destino?.setor || 'Setor não informado';
+          const destinoAlteracaoLeito = ultimaAlteracao?.destino?.leito || 'Leito não informado';
+          const responsavelAlteracao = ultimaAlteracao?.realizadoPor || 'Responsável não informado';
+          linha += `\n  ↳ Alterado em ${dataAlteracao} para ${destinoAlteracaoSetor} · ${destinoAlteracaoLeito} por ${responsavelAlteracao}`;
+        }
+
+        return linha;
+      };
+
+      const regulacoesEmAndamentoTexto = registrosOrdenados
+        .filter((r) => r.status === 'em_andamento')
+        .map(formatarRegulacao)
+        .join('\n');
+
+      const secaoAndamento = `*Regulações em Andamento*\n${
+        regulacoesEmAndamentoTexto || '- Nenhuma regulação em andamento no período.'
+      }`;
+
+      const demaisRegulacoesTexto = registrosOrdenados
+        .filter((r) => r.status === 'concluida' || r.status === 'cancelada')
+        .map((reg) => {
+          const base = formatarRegulacao(reg);
+          const dataFinal =
+            reg.status === 'concluida'
+              ? normalizarData(reg.dataConclusao)
+              : reg.status === 'cancelada'
+                ? normalizarData(reg.dataCancelamento)
+                : null;
+          const dataFinalTexto = dataFinal ? ` (${formatarDataCurta(dataFinal)})` : '';
+          const status = reg.statusLabel || 'Status não informado';
+          return `${base} | Status: ${status}${dataFinalTexto}`;
+        })
+        .join('\n');
+
+      const secaoDemais = `*Demais Regulações do Período*\n${
+        demaisRegulacoesTexto || '- Nenhuma outra regulação registrada no período.'
+      }`;
+
+      return [cabecalho, resumo, secaoAndamento, secaoDemais].join('\n\n');
+    };
+
+    const texto = gerarTextoPanorama();
 
     try {
       if (!navigator?.clipboard?.writeText) {
