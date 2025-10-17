@@ -14,10 +14,29 @@ const LoginPage = ({ onLoginSuccess }) => {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [highlightForgotPassword, setHighlightForgotPassword] = useState(false);
-  
+  const [emailUserPart, setEmailUserPart] = useState('');
+
   const { login } = useAuth();
-  
-  const { register, handleSubmit, formState: { errors } } = useForm();
+
+  const { register, handleSubmit, formState: { errors } } = useForm({
+    defaultValues: {
+      emailUserPart: '',
+      password: '',
+    },
+  });
+
+  const {
+    ref: emailUserPartRef,
+    onChange: handleEmailUserPartChange,
+    onBlur: handleEmailUserPartBlur,
+    name: emailUserPartName,
+  } = register('emailUserPart', {
+    required: 'E-mail é obrigatório',
+    pattern: {
+      value: /^[^\s@]+$/,
+      message: 'Informe apenas o usuário antes do @'
+    }
+  });
 
   const onSubmit = async (data) => {
     setIsLoading(true);
@@ -25,7 +44,8 @@ const LoginPage = ({ onLoginSuccess }) => {
     setHighlightForgotPassword(false);
 
     try {
-      const result = await login(data.email, data.password);
+      const fullEmail = `${data.emailUserPart}@joinville.sc.gov.br`;
+      const result = await login(fullEmail, data.password);
       
       if (result.success) {
         toast({
@@ -87,28 +107,35 @@ const LoginPage = ({ onLoginSuccess }) => {
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-medium">
+              <Label htmlFor="email-user" className="text-sm font-medium">
                 E-mail Institucional
               </Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="seu.nome@joinville.sc.gov.br"
-                  className="pl-10"
-                  disabled={isLoading}
-                  {...register('email', {
-                    required: 'E-mail é obrigatório',
-                    pattern: {
-                      value: /^[^\s@]+@joinville\.sc\.gov\.br$/,
-                      message: 'E-mail deve ser @joinville.sc.gov.br'
-                    }
-                  })}
-                />
+                <div className="flex items-center rounded-md border border-input bg-background pl-10 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
+                  <Input
+                    id="email-user"
+                    type="text"
+                    placeholder="usuario"
+                    className="flex-1 border-none bg-transparent py-2 pr-3 pl-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                    disabled={isLoading}
+                    value={emailUserPart}
+                    onChange={(e) => {
+                      setEmailUserPart(e.target.value);
+                      handleEmailUserPartChange(e);
+                    }}
+                    onBlur={handleEmailUserPartBlur}
+                    name={emailUserPartName}
+                    ref={emailUserPartRef}
+                    autoComplete="username"
+                  />
+                  <span className="border-l border-input bg-muted px-3 py-2 text-sm text-muted-foreground whitespace-nowrap">
+                    @joinville.sc.gov.br
+                  </span>
+                </div>
               </div>
-              {errors.email && (
-                <p className="text-sm text-destructive">{errors.email.message}</p>
+              {errors.emailUserPart && (
+                <p className="text-sm text-destructive">{errors.emailUserPart.message}</p>
               )}
             </div>
             
