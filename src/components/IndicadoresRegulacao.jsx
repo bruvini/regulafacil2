@@ -31,6 +31,7 @@ import {
 } from 'recharts';
 import {
   getHistoricoRegulacoesCollection,
+  getPacientesCollection,
   getSetoresCollection,
   getDocs,
   query,
@@ -134,6 +135,7 @@ const resolveSetorInfo = (registro, chave, setoresMap) => {
 const IndicadoresRegulacao = () => {
   const [period, setPeriod] = useState(PERIOD_OPTIONS[1].value);
   const [regulacoes, setRegulacoes] = useState([]);
+  const [pacientes, setPacientes] = useState([]);
   const [setores, setSetores] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -142,6 +144,22 @@ const IndicadoresRegulacao = () => {
     const unsubscribe = onSnapshot(getSetoresCollection(), (snapshot) => {
       setSetores(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
     });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      getPacientesCollection(),
+      (snapshot) => {
+        setPacientes(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      },
+      (err) => {
+        console.error('Erro ao carregar pacientes:', err);
+      }
+    );
 
     return () => {
       unsubscribe();
@@ -281,16 +299,41 @@ const IndicadoresRegulacao = () => {
   }, [regulacoesFiltradas]);
 
   const dadosDesfecho = useMemo(() => {
-    if (!regulacoesFiltradas.length) return [];
-
     const contagem = new Map();
+
     regulacoesFiltradas.forEach((item) => {
       const status = item?.statusFinal || 'Sem status';
       contagem.set(status, (contagem.get(status) || 0) + 1);
     });
 
+    const emAndamentoCount = pacientes.filter((paciente) => {
+      const regulacao = paciente?.regulacaoAtiva;
+      if (!regulacao) {
+        return false;
+      }
+
+      if (typeof regulacao === 'object') {
+        return Object.values(regulacao).some((valor) => Boolean(valor));
+      }
+
+      return Boolean(regulacao);
+    }).length;
+
+    if (emAndamentoCount > 0) {
+      contagem.set(
+        'Em Andamento',
+        (contagem.get('Em Andamento') || 0) + emAndamentoCount,
+      );
+
+      Array.from(contagem.keys()).forEach((chave) => {
+        if (chave && chave.toLowerCase() === 'sem status') {
+          contagem.delete(chave);
+        }
+      });
+    }
+
     return Array.from(contagem.entries()).map(([name, value]) => ({ name, value }));
-  }, [regulacoesFiltradas]);
+  }, [pacientes, regulacoesFiltradas]);
 
   const dadosPorHora = useMemo(() => {
     const base = Array.from({ length: 24 }, (_, index) => ({
