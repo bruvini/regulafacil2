@@ -22,7 +22,7 @@ import {
   where,
   orderBy,
 } from '@/lib/firebase';
-import { format } from 'date-fns';
+import { differenceInMinutes, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 const STATUS_CONFIG = {
@@ -650,85 +650,119 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
         return Number.isNaN(data.getTime()) ? null : data;
       };
 
-      const periodoInicio = normalizarData(periodo?.inicio);
-      const periodoFim = normalizarData(periodo?.fim);
-
-      const registrosOrdenados = panorama.registros
-        .slice()
-        .sort((a, b) => {
-          const dataA = normalizarData(a.dataInicio) || new Date(0);
-          const dataB = normalizarData(b.dataInicio) || new Date(0);
-          return dataA.getTime() - dataB.getTime();
-        });
-
-      const totalRegulacoes = registrosOrdenados.length;
-      const concluidas = registrosOrdenados.filter((r) => r.status === 'concluida').length;
-      const canceladas = registrosOrdenados.filter((r) => r.status === 'cancelada').length;
-      const emAndamento = registrosOrdenados.filter((r) => r.status === 'em_andamento').length;
-
-      const formatarDataPeriodo = (data) =>
-        data ? format(data, 'dd/MM/yyyy', { locale: ptBR }) : 'Não informado';
+      const formatarDataHoraCompleta = (data) =>
+        data ? format(data, 'dd/MM/yyyy HH:mm', { locale: ptBR }) : 'Não informado';
 
       const formatarDataCurta = (data) =>
         data ? format(data, 'dd/MM HH:mm', { locale: ptBR }) : 'N/A';
 
-      const cabecalho = `*PANORAMA DAS REGULAÇÕES*\nPeríodo: ${formatarDataPeriodo(periodoInicio)} a ${formatarDataPeriodo(periodoFim)}`;
+      const registros = Array.isArray(panorama?.registros) ? panorama.registros : [];
 
-      const resumo = `*Resumo do Período*\nTotal de Regulações: ${totalRegulacoes}\n\nConcluídas: ${concluidas}\n\nCanceladas: ${canceladas}\n\nEm Andamento: ${emAndamento}`;
+      const registrosOrdenados = registros
+        .slice()
+        .sort((a, b) => {
+          const dataA = normalizarData(a.dataInicio);
+          const dataB = normalizarData(b.dataInicio);
+          return (dataB?.getTime() ?? 0) - (dataA?.getTime() ?? 0);
+        });
 
-      const formatarRegulacao = (reg) => {
-        const dataInicio = formatarDataCurta(normalizarData(reg.dataInicio));
-        const paciente = reg.pacienteNome || 'Paciente não informado';
-        const origemSetor = reg.origem?.setor || 'Setor não informado';
-        const origemLeito = reg.origem?.leito || 'Leito não informado';
-        const destinoSetor = reg.destinoFinal?.setor || reg.destino?.setor || 'Setor não informado';
-        const destinoLeito = reg.destinoFinal?.leito || reg.destino?.leito || 'Leito não informado';
-        const usuario = reg.usuarioResponsavel || 'Responsável não informado';
+      const periodoInicio = normalizarData(periodo?.inicio);
+      const periodoFim = normalizarData(periodo?.fim);
 
-        let linha = `- ${dataInicio} | ${paciente} | De: ${origemSetor} · ${origemLeito} | Para: ${destinoSetor} · ${destinoLeito} | Por: ${usuario}`;
+      const concluidas = registrosOrdenados.filter((r) => r.status === 'concluida').length;
+      const canceladas = registrosOrdenados.filter((r) => r.status === 'cancelada').length;
+      const emAndamentoRegistros = registrosOrdenados.filter(
+        (r) => !r.status || r.status === 'em_andamento' || r.status === 'alterada'
+      );
+      const emAndamento = emAndamentoRegistros.length;
 
-        if (Array.isArray(reg.alteracoes) && reg.alteracoes.length > 0) {
-          const ultimaAlteracao = reg.alteracoes[reg.alteracoes.length - 1];
-          const dataAlteracao = formatarDataCurta(normalizarData(ultimaAlteracao.timestamp));
-          const destinoAlteracaoSetor = ultimaAlteracao?.destino?.setor || 'Setor não informado';
-          const destinoAlteracaoLeito = ultimaAlteracao?.destino?.leito || 'Leito não informado';
-          const responsavelAlteracao = ultimaAlteracao?.realizadoPor || 'Responsável não informado';
-          linha += `\n  ↳ Alterado em ${dataAlteracao} para ${destinoAlteracaoSetor} · ${destinoAlteracaoLeito} por ${responsavelAlteracao}`;
+      const formatarRegulacaoDetalhada = (reg, index) => {
+        const dataInicio = normalizarData(reg.dataInicio);
+        const dataConclusao = normalizarData(reg.dataConclusao);
+        const dataCancelamento = normalizarData(reg.dataCancelamento);
+
+        const nomePaciente = reg.pacienteNome ? reg.pacienteNome.toUpperCase() : 'N/A';
+        const statusLabel = STATUS_CONFIG[reg.status]?.label || reg.statusLabel || 'Em andamento';
+        const inicioTexto = formatarDataHoraCompleta(dataInicio);
+
+        let detalhesFim = '';
+        let dataFinal = null;
+        if (reg.status === 'concluida' && dataConclusao) {
+          dataFinal = dataConclusao;
+          detalhesFim = `\n   Conclusão: ${formatarDataHoraCompleta(dataConclusao)}`;
+        } else if (reg.status === 'cancelada' && dataCancelamento) {
+          dataFinal = dataCancelamento;
+          detalhesFim = `\n   Cancelamento: ${formatarDataHoraCompleta(dataCancelamento)}`;
+          if (reg.motivoCancelamento) {
+            detalhesFim += `\n   Motivo: ${reg.motivoCancelamento}`;
+          }
         }
 
-        return linha;
+        let duracaoStr = '';
+        if (dataFinal && dataInicio) {
+          const duracaoMin = differenceInMinutes(dataFinal, dataInicio);
+          if (Number.isFinite(duracaoMin) && duracaoMin >= 0) {
+            const horas = Math.floor(duracaoMin / 60);
+            const minutos = duracaoMin % 60;
+            duracaoStr = `\n   Duração: ${horas}h ${minutos}min`;
+          }
+        }
+
+        const origemSetor = reg.origem?.setor || 'N/A';
+        const origemLeito = reg.origem?.leito || 'N/A';
+        const destinoAtualSetor =
+          reg.destinoFinal?.setor || reg.destino?.setor || 'N/A';
+        const destinoAtualLeito =
+          reg.destinoFinal?.leito || reg.destino?.leito || 'N/A';
+
+        let alteracoesStr = '';
+        if (Array.isArray(reg.alteracoes) && reg.alteracoes.length > 0) {
+          alteracoesStr = reg.alteracoes
+            .map((alteracao) => {
+              const dataAlteracao = formatarDataCurta(normalizarData(alteracao.timestamp));
+              const destinoAlteracaoSetor = alteracao?.destino?.setor || 'N/A';
+              const destinoAlteracaoLeito = alteracao?.destino?.leito || 'N/A';
+              const responsavelAlteracao = alteracao?.realizadoPor || 'N/A';
+              return `\n   ↳ Alterado em ${dataAlteracao} para ${destinoAlteracaoSetor} · ${destinoAlteracaoLeito} por ${responsavelAlteracao}`;
+            })
+            .join('');
+        }
+
+        return `${index + 1}. ${nomePaciente} — ${statusLabel}` +
+          `\n   Início: ${inicioTexto}` +
+          `${detalhesFim}${duracaoStr}` +
+          `\n   Origem: ${origemSetor} · ${origemLeito}` +
+          `\n   Destino atual: ${destinoAtualSetor} · ${destinoAtualLeito}` +
+          `${alteracoesStr}`;
       };
 
-      const regulacoesEmAndamentoTexto = registrosOrdenados
-        .filter((r) => r.status === 'em_andamento')
-        .map(formatarRegulacao)
-        .join('\n');
+      const cabecalho = `*PANORAMA DE REGULAÇÕES*\nPeríodo: ${formatarDataHoraCompleta(periodoInicio)} - ${formatarDataHoraCompleta(periodoFim)}\n`;
 
-      const secaoAndamento = `*Regulações em Andamento*\n${
-        regulacoesEmAndamentoTexto || '- Nenhuma regulação em andamento no período.'
-      }`;
+      const resumo =
+        `*RESUMO DO PERÍODO*` +
+        `\nTotal de regulações: ${registrosOrdenados.length}` +
+        `\nConcluídas: ${concluidas}` +
+        `\nCanceladas: ${canceladas}` +
+        `\nEm andamento: ${emAndamento}`;
 
-      const demaisRegulacoesTexto = registrosOrdenados
+      const regulacoesEmAndamento = emAndamentoRegistros
+        .map((reg, index) => formatarRegulacaoDetalhada(reg, index))
+        .join('\n\n');
+
+      const secaoAndamento =
+        `*REGULAÇÕES EM ANDAMENTO*\n` +
+        (regulacoesEmAndamento || 'Nenhuma regulação em andamento no período.');
+
+      const demaisRegulacoes = registrosOrdenados
         .filter((r) => r.status === 'concluida' || r.status === 'cancelada')
-        .map((reg) => {
-          const base = formatarRegulacao(reg);
-          const dataFinal =
-            reg.status === 'concluida'
-              ? normalizarData(reg.dataConclusao)
-              : reg.status === 'cancelada'
-                ? normalizarData(reg.dataCancelamento)
-                : null;
-          const dataFinalTexto = dataFinal ? ` (${formatarDataCurta(dataFinal)})` : '';
-          const status = reg.statusLabel || 'Status não informado';
-          return `${base} | Status: ${status}${dataFinalTexto}`;
-        })
-        .join('\n');
+        .map((reg, index) => formatarRegulacaoDetalhada(reg, index))
+        .join('\n\n');
 
-      const secaoDemais = `*Demais Regulações do Período*\n${
-        demaisRegulacoesTexto || '- Nenhuma outra regulação registrada no período.'
-      }`;
+      const secaoDemais =
+        `*DEMAIS REGULAÇÕES*\n` +
+        (demaisRegulacoes || 'Nenhuma regulação concluída ou cancelada no período.');
 
-      return [cabecalho, resumo, secaoAndamento, secaoDemais].join('\n\n');
+      return `${cabecalho}\n${resumo}\n\n${secaoAndamento}\n\n${secaoDemais}`;
     };
 
     const texto = gerarTextoPanorama();
