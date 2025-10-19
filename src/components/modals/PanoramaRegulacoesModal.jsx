@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Copy, Loader2, AlertCircle, CalendarRange, Clock, MapPin, Users } from 'lucide-react';
+import { Copy, Loader2, AlertCircle, CalendarRange, Clock, MapPin, Users, ClipboardList } from 'lucide-react';
 import {
   getPacientesCollection,
   getLeitosCollection,
@@ -638,103 +638,122 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
       })
     : '-';
 
+  const normalizarData = useCallback((valor) => {
+    if (!valor) return null;
+    if (valor instanceof Date) return valor;
+    if (typeof valor.toDate === 'function') {
+      return valor.toDate();
+    }
+    const data = new Date(valor);
+    return Number.isNaN(data.getTime()) ? null : data;
+  }, []);
+
+  const formatarDataHoraCompleta = useCallback(
+    (data) => (data ? format(data, 'dd/MM/yyyy HH:mm', { locale: ptBR }) : 'Não informado'),
+    []
+  );
+
+  const formatarDataCurta = useCallback(
+    (data) => (data ? format(data, 'dd/MM HH:mm', { locale: ptBR }) : 'N/A'),
+    []
+  );
+
+  const regulacoesOrdenadas = useMemo(() => {
+    const registros = Array.isArray(panorama?.registros) ? panorama.registros : [];
+
+    return registros
+      .slice()
+      .sort((a, b) => {
+        const dataA = normalizarData(a.dataInicio);
+        const dataB = normalizarData(b.dataInicio);
+        return (dataB?.getTime() ?? 0) - (dataA?.getTime() ?? 0);
+      });
+  }, [normalizarData, panorama?.registros]);
+
+  const regulacoesPendentes = useMemo(
+    () =>
+      regulacoesOrdenadas.filter(
+        (reg) => !reg.status || reg.status === 'em_andamento' || reg.status === 'alterada'
+      ),
+    [regulacoesOrdenadas]
+  );
+
+  const emAndamentoCount = regulacoesPendentes.length;
+
+  const formatarRegulacaoDetalhada = useCallback(
+    (reg, index) => {
+      const dataInicio = normalizarData(reg.dataInicio);
+      const dataConclusao = normalizarData(reg.dataConclusao);
+      const dataCancelamento = normalizarData(reg.dataCancelamento);
+
+      const nomePaciente = reg.pacienteNome ? reg.pacienteNome.toUpperCase() : 'N/A';
+      const statusLabel = STATUS_CONFIG[reg.status]?.label || reg.statusLabel || 'Em andamento';
+      const inicioTexto = formatarDataHoraCompleta(dataInicio);
+
+      let detalhesFim = '';
+      let dataFinal = null;
+      if (reg.status === 'concluida' && dataConclusao) {
+        dataFinal = dataConclusao;
+        detalhesFim = `\n   Conclusão: ${formatarDataHoraCompleta(dataConclusao)}`;
+      } else if (reg.status === 'cancelada' && dataCancelamento) {
+        dataFinal = dataCancelamento;
+        detalhesFim = `\n   Cancelamento: ${formatarDataHoraCompleta(dataCancelamento)}`;
+        if (reg.motivoCancelamento) {
+          detalhesFim += `\n   Motivo: ${reg.motivoCancelamento}`;
+        }
+      }
+
+      let duracaoStr = '';
+      if (dataFinal && dataInicio) {
+        const duracaoMin = differenceInMinutes(dataFinal, dataInicio);
+        if (Number.isFinite(duracaoMin) && duracaoMin >= 0) {
+          const horas = Math.floor(duracaoMin / 60);
+          const minutos = duracaoMin % 60;
+          duracaoStr = `\n   Duração: ${horas}h ${minutos}min`;
+        }
+      }
+
+      const origemSetor = reg.origem?.setor || 'N/A';
+      const origemLeito = reg.origem?.leito || 'N/A';
+      const destinoAtualSetor = reg.destinoFinal?.setor || reg.destino?.setor || 'N/A';
+      const destinoAtualLeito = reg.destinoFinal?.leito || reg.destino?.leito || 'N/A';
+
+      let alteracoesStr = '';
+      if (Array.isArray(reg.alteracoes) && reg.alteracoes.length > 0) {
+        alteracoesStr = reg.alteracoes
+          .map((alteracao) => {
+            const dataAlteracao = formatarDataCurta(normalizarData(alteracao.timestamp));
+            const destinoAlteracaoSetor = alteracao?.destino?.setor || 'N/A';
+            const destinoAlteracaoLeito = alteracao?.destino?.leito || 'N/A';
+            const responsavelAlteracao = alteracao?.realizadoPor || 'N/A';
+            return `\n   ↳ Alterado em ${dataAlteracao} para ${destinoAlteracaoSetor} · ${destinoAlteracaoLeito} por ${responsavelAlteracao}`;
+          })
+          .join('');
+      }
+
+      return (
+        `${index + 1}. ${nomePaciente} — ${statusLabel}` +
+        `\n   Início: ${inicioTexto}` +
+        `${detalhesFim}${duracaoStr}` +
+        `\n   Origem: ${origemSetor} · ${origemLeito}` +
+        `\n   Destino atual: ${destinoAtualSetor} · ${destinoAtualLeito}` +
+        `${alteracoesStr}`
+      );
+    },
+    [formatarDataCurta, formatarDataHoraCompleta, normalizarData]
+  );
+
   const copiarPanorama = async () => {
     const gerarTextoPanorama = () => {
-      const normalizarData = (valor) => {
-        if (!valor) return null;
-        if (valor instanceof Date) return valor;
-        if (typeof valor.toDate === 'function') {
-          return valor.toDate();
-        }
-        const data = new Date(valor);
-        return Number.isNaN(data.getTime()) ? null : data;
-      };
-
-      const formatarDataHoraCompleta = (data) =>
-        data ? format(data, 'dd/MM/yyyy HH:mm', { locale: ptBR }) : 'Não informado';
-
-      const formatarDataCurta = (data) =>
-        data ? format(data, 'dd/MM HH:mm', { locale: ptBR }) : 'N/A';
-
-      const registros = Array.isArray(panorama?.registros) ? panorama.registros : [];
-
-      const registrosOrdenados = registros
-        .slice()
-        .sort((a, b) => {
-          const dataA = normalizarData(a.dataInicio);
-          const dataB = normalizarData(b.dataInicio);
-          return (dataB?.getTime() ?? 0) - (dataA?.getTime() ?? 0);
-        });
+      const registrosOrdenados = regulacoesOrdenadas;
 
       const periodoInicio = normalizarData(periodo?.inicio);
       const periodoFim = normalizarData(periodo?.fim);
 
       const concluidas = registrosOrdenados.filter((r) => r.status === 'concluida').length;
       const canceladas = registrosOrdenados.filter((r) => r.status === 'cancelada').length;
-      const emAndamentoRegistros = registrosOrdenados.filter(
-        (r) => !r.status || r.status === 'em_andamento' || r.status === 'alterada'
-      );
+      const emAndamentoRegistros = regulacoesPendentes;
       const emAndamento = emAndamentoRegistros.length;
-
-      const formatarRegulacaoDetalhada = (reg, index) => {
-        const dataInicio = normalizarData(reg.dataInicio);
-        const dataConclusao = normalizarData(reg.dataConclusao);
-        const dataCancelamento = normalizarData(reg.dataCancelamento);
-
-        const nomePaciente = reg.pacienteNome ? reg.pacienteNome.toUpperCase() : 'N/A';
-        const statusLabel = STATUS_CONFIG[reg.status]?.label || reg.statusLabel || 'Em andamento';
-        const inicioTexto = formatarDataHoraCompleta(dataInicio);
-
-        let detalhesFim = '';
-        let dataFinal = null;
-        if (reg.status === 'concluida' && dataConclusao) {
-          dataFinal = dataConclusao;
-          detalhesFim = `\n   Conclusão: ${formatarDataHoraCompleta(dataConclusao)}`;
-        } else if (reg.status === 'cancelada' && dataCancelamento) {
-          dataFinal = dataCancelamento;
-          detalhesFim = `\n   Cancelamento: ${formatarDataHoraCompleta(dataCancelamento)}`;
-          if (reg.motivoCancelamento) {
-            detalhesFim += `\n   Motivo: ${reg.motivoCancelamento}`;
-          }
-        }
-
-        let duracaoStr = '';
-        if (dataFinal && dataInicio) {
-          const duracaoMin = differenceInMinutes(dataFinal, dataInicio);
-          if (Number.isFinite(duracaoMin) && duracaoMin >= 0) {
-            const horas = Math.floor(duracaoMin / 60);
-            const minutos = duracaoMin % 60;
-            duracaoStr = `\n   Duração: ${horas}h ${minutos}min`;
-          }
-        }
-
-        const origemSetor = reg.origem?.setor || 'N/A';
-        const origemLeito = reg.origem?.leito || 'N/A';
-        const destinoAtualSetor =
-          reg.destinoFinal?.setor || reg.destino?.setor || 'N/A';
-        const destinoAtualLeito =
-          reg.destinoFinal?.leito || reg.destino?.leito || 'N/A';
-
-        let alteracoesStr = '';
-        if (Array.isArray(reg.alteracoes) && reg.alteracoes.length > 0) {
-          alteracoesStr = reg.alteracoes
-            .map((alteracao) => {
-              const dataAlteracao = formatarDataCurta(normalizarData(alteracao.timestamp));
-              const destinoAlteracaoSetor = alteracao?.destino?.setor || 'N/A';
-              const destinoAlteracaoLeito = alteracao?.destino?.leito || 'N/A';
-              const responsavelAlteracao = alteracao?.realizadoPor || 'N/A';
-              return `\n   ↳ Alterado em ${dataAlteracao} para ${destinoAlteracaoSetor} · ${destinoAlteracaoLeito} por ${responsavelAlteracao}`;
-            })
-            .join('');
-        }
-
-        return `${index + 1}. ${nomePaciente} — ${statusLabel}` +
-          `\n   Início: ${inicioTexto}` +
-          `${detalhesFim}${duracaoStr}` +
-          `\n   Origem: ${origemSetor} · ${origemLeito}` +
-          `\n   Destino atual: ${destinoAtualSetor} · ${destinoAtualLeito}` +
-          `${alteracoesStr}`;
-      };
 
       const cabecalho = `*PANORAMA DE REGULAÇÕES*\nPeríodo: ${formatarDataHoraCompleta(periodoInicio)} - ${formatarDataHoraCompleta(periodoFim)}\n`;
 
@@ -778,6 +797,36 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
       toast({
         title: 'Não foi possível copiar o panorama.',
         description: 'Copie manualmente as informações exibidas.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleCopiarPendentes = async () => {
+    if (emAndamentoCount === 0) {
+      return;
+    }
+
+    const listaTexto = regulacoesPendentes
+      .map((reg, index) => formatarRegulacaoDetalhada(reg, index))
+      .join('\n\n');
+
+    const textoFinal = `*REGULAÇÕES PENDENTES*\n\n${listaTexto}`;
+
+    try {
+      if (!navigator?.clipboard?.writeText) {
+        throw new Error('Clipboard API não disponível');
+      }
+      await navigator.clipboard.writeText(textoFinal);
+      toast({
+        title: 'Pendências copiadas!',
+        description: 'A lista de regulações pendentes foi copiada para a área de transferência.',
+      });
+    } catch (error) {
+      console.error('Falha ao copiar texto: ', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível copiar o texto.',
         variant: 'destructive',
       });
     }
@@ -954,9 +1003,19 @@ const PanoramaRegulacoesModal = ({ isOpen, onClose, periodo }) => {
         <DialogHeader className="space-y-2">
           <DialogTitle className="flex flex-col gap-2 text-2xl font-semibold sm:flex-row sm:items-center sm:justify-between">
             <span>Panorama de Regulações</span>
-            <Button variant="outline" size="sm" onClick={copiarPanorama} disabled={dados.loading}>
-              <Copy className="mr-2 h-4 w-4" /> Copiar resumo
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={copiarPanorama} disabled={dados.loading}>
+                <Copy className="mr-2 h-4 w-4" /> Copiar resumo
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleCopiarPendentes}
+                disabled={dados.loading || emAndamentoCount === 0}
+              >
+                <ClipboardList className="mr-2 h-4 w-4" /> Copiar Pendentes ({emAndamentoCount})
+              </Button>
+            </div>
           </DialogTitle>
           <p className="text-sm text-muted-foreground">
             Período selecionado: {periodoInicioFormatado} - {periodoFimFormatado}
