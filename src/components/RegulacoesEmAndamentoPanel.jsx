@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Loader, Copy, CheckCircle, Pencil, XCircle, FileText } from "lucide-react";
-import { intervalToDuration } from 'date-fns';
+import { intervalToDuration, format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import {
   getSetoresCollection,
   getLeitosCollection,
@@ -302,7 +303,18 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
       texto += `\n*Observações NIR:* _${observacoes.trim()}_`;
     }
 
-    texto += `\n\n_Regulação iniciada há ${calcularTempoRegulacao(regulacaoAtiva.iniciadoEm).replace('Ativa há ', '')}_`;
+    let dataInicioFormatada = 'Data de início não informada';
+    if (regulacaoAtiva?.iniciadoEm) {
+      const dataInicio = typeof regulacaoAtiva.iniciadoEm.toDate === 'function'
+        ? regulacaoAtiva.iniciadoEm.toDate()
+        : new Date(regulacaoAtiva.iniciadoEm);
+
+      if (!isNaN(dataInicio.getTime())) {
+        dataInicioFormatada = format(dataInicio, 'dd/MM/yyyy HH:mm', { locale: ptBR });
+      }
+    }
+
+    texto += `\n\n_Regulação iniciada em ${dataInicioFormatada}_`;
 
     try {
       await navigator.clipboard.writeText(texto);
