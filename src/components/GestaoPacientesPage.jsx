@@ -111,26 +111,50 @@ const GestaoPacientesPage = () => {
 
   // Enhanced patient list with location info
   const pacientesEnriquecidos = useMemo(() => {
-    // Allow showing patients even if leitos/setores aren't loaded yet
     if (!pacientes.length) return [];
 
+    const termoBusca = searchTerm.trim().toLowerCase();
+
     return pacientes
-      .filter((paciente) =>
-        paciente.nomeCompleto?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        paciente.numeroCarteirinha?.toLowerCase().includes(searchTerm.toLowerCase())
-      )
+      .filter((paciente) => {
+        if (!termoBusca) return true;
+
+        const nomeNormalizado = (
+          paciente.nomePaciente ||
+          paciente.nomeCompleto ||
+          ''
+        ).toString().toLowerCase();
+        const prontuario = (
+          paciente.numeroProntuario ||
+          paciente.numeroCarteirinha ||
+          ''
+        )
+          .toString()
+          .toLowerCase();
+
+        return nomeNormalizado.includes(termoBusca) || prontuario.includes(termoBusca);
+      })
       .map((paciente) => {
         const leito = leitos.find((l) => l.id === paciente.leitoId);
         const setor = leito ? setores.find((s) => s.id === leito.setorId) : null;
+        const nomePaciente =
+          paciente.nomePaciente || paciente.nomeCompleto || 'Paciente sem nome';
 
         return {
           ...paciente,
-          codigoLeito: leito?.codigoLeito || 'N/A',
-          siglaSetor: setor?.siglaSetor || 'N/A',
-          nomeSetor: setor?.nomeSetor || 'N/A',
+          nomePaciente,
+          nomeCompleto: paciente.nomeCompleto ?? nomePaciente,
+          codigoLeito: leito?.codigoLeito || leito?.codigo || 'N/A',
+          siglaSetor:
+            setor?.siglaSetor || setor?.nomeSetor || paciente.siglaSetor || 'N/A',
+          nomeSetor: setor?.nomeSetor || setor?.siglaSetor || 'N/A',
         };
       })
-      .sort((a, b) => a.nomeCompleto?.localeCompare(b.nomeCompleto) || 0);
+      .sort((a, b) => {
+        const nomeA = (a.nomePaciente || '').toString();
+        const nomeB = (b.nomePaciente || '').toString();
+        return nomeA.localeCompare(nomeB);
+      });
   }, [pacientes, leitos, setores, searchTerm]);
 
   const handleEditarPaciente = async (pacienteId, dadosAtualizados) => {
@@ -139,7 +163,11 @@ const GestaoPacientesPage = () => {
       await updateDoc(pacienteRef, dadosAtualizados);
 
       const paciente = pacientes.find(p => p.id === pacienteId);
-      await logAction('Gestão de Pacientes', `Dados do paciente '${paciente?.nomeCompleto}' foram atualizados.`, currentUser);
+      await logAction(
+        'Gestão de Pacientes',
+        `Dados do paciente '${paciente?.nomePaciente || paciente?.nomeCompleto}' foram atualizados.`,
+        currentUser
+      );
       
       toast({
         title: "Sucesso",
@@ -183,7 +211,11 @@ const GestaoPacientesPage = () => {
 
       await batch.commit();
 
-      await logAction('Gestão de Pacientes', `Paciente '${paciente.nomeCompleto}' foi excluído do sistema.`, currentUser);
+      await logAction(
+        'Gestão de Pacientes',
+        `Paciente '${paciente.nomePaciente || paciente.nomeCompleto}' foi excluído do sistema.`,
+        currentUser
+      );
       
       toast({
         title: "Sucesso",
@@ -268,24 +300,44 @@ const GestaoPacientesPage = () => {
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     try {
-      // Handle Firestore timestamp objects
       if (dateString.toDate && typeof dateString.toDate === 'function') {
         return format(dateString.toDate(), 'dd/MM/yyyy', { locale: ptBR });
       }
-      // Handle string dates in dd/MM/yyyy format
       if (typeof dateString === 'string' && dateString.includes('/')) {
         const [day, month, year] = dateString.split('/');
         const date = new Date(year, month - 1, day);
         return format(date, 'dd/MM/yyyy', { locale: ptBR });
       }
-      // Handle ISO string dates
       if (typeof dateString === 'string') {
         const date = parseISO(dateString);
         return format(date, 'dd/MM/yyyy', { locale: ptBR });
       }
-      // Handle Date objects
       if (dateString instanceof Date) {
         return format(dateString, 'dd/MM/yyyy', { locale: ptBR });
+      }
+      return 'Data inválida';
+    } catch {
+      return 'Data inválida';
+    }
+  };
+
+  const formatDateTime = (dateValue) => {
+    if (!dateValue) return 'N/A';
+    try {
+      if (dateValue.toDate && typeof dateValue.toDate === 'function') {
+        return format(dateValue.toDate(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
+      }
+      if (typeof dateValue === 'string' && dateValue.includes('/')) {
+        const [day, month, year] = dateValue.split('/');
+        const date = new Date(year, month - 1, day);
+        return format(date, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
+      }
+      if (typeof dateValue === 'string') {
+        const date = parseISO(dateValue);
+        return format(date, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
+      }
+      if (dateValue instanceof Date) {
+        return format(dateValue, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
       }
       return 'Data inválida';
     } catch {
@@ -345,16 +397,18 @@ const GestaoPacientesPage = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>Nome do Paciente</TableHead>
-                <TableHead>Localização</TableHead>
+                <TableHead>Sexo</TableHead>
                 <TableHead>Especialidade</TableHead>
-                <TableHead>Data de Internação</TableHead>
+                <TableHead>Data de Nascimento</TableHead>
+                <TableHead>Internação</TableHead>
+                <TableHead>Localização</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {pacientesEnriquecidos.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     {searchTerm ? 'Nenhum paciente encontrado.' : 'Nenhum paciente cadastrado.'}
                   </TableCell>
                 </TableRow>
@@ -362,13 +416,15 @@ const GestaoPacientesPage = () => {
                 pacientesEnriquecidos.map((paciente) => (
                   <TableRow key={paciente.id}>
                     <TableCell className="font-medium">
-                      {paciente.nomeCompleto}
+                      {paciente.nomePaciente}
                     </TableCell>
+                    <TableCell>{paciente.sexo || 'N/A'}</TableCell>
+                    <TableCell>{paciente.especialidade || 'N/A'}</TableCell>
+                    <TableCell>{formatDate(paciente.dataNascimento)}</TableCell>
+                    <TableCell>{formatDateTime(paciente.dataInternacao)}</TableCell>
                     <TableCell>
                       {paciente.siglaSetor} - {paciente.codigoLeito}
                     </TableCell>
-                    <TableCell>{paciente.especialidade || 'N/A'}</TableCell>
-                    <TableCell>{formatDate(paciente.dataInternacao)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button
@@ -426,7 +482,8 @@ const GestaoPacientesPage = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir o paciente <strong>{excluirPaciente?.nomeCompleto}</strong>? 
+              Tem certeza que deseja excluir o paciente{' '}
+              <strong>{excluirPaciente?.nomePaciente || excluirPaciente?.nomeCompleto}</strong>?
               Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
