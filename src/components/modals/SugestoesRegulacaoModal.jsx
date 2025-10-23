@@ -433,6 +433,7 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
 
     const pacientesElegiveis = (pacientesEnriquecidos || [])
       .filter((paciente) => !paciente?.regulacaoAtiva)
+      .filter((paciente) => !paciente?.altaAposRPA)
       .filter((paciente) => {
         if (paciente?.setorId && setoresPoolIds.has(paciente.setorId)) {
           return true;
