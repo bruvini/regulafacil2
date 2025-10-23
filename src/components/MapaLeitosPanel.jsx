@@ -111,6 +111,7 @@ const LeitoCard = ({
 
   const sexoPaciente = getSexoNormalizado(paciente?.sexo);
   const isOcupado = leito.status === 'Ocupado' && Boolean(paciente);
+  const hasRegulacaoBorder = ['ORIGEM', 'DESTINO'].includes(leito.regulacaoEmAndamento?.tipo);
   const occupiedBorderClass = sexoPaciente === 'M'
     ? 'border-2 border-blue-500'
     : sexoPaciente === 'F'
@@ -594,7 +595,7 @@ const LeitoCard = ({
       className={cn(
         getCardStyle(),
         "h-full w-full rounded-xl md:w-auto",
-        isOcupado && occupiedBorderClass
+        isOcupado && !hasRegulacaoBorder && occupiedBorderClass
       )}
     >
       <CardHeader className="px-4 pb-2 pt-4 sm:px-5">
