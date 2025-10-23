@@ -104,7 +104,7 @@ const MapaLeitosPage = () => {
   }, []);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* Indicadores Gerais */}
       <IndicadoresGeraisPanel
         setores={dados.setores}
@@ -116,61 +116,61 @@ const MapaLeitosPage = () => {
 
       {/* Caixa de Ferramentas */}
       <Card className="shadow-card">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Wrench className="h-5 w-5 text-primary" />
+        <CardHeader className="px-4 pb-3 sm:px-6">
+          <CardTitle className="flex items-center gap-2 text-base font-semibold sm:text-lg">
+            <Wrench className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
             Caixa de Ferramentas
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <CardContent className="px-3 py-4 sm:px-6 sm:py-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
             <Button
               variant="outline"
               size="sm"
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 text-xs sm:text-sm"
               onClick={() => setShowGerenciamentoModal(true)}
             >
-              <Settings2 className="h-4 w-4" />
+              <Settings2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               Gerenciar leitos
             </Button>
 
             <Button
               variant="outline"
               size="sm"
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 text-xs sm:text-sm"
               onClick={() => setShowRelatorioIsolamentosModal(true)}
             >
-              <Activity className="h-4 w-4" />
+              <Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               Relatório de isolamentos
             </Button>
 
             <Button
               variant="outline"
               size="sm"
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 text-xs sm:text-sm"
               onClick={() => setShowRelatorioLeitosVagosModal(true)}
             >
-              <Download className="h-4 w-4" />
+              <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               Relatório de leitos vagos
             </Button>
 
             <Button
               variant="outline"
               size="sm"
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 text-xs sm:text-sm"
               onClick={() => mapaLeitosRef.current?.openBoletimDiario?.()}
             >
-              <Activity className="h-4 w-4" />
+              <Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               Boletim diário
             </Button>
 
             <Button
               variant="outline"
               size="sm"
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 text-xs sm:text-sm"
               onClick={() => setShowReservasLeitosModal(true)}
             >
-              <Settings2 className="h-4 w-4" />
+              <Settings2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               Reservas de leitos
             </Button>
           </div>
@@ -179,13 +179,13 @@ const MapaLeitosPage = () => {
 
       {/* Mapa de Leitos Principal */}
       <Card className="shadow-card">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Map className="h-5 w-5 text-primary" />
+        <CardHeader className="px-4 pb-3 sm:px-6">
+          <CardTitle className="flex items-center gap-2 text-base font-semibold sm:text-lg">
+            <Map className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
             Mapa de Leitos
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-6">
+        <CardContent className="px-3 py-4 sm:px-6 sm:py-6">
           <MapaLeitosPanel ref={mapaLeitosRef} />
         </CardContent>
       </Card>

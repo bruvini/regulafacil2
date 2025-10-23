@@ -141,39 +141,39 @@ const IndicadoresGeraisPanel = ({ setores, leitos, pacientes, quartos, infeccoes
   };
 
   return (
-    <div className="w-full space-y-6 mb-6">
+    <div className="mb-6 w-full space-y-6">
       {/* Cabeçalho */}
-      <div className="flex items-center gap-3">
-        <Activity className="h-6 w-6 text-primary" />
-        <h1 className="text-2xl font-bold text-gray-900">Indicadores Estratégicos</h1>
+      <div className="flex items-center gap-2 sm:gap-3">
+        <Activity className="h-5 w-5 text-primary sm:h-6 sm:w-6" />
+        <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Indicadores Estratégicos</h1>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Taxa de Ocupação Geral */}
         <Card className="lg:col-span-1">
-          <CardHeader className="pb-3">
+          <CardHeader className="px-4 pb-3 sm:px-6">
             <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-primary" />
-              <CardTitle className="text-lg">Taxa de Ocupação Geral</CardTitle>
+              <TrendingUp className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
+              <CardTitle className="text-base font-semibold sm:text-lg">Taxa de Ocupação Geral</CardTitle>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 pt-0 sm:p-6">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-2xl font-bold">
+                <span className="text-xl font-bold sm:text-2xl">
                   {Number.isFinite(indicadores.taxaOcupacao)
                     ? indicadores.taxaOcupacao.toFixed(1)
                     : '0.0'}%
                 </span>
-                <Badge variant="outline" className="text-sm">
+                <Badge variant="outline" className="text-xs sm:text-sm">
                   Operacional
                 </Badge>
               </div>
               <Progress
                 value={Number.isFinite(indicadores.taxaOcupacao) ? indicadores.taxaOcupacao : 0}
-                className="h-3"
+                className="h-2 sm:h-3"
               />
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs text-muted-foreground sm:text-sm">
                 UTI, Enfermaria e Emergência
               </p>
             </div>
@@ -182,25 +182,25 @@ const IndicadoresGeraisPanel = ({ setores, leitos, pacientes, quartos, infeccoes
 
         {/* Status PCP */}
         <Card className="lg:col-span-1">
-          <CardHeader className="pb-3">
+          <CardHeader className="px-4 pb-3 sm:px-6">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-primary" />
-              <CardTitle className="text-lg">Status PCP</CardTitle>
+              <AlertTriangle className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
+              <CardTitle className="text-base font-semibold sm:text-lg">Status PCP</CardTitle>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 pt-0 sm:p-6">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-lg font-semibold">
+                <span className="text-sm font-semibold text-foreground sm:text-lg">
                   {indicadores.nivelPCP.ocupados} ocupados
                 </span>
               </div>
               <Badge
-                className={`${getCorNivelPCP(indicadores.nivelPCP.cor)} px-3 py-1 text-sm font-medium`}
+                className={`${getCorNivelPCP(indicadores.nivelPCP.cor)} px-3 py-1 text-xs font-medium sm:text-sm`}
               >
                 {indicadores.nivelPCP.nivel}
               </Badge>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs text-muted-foreground sm:text-sm">
                 PS Decisão Cirúrgica e Clínica
               </p>
             </div>
