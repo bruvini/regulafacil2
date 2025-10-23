@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   AlertDialog,
@@ -21,6 +24,7 @@ import {
   onSnapshot,
   writeBatch,
   doc,
+  updateDoc,
   deleteField,
   arrayUnion,
   db
@@ -30,6 +34,7 @@ import { useToast } from '@/hooks/use-toast';
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDadosHospitalares } from '@/hooks/useDadosHospitalares';
+import { cn } from "@/lib/utils";
 
 const extrairIsolamentosAtivos = (isolamentos) => {
   if (!isolamentos) return [];
@@ -62,6 +67,7 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
   const [pacienteAlta, setPacienteAlta] = useState(null);
   const [altaDialogOpen, setAltaDialogOpen] = useState(false);
   const [processandoAlta, setProcessandoAlta] = useState(false);
+  const [altaRpaLoading, setAltaRpaLoading] = useState({});
   const { toast } = useToast();
   const { currentUser } = useAuth();
   const { infeccoes } = useDadosHospitalares();
@@ -103,6 +109,43 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
       unsubscribeLeitos();
     };
   }, []);
+
+  const handleToggleAltaRPA = async (paciente, novoStatus) => {
+    if (!paciente?.id) return;
+
+    const pacienteRef = doc(getPacientesCollection(), paciente.id);
+    setAltaRpaLoading((prev) => ({ ...prev, [paciente.id]: true }));
+
+    try {
+      await updateDoc(pacienteRef, {
+        altaAposRPA: novoStatus
+      });
+
+      setPacientes((prevPacientes) =>
+        prevPacientes.map((item) =>
+          item.id === paciente.id ? { ...item, altaAposRPA: novoStatus } : item
+        )
+      );
+
+      toast({
+        title: "Status alterado",
+        description: `Paciente ${novoStatus ? "sinalizado para alta" : "retornou para a fila"}.`,
+      });
+    } catch (error) {
+      console.error("Erro ao atualizar status de alta RPA:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível alterar o status do paciente.",
+        variant: "destructive",
+      });
+    } finally {
+      setAltaRpaLoading((prev) => {
+        const updated = { ...prev };
+        delete updated[paciente.id];
+        return updated;
+      });
+    }
+  };
 
   const calcularIdade = (dataNascimento) => {
     if (!dataNascimento) return 0;
@@ -414,9 +457,16 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
     const tempoInternacao = calcularTempoInternacao(paciente.dataInternacao);
     const mostrarTempo = setor === "PS DECISÃO CLINICA" || setor === "PS DECISÃO CIRURGICA";
     const isolamentosAtivos = extrairIsolamentosAtivos(paciente.isolamentos);
+    const isPacienteRPA = setor === "CC - RECUPERAÇÃO" || paciente?.origem === "CC - RECUPERAÇÃO";
+    const isDesabilitado = Boolean(paciente?.altaAposRPA);
+    const isToggleLoading = Boolean(altaRpaLoading[paciente.id]);
+    const switchId = `alta-rpa-${paciente.id}`;
 
     return (
-      <Card className="p-4 hover:shadow-md transition-shadow border border-muted">
+      <Card className={cn(
+        "p-4 hover:shadow-md transition-shadow border border-muted",
+        isDesabilitado && "opacity-50 bg-muted/50"
+      )}>
         <div className="space-y-3">
           {/* Nome e Badge Idade/Sexo */}
           <div className="flex items-start justify-between gap-3">
@@ -425,9 +475,24 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
                 {paciente.nomePaciente}
               </h4>
             </div>
-            <Badge variant="outline" className="text-xs font-medium">
-              {idade} {sexoSigla}
-            </Badge>
+            <div className="flex flex-col items-end gap-2">
+              <Badge variant="outline" className="text-xs font-medium">
+                {idade} {sexoSigla}
+              </Badge>
+              {isPacienteRPA && (
+                <div className="flex items-center space-x-2">
+                  <Label htmlFor={switchId} className="text-xs">
+                    Alta RPA
+                  </Label>
+                  <Switch
+                    id={switchId}
+                    checked={isDesabilitado}
+                    onCheckedChange={(checked) => handleToggleAltaRPA(paciente, checked)}
+                    disabled={isToggleLoading}
+                  />
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Especialidade */}
@@ -479,32 +544,29 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
           )}
 
           {/* Ações */}
-          <div className="flex justify-end gap-2">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button 
-                    className="p-1.5 hover:bg-muted rounded-md transition-colors"
-                    onClick={() => handleIniciarRegulacao(paciente)}
-                  >
-                    <ArrowRightCircle className="h-4 w-4 text-primary" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Regular Paciente</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              size="sm"
+              onClick={() => handleIniciarRegulacao(paciente)}
+              disabled={isDesabilitado}
+              className="flex items-center gap-2"
+            >
+              <ArrowRightCircle className="h-4 w-4" />
+              Regular Paciente
+            </Button>
 
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button
-                    className="p-1.5 hover:bg-muted rounded-md transition-colors"
+                  <Button
+                    size="sm"
+                    variant="outline"
                     onClick={() => handleSolicitarAlta(paciente)}
+                    className="flex items-center gap-2"
                   >
-                    <LogOut className="h-4 w-4 text-destructive" />
-                  </button>
+                    <LogOut className="h-4 w-4" />
+                    Dar Alta
+                  </Button>
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>Dar Alta</p>
@@ -512,6 +574,12 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
               </Tooltip>
             </TooltipProvider>
           </div>
+
+          {isDesabilitado && (
+            <p className="text-xs text-center text-muted-foreground">
+              Paciente sinalizado para alta. Desmarque a opção "Alta RPA" para regular.
+            </p>
+          )}
         </div>
       </Card>
     );
