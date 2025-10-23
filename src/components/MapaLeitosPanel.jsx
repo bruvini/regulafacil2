@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Label } from "@/components/ui/label";
 import {
   ChevronDown,
   MoreVertical,
@@ -307,7 +308,7 @@ const LeitoCard = ({
 
     if (paciente.isolamentos && paciente.isolamentos.length > 0) {
       badges.push(
-        <div key="isolamentos" className="flex flex-wrap gap-1 mt-1">
+        <div key="isolamentos" className="mt-1 flex flex-wrap gap-1.5">
           {paciente.isolamentos.map(isolamento => {
             const infeccaoRef = isolamento?.infeccaoId;
             if (infeccaoRef?.id) {
@@ -315,7 +316,7 @@ const LeitoCard = ({
               const sigla = (infeccao?.siglaInfeccao || infeccao?.sigla || '').trim();
               if (sigla) {
                 return (
-                  <Badge key={`isolamento-${infeccao.id}`} variant="destructive" className="text-xs">
+                  <Badge key={`isolamento-${infeccao.id}`} variant="destructive" className="text-[0.65rem] sm:text-xs">
                     {sigla}
                   </Badge>
                 );
@@ -325,7 +326,7 @@ const LeitoCard = ({
             const siglaFallback = (isolamento?.siglaInfeccao || isolamento?.sigla || isolamento?.nomeInfeccao || '').trim();
             if (siglaFallback) {
               return (
-                <Badge key={`isolamento-${siglaFallback}`} variant="destructive" className="text-xs">
+                <Badge key={`isolamento-${siglaFallback}`} variant="destructive" className="text-[0.65rem] sm:text-xs">
                   {siglaFallback}
                 </Badge>
               );
@@ -339,7 +340,7 @@ const LeitoCard = ({
 
     if (paciente.observacoes && paciente.observacoes.length > 0) {
       badges.push(
-        <Badge key="obs" variant="outline" className="text-xs p-1">
+        <Badge key="obs" variant="outline" className="px-1.5 py-0.5 text-[0.65rem] sm:text-xs">
           <MessageSquareQuote className="h-3 w-3" />
         </Badge>
       );
@@ -347,7 +348,7 @@ const LeitoCard = ({
 
     if (paciente.pedidoUTI) {
       badges.push(
-        <Badge key="uti" variant="destructive" className="text-xs p-1">
+        <Badge key="uti" variant="destructive" className="px-1.5 py-0.5 text-[0.65rem] sm:text-xs">
           <BedDouble className="h-3 w-3" />
         </Badge>
       );
@@ -355,7 +356,7 @@ const LeitoCard = ({
 
     if (paciente.pedidoRemanejamento) {
       badges.push(
-        <Badge key="rem" variant="outline" className="text-xs p-1">
+        <Badge key="rem" variant="outline" className="px-1.5 py-0.5 text-[0.65rem] sm:text-xs">
           <ArrowRightLeft className="h-3 w-3" />
         </Badge>
       );
@@ -363,7 +364,7 @@ const LeitoCard = ({
 
     if (paciente.pedidoTransferenciaExterna) {
       badges.push(
-        <Badge key="trans" variant="outline" className="text-xs p-1">
+        <Badge key="trans" variant="outline" className="px-1.5 py-0.5 text-[0.65rem] sm:text-xs">
           <Truck className="h-3 w-3" />
         </Badge>
       );
@@ -371,7 +372,7 @@ const LeitoCard = ({
 
     if (paciente.provavelAlta) {
       badges.push(
-        <Badge key="alta" variant="outline" className="text-xs p-1">
+        <Badge key="alta" variant="outline" className="px-1.5 py-0.5 text-[0.65rem] sm:text-xs">
           <UserCheck className="h-3 w-3" />
         </Badge>
       );
@@ -379,14 +380,14 @@ const LeitoCard = ({
 
     if (paciente.altaNoLeito) {
       badges.push(
-        <Badge key="altaleito" variant="outline" className="text-xs p-1">
+        <Badge key="altaleito" variant="outline" className="px-1.5 py-0.5 text-[0.65rem] sm:text-xs">
           <Home className="h-3 w-3" />
         </Badge>
       );
     }
 
     return badges.length > 0 ? (
-      <div className="flex flex-wrap gap-1 mt-2">
+      <div className="mt-2 flex flex-wrap gap-1.5">
         {badges}
       </div>
     ) : null;
@@ -518,39 +519,94 @@ const LeitoCard = ({
     return `Permitido apenas pacientes do sexo ${restricao.sexo}`;
   };
 
-  return (
-    <Card className={getCardStyle()}>
-      <CardContent className="p-4 relative flex flex-col min-h-[150px]">
+  const primaryPatientName = (() => {
+    if (isReservaExterna) {
+      return reservaExterna.pacienteNome || 'Paciente externo';
+    }
 
-        {/* Cabeçalho com layout corrigido */}
-        <div className="flex justify-between items-start mb-3">
-          <div className="flex-1 min-w-0">
-            <h4 className="font-semibold text-sm text-gray-900 mb-2">
+    if (leito.status === 'Regulado' && leito.paciente?.nomePaciente) {
+      return leito.paciente.nomePaciente;
+    }
+
+    if (leito.status === 'Reservado') {
+      return reservaPacienteNome || 'Paciente em regulação';
+    }
+
+    if (leito.paciente?.nomePaciente) {
+      return leito.paciente.nomePaciente;
+    }
+
+    return '---';
+  })();
+
+  const metaItems = [];
+  const addMetaItem = (label, value) => {
+    if (value === null || value === undefined) return;
+    const normalized = typeof value === 'string' ? value.trim() : value;
+    if (normalized === '' || normalized === 'N/A') return;
+    if (metaItems.some((item) => item.label === label)) return;
+    metaItems.push({ label, value: normalized });
+  };
+
+  if (leito.paciente && ['Regulado', 'Ocupado'].includes(leito.status)) {
+    const idadePaciente = calcularIdade(leito.paciente.dataNascimento);
+    if (idadePaciente && idadePaciente !== 'N/A') {
+      addMetaItem('Idade', `${idadePaciente} anos`);
+    }
+    addMetaItem('Sexo', leito.paciente.sexo);
+    addMetaItem('Especialidade', leito.paciente.especialidade);
+  }
+
+  if (isReservaExterna) {
+    if (idadeReservaExterna && idadeReservaExterna !== 'N/A') {
+      addMetaItem('Idade', `${idadeReservaExterna} anos`);
+    }
+    addMetaItem('Sexo', reservaExterna.pacienteSexo);
+    addMetaItem('Cidade', reservaExterna.cidadeOrigem);
+    addMetaItem('Instituição', reservaExterna.instituicaoOrigem);
+    addMetaItem('Especialidade', reservaExterna.especialidadeOncologia);
+    addMetaItem('Contato', reservaExterna.telefoneContato);
+  }
+
+  if (leito.status === 'Reservado' && !isReservaExterna) {
+    const origemDescricao = [reservaOrigemSetor, reservaOrigemCodigo].filter(Boolean).join(' - ');
+    addMetaItem('Origem', origemDescricao || reservaOrigemCodigo);
+  }
+
+  return (
+    <Card className={`${getCardStyle()} h-full w-full rounded-xl border border-gray-100 md:w-auto`}>
+      <CardHeader className="px-4 pb-2 pt-4 sm:px-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            <CardTitle className="text-base font-semibold text-foreground sm:text-lg">
               {leito.codigoLeito}
-            </h4>
-            <div className="flex flex-wrap gap-1">
+            </CardTitle>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[0.625rem] sm:text-xs">
               {leito.isPCP && (
-                <Badge variant="secondary" className="text-xs">
+                <Badge variant="secondary" className="text-[0.625rem] sm:text-xs">
                   PCP
                 </Badge>
               )}
-              <Badge variant={statusBadgeVariant} className={getBadgeStyle()}>
+              <Badge variant={statusBadgeVariant} className={`${getBadgeStyle()} text-[0.625rem] sm:text-xs`}>
                 {statusLabel}
               </Badge>
               {leito.status === 'Higienização' && leito.higienizacaoPrioritaria && (
-                <Badge variant="destructive" className="text-xs flex items-center gap-1">
+                <Badge variant="destructive" className="flex items-center gap-1 text-[0.625rem] sm:text-xs">
                   <Flame className="h-3 w-3" />
                   Prioridade
                 </Badge>
               )}
             </div>
           </div>
-          {/* Menu de ações */}
           {(shouldShowReservaExternaActions || shouldShowDefaultActions) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0">
-                  <MoreVertical className="h-3 w-3" />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 flex-shrink-0 rounded-full border border-transparent hover:bg-nav-hover sm:h-9 sm:w-9"
+                >
+                  <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
@@ -559,196 +615,122 @@ const LeitoCard = ({
             </DropdownMenu>
           )}
         </div>
+      </CardHeader>
+      <CardContent className="flex h-full flex-col px-4 pb-4 pt-2 text-xs text-muted-foreground sm:px-5 sm:text-sm">
+        <div>
+          <Label className="text-[0.625rem] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">
+            Paciente
+          </Label>
+          <p className="mt-1 whitespace-normal break-words text-sm font-semibold text-foreground sm:text-base">
+            {primaryPatientName}
+          </p>
+        </div>
 
-        {/* Conteúdo do card */}
-        <div className="flex-1 flex flex-col space-y-3">
+        {metaItems.length > 0 && (
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {metaItems.map((item) => (
+              <p key={item.label} className="flex flex-col text-xs text-muted-foreground sm:text-sm">
+                <span className="font-semibold text-foreground">{item.label}</span>
+                <span className="break-words text-muted-foreground">{item.value}</span>
+              </p>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-3 flex-1 space-y-3">
 
           {/* Leito em regulação (origem) */}
           {leito.status === 'Regulado' && leito.paciente && regulacaoOrigemInfo && (
-            <div className="space-y-3">
-              <div className="min-w-0 space-y-1">
-                <p
-                  className="font-medium text-sm text-gray-900 truncate"
-                  title={leito.paciente.nomePaciente}
-                >
-                  {leito.paciente.nomePaciente}
-                </p>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-                  <span>{calcularIdade(leito.paciente.dataNascimento)} anos</span>
-                  {leito.paciente.especialidade && (
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span>•</span>
-                      <span
-                        className="truncate"
-                        title={leito.paciente.especialidade}
-                      >
-                        {leito.paciente.especialidade}
-                      </span>
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="border border-orange-200 bg-orange-50 p-3 rounded-md text-xs text-orange-800 space-y-1">
-                <p className="font-semibold text-orange-900">
-                  Destino: {destinoReguladoSetor} - Leito {destinoReguladoCodigo}
-                </p>
-                {tempoRegulacaoOrigem && (
-                  <p className="text-orange-700">
-                    Regulação iniciada {tempoRegulacaoOrigem}
-                  </p>
-                )}
-              </div>
-
-              {renderStatusBadges()}
+            <div className="space-y-2 rounded-md border border-orange-200 bg-orange-50 p-3 text-[0.75rem] text-orange-800 sm:text-xs sm:leading-relaxed">
+              <p className="font-semibold text-orange-900">
+                Destino: {destinoReguladoSetor} - Leito {destinoReguladoCodigo}
+              </p>
+              {tempoRegulacaoOrigem && (
+                <p className="text-orange-700">Regulação iniciada {tempoRegulacaoOrigem}</p>
+              )}
             </div>
           )}
 
           {/* Leito reservado para paciente externo */}
           {isReservaExterna && (
-            <div className="space-y-3">
-              <div className="min-w-0 space-y-1">
-                <p
-                  className="font-medium text-sm text-gray-900 truncate"
-                  title={reservaExterna.pacienteNome || 'Paciente externo'}
-                >
-                  {reservaExterna.pacienteNome || 'Paciente externo'}
-                </p>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-                  {idadeReservaExterna && idadeReservaExterna !== 'N/A' && (
-                    <span>{idadeReservaExterna} anos</span>
-                  )}
-                  {reservaExterna.pacienteSexo && (
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span>•</span>
-                      <span className="truncate" title={reservaExterna.pacienteSexo}>
-                        {reservaExterna.pacienteSexo}
-                      </span>
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2 rounded-md border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-sky-900">
-                    {reservaExterna.origem === 'SISREG' ? 'Reserva SISREG' : 'Reserva Oncológica'}
-                  </span>
-                  {reservaExterna.idSolicitacao && (
-                    <Badge variant="outline" className="border-sky-300 bg-white text-sky-700">
-                      ID {reservaExterna.idSolicitacao}
-                    </Badge>
-                  )}
-                </div>
-
-                {reservaExterna.origem === 'SISREG' ? (
-                  <div className="space-y-1">
-                    {reservaExterna.instituicaoOrigem && (
-                      <p>
-                        <span className="font-medium">Instituição:</span> {reservaExterna.instituicaoOrigem}
-                      </p>
-                    )}
-                    {reservaExterna.cidadeOrigem && (
-                      <p>
-                        <span className="font-medium">Cidade:</span> {reservaExterna.cidadeOrigem}
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    {reservaExterna.especialidadeOncologia && (
-                      <p>
-                        <span className="font-medium">Especialidade:</span> {reservaExterna.especialidadeOncologia}
-                      </p>
-                    )}
-                    {reservaExterna.telefoneContato && (
-                      <p>
-                        <span className="font-medium">Contato:</span> {reservaExterna.telefoneContato}
-                      </p>
-                    )}
-                  </div>
+            <div className="space-y-2 rounded-md border border-sky-200 bg-sky-50 p-3 text-[0.75rem] text-sky-800 sm:text-xs sm:leading-relaxed">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold text-sky-900">
+                  {reservaExterna.origem === 'SISREG' ? 'Reserva SISREG' : 'Reserva Oncológica'}
+                </span>
+                {reservaExterna.idSolicitacao && (
+                  <Badge variant="outline" className="border-sky-300 bg-white text-[0.65rem] text-sky-700 sm:text-xs">
+                    ID {reservaExterna.idSolicitacao}
+                  </Badge>
                 )}
               </div>
-            </div>
-          )}
 
-          {/* Leito de DESTINO em regulação (Reservado) */}
-          {leito.status === 'Reservado' && regulacaoDestinoInfo && !isReservaExterna && (
-            <div className="space-y-2">
-              <div className="min-w-0 space-y-1">
-                <p
-                  className="font-medium text-sm text-gray-900 truncate"
-                  title={reservaPacienteNome || 'Paciente em regulação'}
-                >
-                  {reservaPacienteNome || 'Paciente em regulação'}
-                </p>
-                <div className="text-xs text-gray-600">
-                  <span className="font-medium">Vindo de: </span>
-                  <span
-                    className="truncate"
-                    title={`${reservaOrigemSetor ? `${reservaOrigemSetor} - ` : ''}${reservaOrigemCodigo}`}
-                  >
-                    {reservaOrigemSetor ? `${reservaOrigemSetor} - ` : ''}
-                    {reservaOrigemCodigo}
-                  </span>
+              {reservaExterna.origem === 'SISREG' ? (
+                <div className="space-y-1 text-muted-foreground">
+                  {reservaExterna.instituicaoOrigem && (
+                    <p>
+                      <span className="font-semibold text-foreground">Instituição:</span> {reservaExterna.instituicaoOrigem}
+                    </p>
+                  )}
+                  {reservaExterna.cidadeOrigem && (
+                    <p>
+                      <span className="font-semibold text-foreground">Cidade:</span> {reservaExterna.cidadeOrigem}
+                    </p>
+                  )}
                 </div>
-              </div>
-
-              {tempoRegulacaoDestino && (
-                <div className="text-xs text-purple-700">
-                  Regulação iniciada {tempoRegulacaoDestino}
+              ) : (
+                <div className="space-y-1 text-muted-foreground">
+                  {reservaExterna.especialidadeOncologia && (
+                    <p>
+                      <span className="font-semibold text-foreground">Especialidade:</span> {reservaExterna.especialidadeOncologia}
+                    </p>
+                  )}
+                  {reservaExterna.telefoneContato && (
+                    <p>
+                      <span className="font-semibold text-foreground">Contato:</span> {reservaExterna.telefoneContato}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
           )}
 
-          {/* Informações do paciente para leitos ocupados normais */}
-          {leito.status === 'Ocupado' && leito.paciente && !leito.regulacaoEmAndamento && (
-            <div className="space-y-2">
-              <div className="min-w-0 space-y-1">
-                <p
-                  className="font-medium text-sm text-gray-900 truncate"
-                  title={leito.paciente.nomePaciente}
-                >
-                  {leito.paciente.nomePaciente}
-                </p>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-                  <span>{calcularIdade(leito.paciente.dataNascimento)} anos</span>
-                  {leito.paciente.especialidade && (
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span>•</span>
-                      <span
-                        className="truncate"
-                        title={leito.paciente.especialidade}
-                      >
-                        {leito.paciente.especialidade}
-                      </span>
-                    </span>
-                  )}
-                </div>
-              </div>
-              {renderStatusBadges()}
+          {/* Leito de DESTINO em regulação (Reservado) */}
+          {leito.status === 'Reservado' && regulacaoDestinoInfo && !isReservaExterna && (
+            <div className="space-y-2 rounded-md border border-purple-200 bg-purple-50 p-3 text-[0.75rem] text-purple-800 sm:text-xs sm:leading-relaxed">
+              <p>
+                <span className="font-semibold text-purple-900">Vindo de:</span>{' '}
+                <span className="break-words">
+                  {reservaOrigemSetor ? `${reservaOrigemSetor} - ` : ''}
+                  {reservaOrigemCodigo}
+                </span>
+              </p>
+              {tempoRegulacaoDestino && (
+                <p className="text-purple-700">Regulação iniciada {tempoRegulacaoDestino}</p>
+              )}
             </div>
           )}
 
           {/* Informações específicas por status */}
           {leito.status === 'Bloqueado' && leito.motivoBloqueio && (
-            <div className="text-xs text-gray-600 bg-gray-100 p-2 rounded">
-              <strong>Motivo:</strong> {leito.motivoBloqueio}
+            <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-[0.75rem] text-muted-foreground sm:text-xs sm:leading-relaxed">
+              <span className="font-semibold text-foreground">Motivo:</span> {leito.motivoBloqueio}
             </div>
           )}
 
           {/* Informações de coorte para leitos vagos */}
           {leito.status === 'Vago' && leito.restricaoCoorte && (
-            <div className="text-xs bg-blue-50 border border-blue-200 p-2 rounded">
-              <span className="font-semibold text-blue-800">Restrição de coorte:</span>
-              <span className="text-blue-700 block">{formatarMensagemRestricaoCoorte(leito.restricaoCoorte)}</span>
+            <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-[0.75rem] text-blue-800 sm:text-xs sm:leading-relaxed">
+              <span className="font-semibold text-blue-900">Restrição de coorte:</span>
+              <span className="mt-1 block text-blue-700">{formatarMensagemRestricaoCoorte(leito.restricaoCoorte)}</span>
             </div>
           )}
 
+          {((leito.status === 'Ocupado' && leito.paciente && !leito.regulacaoEmAndamento) || (leito.status === 'Regulado' && leito.paciente)) && renderStatusBadges()}
+
           {/* Tempo no status apenas para leitos não em regulação */}
           {!leito.regulacaoEmAndamento && (
-            <div className="text-xs text-muted-foreground mt-auto">
+            <div className="mt-3 text-[0.65rem] text-muted-foreground sm:text-xs">
               {getTempoNoStatus()}
             </div>
           )}
@@ -1614,7 +1596,7 @@ const MapaLeitosPanel = React.forwardRef((_, ref) => {
         {/* Filtros Avançados */}
         <Collapsible open={filtrosAbertos} onOpenChange={setFiltrosAbertos}>
           <CollapsibleContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-4 border-t">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 pt-4 border-t">
               {/* Status do Leito */}
               <div>
                 <h4 className="font-medium mb-3">Status do Leito</h4>
@@ -1743,7 +1725,7 @@ const MapaLeitosPanel = React.forwardRef((_, ref) => {
               {/* Indicadores de Paciente */}
               <div className="md:col-span-2 lg:col-span-3">
                 <h4 className="font-medium mb-3">Indicadores de Paciente</h4>
-                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {[
                     { key: 'isPCP', label: 'Leito PCP' },
                     { key: 'comPedidoUTI', label: 'Com Pedido de UTI' },
@@ -1780,53 +1762,61 @@ const MapaLeitosPanel = React.forwardRef((_, ref) => {
       </div>
 
       {Object.keys(dadosFiltrados).length === 0 ? (
-        <div className="text-center py-12">
+        <div className="py-8 text-center sm:py-12">
           <p className="text-muted-foreground">
             Nenhum leito encontrado com os filtros aplicados.
           </p>
         </div>
       ) : (
-        <Accordion type="single" collapsible className="space-y-4">
+        <Accordion type="single" collapsible className="space-y-3 sm:space-y-4">
           {Object.entries(dadosFiltrados).map(([tipoSetor, setoresDoTipo]) => (
-            <AccordionItem key={tipoSetor} value={tipoSetor} className={`border border-gray-200 rounded-lg ${getSectorTypeColor(tipoSetor)}`}>
-              <AccordionTrigger className="w-full justify-between p-4 h-auto text-left hover:bg-gray-50">
+            <AccordionItem
+              key={tipoSetor}
+              value={tipoSetor}
+              className={`rounded-xl border border-gray-200 ${getSectorTypeColor(tipoSetor)}`}
+            >
+              <AccordionTrigger className="h-auto w-full justify-between px-3 py-3 text-left text-base font-medium hover:bg-gray-50 sm:px-4 sm:py-4">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900">
+                  <h2 className="text-lg font-semibold text-gray-900 sm:text-xl">
                     {tipoSetor}
                   </h2>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-xs text-muted-foreground sm:text-sm">
                     {setoresDoTipo.length} setor(es)
                   </p>
                 </div>
               </AccordionTrigger>
-              
-              <AccordionContent className="p-4 pt-0">
-                <Accordion type="single" collapsible className="space-y-6">
+
+              <AccordionContent className="px-3 pb-4 pt-0 sm:px-4 sm:pb-5">
+                <Accordion type="single" collapsible className="space-y-4 sm:space-y-6">
                   {setoresDoTipo.map(setor => (
-                    <AccordionItem key={setor.id} value={setor.id} className="border border-gray-100 rounded-lg">
-                      <AccordionTrigger className="w-full justify-between p-3 h-auto text-left hover:bg-gray-50">
+                    <AccordionItem
+                      key={setor.id}
+                      value={setor.id}
+                      className="rounded-xl border border-gray-100"
+                    >
+                      <AccordionTrigger className="h-auto w-full justify-between px-3 py-3 text-left text-sm font-medium hover:bg-gray-50 sm:px-4">
                         <div>
-                          <h3 className="text-lg font-medium text-gray-800">
+                          <h3 className="text-base font-medium text-gray-800 sm:text-lg">
                             {setor.nomeSetor} ({setor.siglaSetor})
                           </h3>
-                          <p className="text-sm text-muted-foreground">
-                            {(setor.quartos.length > 0 ? setor.quartos.length + " quarto(s), " : "") + 
+                          <p className="text-xs text-muted-foreground sm:text-sm">
+                            {(setor.quartos.length > 0 ? setor.quartos.length + " quarto(s), " : "") +
                              (setor.leitosSemQuarto.length + setor.quartos.reduce((acc, q) => acc + q.leitos.length, 0)) + " leito(s)"}
                           </p>
                         </div>
                       </AccordionTrigger>
-                      
-                      <AccordionContent className="p-3 pt-0 space-y-4">
+
+                      <AccordionContent className="space-y-4 px-3 pt-0 sm:px-4 sm:pb-4">
                         {/* Renderizar quartos (não são acordeões, apenas containers) */}
                         {setor.quartos.map(quarto => (
-                          <div key={quarto.id} className="bg-gray-50 rounded-lg p-4">
-                            <h4 className="text-md font-medium text-gray-700 mb-3 flex items-center gap-2">
+                          <div key={quarto.id} className="rounded-lg bg-gray-50 px-3 py-3 sm:p-4">
+                            <h4 className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700 sm:mb-3 sm:text-base">
                               📋 {quarto.nomeQuarto}
-                              <Badge variant="outline" className="text-xs">
+                              <Badge variant="outline" className="text-[0.625rem] sm:text-xs">
                                 {quarto.leitos.length} leito(s)
                               </Badge>
                             </h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 sm:gap-3">
                               {quarto.leitos.map(leito => (
                                 <MemoizedLeitoCard
                                   key={leito.id}
@@ -1858,14 +1848,14 @@ const MapaLeitosPanel = React.forwardRef((_, ref) => {
                         {setor.leitosSemQuarto.length > 0 && (
                           <div>
                             {setor.quartos.length > 0 ? (
-                              <h4 className="text-md font-medium text-gray-700 mb-3 flex items-center gap-2">
+                              <h4 className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700 sm:mb-3 sm:text-base">
                                 🏥 Leitos sem quarto
-                                <Badge variant="outline" className="text-xs">
+                                <Badge variant="outline" className="text-[0.625rem] sm:text-xs">
                                   {setor.leitosSemQuarto.length} leito(s)
                                 </Badge>
                               </h4>
                             ) : null}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 sm:gap-3">
                               {setor.leitosSemQuarto.map(leito => (
                                 <MemoizedLeitoCard
                                   key={leito.id}

@@ -25,6 +25,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Sheet, SheetClose, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { 
   Hospital,
   Mail,
@@ -32,6 +33,7 @@ import {
   Menu,
   User,
   LogOut,
+  PanelLeft,
   Home,
   Bed,
   Map,
@@ -55,6 +57,7 @@ import {
   Newspaper,
   ArrowRightLeft,
   Info,
+  X,
 } from 'lucide-react';
 import {
   getSetoresCollection,
@@ -321,7 +324,7 @@ const pathFromPage = (page) => {
 };
 
 // Componente do Header
-const Header = ({ currentPage, onToggleSidebar, currentUser, isScrolled }) => {
+const Header = ({ currentPage, onToggleSidebar, onOpenMobileSidebar, currentUser, isScrolled }) => {
   return (
     <header
       className={cn(
@@ -329,56 +332,191 @@ const Header = ({ currentPage, onToggleSidebar, currentUser, isScrolled }) => {
         isScrolled && "scrolled"
       )}
     >
-      <div className="flex items-center justify-between h-16 px-4">
-        {/* Left - Hamburger Menu */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onToggleSidebar}
-          className="hover:bg-nav-hover"
-        >
-          <Menu className="h-5 w-5" />
-        </Button>
+      <div className="flex h-16 items-center justify-between px-3 sm:px-4">
+        <div className="flex flex-shrink-0 items-center gap-2">
+          <SheetTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onOpenMobileSidebar}
+              className="hover:bg-nav-hover md:hidden"
+            >
+              <Menu className="h-5 w-5" />
+              <span className="sr-only">Abrir menu</span>
+            </Button>
+          </SheetTrigger>
 
-        {/* Center - Page Title */}
-        <h1 className="text-lg font-semibold text-foreground">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleSidebar}
+            className="hidden md:inline-flex hover:bg-nav-hover"
+          >
+            <PanelLeft className="h-5 w-5" />
+            <span className="sr-only">Alternar sidebar</span>
+          </Button>
+        </div>
+
+        <h1 className="flex-1 truncate px-2 text-center text-base font-semibold text-foreground sm:text-lg">
           {currentPage}
         </h1>
 
-        {/* Right - User Menu */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="flex items-center gap-2 hover:bg-nav-hover">
-              <User className="h-4 w-4" />
-              <span className="hidden sm:inline">
-                {currentUser?.nomeCompleto || 'Usuário'}
-              </span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <div className="px-2 py-1.5 text-sm">
-              <div className="font-medium">{currentUser?.nomeCompleto}</div>
-              <div className="text-muted-foreground">{currentUser?.emailInstitucional}</div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {currentUser?.tipoUsuario}
+        <div className="flex flex-shrink-0 items-center">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="flex items-center gap-2 px-2 py-1.5 hover:bg-nav-hover">
+                <User className="h-4 w-4 sm:h-5 sm:w-5" />
+                <span className="hidden text-sm font-medium sm:inline">
+                  {currentUser?.nomeCompleto || 'Usuário'}
+                </span>
+                <span className="sr-only sm:hidden">
+                  {currentUser?.nomeCompleto || 'Usuário'}
+                </span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <div className="px-2 py-1.5 text-sm">
+                <div className="font-medium">{currentUser?.nomeCompleto}</div>
+                <div className="text-muted-foreground">{currentUser?.emailInstitucional}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {currentUser?.tipoUsuario}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Matrícula: {currentUser?.matricula || 'N/A'}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Acessos: {currentUser?.qtdAcessos ?? currentUser?.acessos ?? 0}
+                </div>
               </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                Matrícula: {currentUser?.matricula || 'N/A'}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                Acessos: {currentUser?.qtdAcessos ?? currentUser?.acessos ?? 0}
-              </div>
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </header>
   );
 };
 
+const SidebarContent = ({
+  isExpanded,
+  currentPage,
+  onNavigate,
+  onRequestLogout,
+  onClose,
+  enableTooltips = true,
+}) => {
+  const { hasPermission } = useAuth();
+  const showCloseButton = Boolean(onClose);
+
+  const handleNavigate = useCallback(
+    (pageId) => {
+      onNavigate(pageId);
+      if (onClose) {
+        onClose();
+      }
+    },
+    [onClose, onNavigate]
+  );
+
+  return (
+    <div className="flex h-full flex-col">
+      <div
+        className={cn(
+          "flex items-center border-b border-sidebar-border px-3 py-3 transition-smooth sm:px-4",
+          isExpanded ? "justify-between" : "justify-center",
+        )}
+      >
+        <div className={cn("flex items-center", isExpanded ? "gap-3" : "gap-0")}>
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Hospital className="h-5 w-5" />
+          </div>
+          {isExpanded && (
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">RegulaFácil</p>
+              <p className="text-xs text-muted-foreground">Centro de Controle</p>
+            </div>
+          )}
+        </div>
+        {showCloseButton && (
+          <SheetClose asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="ml-2 h-8 w-8 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+              <span className="sr-only">Fechar menu</span>
+            </Button>
+          </SheetClose>
+        )}
+      </div>
+
+      <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-3 sm:px-3">
+        {navigationItems.map((item) => {
+          const isActive = currentPage === item.id;
+          const Icon = item.icon;
+          const hasAccess = hasPermission(item.route);
+
+          if (!hasAccess) return null;
+
+          const button = (
+            <Button
+              key={item.id}
+              variant="ghost"
+              onClick={() => handleNavigate(item.id)}
+              className={cn(
+                "w-full justify-start gap-3 h-11 rounded-lg text-sm transition-smooth sm:h-12",
+                isActive
+                  ? "bg-nav-active text-primary-foreground"
+                  : "hover:bg-nav-hover text-sidebar-foreground",
+                !isExpanded && "justify-center px-0"
+              )}
+            >
+              <Icon className="h-4 w-4 flex-shrink-0 sm:h-5 sm:w-5" />
+              {isExpanded && (
+                <span className="text-sm font-medium truncate">{item.label}</span>
+              )}
+            </Button>
+          );
+
+          if (!enableTooltips || isExpanded) {
+            return button;
+          }
+
+          return (
+            <Tooltip key={item.id} delayDuration={300}>
+              <TooltipTrigger asChild>{button}</TooltipTrigger>
+              <TooltipContent side="right" className="ml-2">
+                {item.label}
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </nav>
+      <div className="border-t border-sidebar-border px-2 pb-3 sm:px-3">
+        <Button
+          variant="ghost"
+          onClick={() => {
+            onRequestLogout();
+            if (onClose) {
+              onClose();
+            }
+          }}
+          className={cn(
+            "w-full justify-start gap-3 h-11 rounded-lg text-sm font-medium text-destructive hover:bg-nav-hover transition-smooth",
+            !isExpanded && "justify-center px-0"
+          )}
+        >
+          <LogOut className="h-4 w-4 flex-shrink-0 sm:h-5 sm:w-5" />
+          {isExpanded && <span>Sair</span>}
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 // Componente do Sidebar
-const Sidebar = ({ isExpanded, currentPage, onNavigate, currentUser }) => {
-  const { hasPermission, logout } = useAuth();
+const Sidebar = ({ isExpanded, currentPage, onNavigate }) => {
+  const { logout } = useAuth();
   const [alertaLogoutAberto, setAlertaLogoutAberto] = useState(false);
 
   const handleConfirmarLogout = useCallback(() => {
@@ -389,73 +527,18 @@ const Sidebar = ({ isExpanded, currentPage, onNavigate, currentUser }) => {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-16 flex h-[calc(100vh-4rem)] flex-col bg-sidebar border-r border-sidebar-border transition-all duration-300 z-40",
+        "fixed left-0 top-16 z-40 hidden h-[calc(100vh-4rem)] flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300 md:flex",
         isExpanded ? "w-64" : "w-16"
       )}
     >
       <TooltipProvider>
-        <nav className="flex-1 space-y-1 overflow-y-auto p-2">
-          {navigationItems.map((item) => {
-            const isActive = currentPage === item.id;
-            const Icon = item.icon;
-            const hasAccess = hasPermission(item.route);
-
-            // Não mostrar itens sem permissão
-            if (!hasAccess) return null;
-
-            return (
-              <Tooltip key={item.id} delayDuration={300}>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    onClick={() => onNavigate(item.id)}
-                    className={cn(
-                      "w-full justify-start gap-3 h-12 transition-smooth",
-                      isActive
-                        ? "bg-nav-active text-primary-foreground"
-                        : "hover:bg-nav-hover text-sidebar-foreground",
-                      !isExpanded && "justify-center px-0"
-                    )}
-                  >
-                    <Icon className="h-5 w-5 flex-shrink-0" />
-                    {isExpanded && (
-                      <span className="text-sm font-medium truncate">
-                        {item.label}
-                      </span>
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                {!isExpanded && (
-                  <TooltipContent side="right" className="ml-2">
-                    {item.label}
-                  </TooltipContent>
-                )}
-              </Tooltip>
-            );
-          })}
-        </nav>
-        <div className="border-t border-sidebar-border p-2">
-          <Tooltip delayDuration={300}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                onClick={() => setAlertaLogoutAberto(true)}
-                className={cn(
-                  "w-full justify-start gap-3 h-11 text-sm font-medium text-destructive hover:bg-nav-hover transition-smooth",
-                  !isExpanded && "justify-center px-0"
-                )}
-              >
-                <LogOut className="h-5 w-5 flex-shrink-0" />
-                {isExpanded && <span>Sair</span>}
-              </Button>
-            </TooltipTrigger>
-            {!isExpanded && (
-              <TooltipContent side="right" className="ml-2">
-                Sair
-              </TooltipContent>
-            )}
-          </Tooltip>
-        </div>
+        <SidebarContent
+          isExpanded={isExpanded}
+          currentPage={currentPage}
+          onNavigate={onNavigate}
+          onRequestLogout={() => setAlertaLogoutAberto(true)}
+          enableTooltips
+        />
       </TooltipProvider>
       <AlertDialog open={alertaLogoutAberto} onOpenChange={setAlertaLogoutAberto}>
         <AlertDialogContent>
@@ -484,8 +567,8 @@ const Footer = () => {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="fixed bottom-0 left-0 right-0 bg-header-bg border-t border-header-border py-3 px-4 z-30">
-      <div className="text-center text-sm text-muted-foreground">
+    <footer className="fixed bottom-0 left-0 right-0 z-30 border-t border-header-border bg-header-bg py-2.5 px-3 sm:px-4">
+      <div className="text-center text-xs text-muted-foreground sm:text-sm">
         © {currentYear} Hospital Municipal São José. Todos os direitos reservados.
       </div>
     </footer>
@@ -1365,6 +1448,8 @@ const RegulaFacilApp = () => {
   const [currentPage, setCurrentPage] = useState("home");
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [isHeaderScrolled, setIsHeaderScrolled] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [isMobileLogoutOpen, setIsMobileLogoutOpen] = useState(false);
 
   const { currentUser, logout } = useAuth();
   
@@ -1434,6 +1519,7 @@ const RegulaFacilApp = () => {
   // Navegação entre páginas
   const handleNavigate = (pageId) => {
     setCurrentPage(pageId);
+    setMobileSidebarOpen(false);
     const newUrl = pathFromPage(pageId);
 
     if (window.location.pathname !== newUrl) {
@@ -1442,6 +1528,12 @@ const RegulaFacilApp = () => {
       window.history.replaceState({ page: pageId }, "", newUrl);
     }
   };
+
+  const handleMobileLogout = useCallback(() => {
+    setIsMobileLogoutOpen(false);
+    setMobileSidebarOpen(false);
+    logout();
+  }, [logout]);
 
   // Gerenciar navegação do browser
   useEffect(() => {
@@ -1523,11 +1615,12 @@ const RegulaFacilApp = () => {
   };
 
   return (
-    <>
+    <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
       <div className="min-h-screen bg-gradient-subtle">
         <Header
           currentPage={getPageTitle(currentPage)}
           onToggleSidebar={() => setSidebarExpanded(!sidebarExpanded)}
+          onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
           currentUser={currentUser}
           isScrolled={isHeaderScrolled}
         />
@@ -1536,17 +1629,29 @@ const RegulaFacilApp = () => {
           isExpanded={sidebarExpanded}
           currentPage={currentPage}
           onNavigate={handleNavigate}
-          currentUser={currentUser}
         />
+
+        <SheetContent
+          side="left"
+          className="w-full max-w-xs border-r border-sidebar-border bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden md:hidden"
+        >
+          <SidebarContent
+            isExpanded
+            currentPage={currentPage}
+            onNavigate={handleNavigate}
+            onRequestLogout={() => setIsMobileLogoutOpen(true)}
+            onClose={() => setMobileSidebarOpen(false)}
+            enableTooltips={false}
+          />
+        </SheetContent>
 
         <main
           className={cn(
-            "transition-all duration-300",
-            "pt-16 pb-16",
-            sidebarExpanded ? "ml-64" : "ml-16"
+            "transition-all duration-300 pt-16 pb-20",
+            sidebarExpanded ? "md:ml-64" : "md:ml-16"
           )}
         >
-          <div className="p-6">
+          <div className="px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
             {renderPageContent()}
           </div>
         </main>
@@ -1554,7 +1659,25 @@ const RegulaFacilApp = () => {
         <Footer />
       </div>
 
-    </>
+      <AlertDialog open={isMobileLogoutOpen} onOpenChange={setIsMobileLogoutOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Saída</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza de que deseja sair do sistema?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setIsMobileLogoutOpen(false)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleMobileLogout}>
+              Sair
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Sheet>
   );
 };
 

@@ -56,14 +56,14 @@ const RegulacaoLeitosPage = () => {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 p-4 sm:p-6">
       {/* Seção 1: Cabeçalho do Dashboard */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Coluna 1: Indicadores Principais */}
         <Card className="shadow-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-primary" />
+          <CardHeader className="px-4 pb-3 sm:px-6">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold sm:text-lg">
+              <TrendingUp className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
               Indicadores Principais
             </CardTitle>
           </CardHeader>
@@ -74,44 +74,44 @@ const RegulacaoLeitosPage = () => {
 
         {/* Coluna 2: Caixa de Ferramentas */}
         <Card className="shadow-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Wrench className="h-5 w-5 text-primary" />
+          <CardHeader className="px-4 pb-3 sm:px-6">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold sm:text-lg">
+              <Wrench className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
               Caixa de Ferramentas
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 sm:p-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Button
                 variant="outline"
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 text-xs sm:text-sm"
                 onClick={() => setShowImportModal(true)}
               >
-                <DatabaseIcon className="h-4 w-4" />
+                <DatabaseIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 Importar Pacientes MV
               </Button>
               <Button
                 variant="outline"
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 text-xs sm:text-sm"
                 onClick={() => setPassagemPlantaoModalOpen(true)}
               >
-                <BookUser className="h-4 w-4" />
+                <BookUser className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 Passagem de Plantão
               </Button>
               <Button
                 variant="outline"
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 text-xs sm:text-sm"
                 onClick={() => setIsSugestoesModalOpen(true)}
               >
-                <Sparkles className="h-4 w-4" />
+                <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 Sugestões de Regulação
               </Button>
               <Button
                 variant="outline"
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 text-xs sm:text-sm"
                 onClick={() => setDatePickerOpen(true)}
               >
-                <PieChart className="h-4 w-4" />
+                <PieChart className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 Panorama de Regulações
               </Button>
             </div>
