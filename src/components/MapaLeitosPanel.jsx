@@ -49,6 +49,7 @@ import {
   deleteDoc
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
+import { cn } from "@/lib/utils";
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { useDadosHospitalares } from '@/hooks/useDadosHospitalares';
@@ -98,6 +99,23 @@ const LeitoCard = ({
 }) => {
   const { toast } = useToast();
   const { currentUser } = useAuth();
+
+  const paciente = leito.paciente || null;
+
+  const getSexoNormalizado = (sexo) => {
+    const s = String(sexo || '').toLowerCase();
+    if (s.startsWith('m')) return 'M';
+    if (s.startsWith('f')) return 'F';
+    return null;
+  };
+
+  const sexoPaciente = getSexoNormalizado(paciente?.sexo);
+  const isOcupado = leito.status === 'Ocupado' && Boolean(paciente);
+  const occupiedBorderClass = sexoPaciente === 'M'
+    ? 'border-2 border-blue-500'
+    : sexoPaciente === 'F'
+      ? 'border-2 border-pink-500'
+      : 'border-2 border-red-500';
 
   const formatRegulacaoTempo = (valor) => {
     if (!valor) return null;
@@ -258,9 +276,7 @@ const LeitoCard = ({
 
     switch (leito.status) {
       case 'Ocupado':
-        const genderBorder = leito.paciente?.sexo === 'M' ? 'border-blue-500' : 
-                           leito.paciente?.sexo === 'F' ? 'border-pink-500' : 'border-red-500';
-        return `bg-white border-4 ${genderBorder} hover:shadow-lg transition-all shadow-sm`;
+        return "bg-white hover:shadow-lg transition-all shadow-sm";
       case 'Vago':
         return "bg-white border-2 border-blue-200 hover:border-blue-300 transition-colors shadow-sm";
       case 'Bloqueado':
@@ -574,7 +590,13 @@ const LeitoCard = ({
   }
 
   return (
-    <Card className={`${getCardStyle()} h-full w-full rounded-xl border border-gray-100 md:w-auto`}>
+    <Card
+      className={cn(
+        getCardStyle(),
+        "h-full w-full rounded-xl md:w-auto",
+        isOcupado && occupiedBorderClass
+      )}
+    >
       <CardHeader className="px-4 pb-2 pt-4 sm:px-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
