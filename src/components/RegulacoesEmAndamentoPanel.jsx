@@ -3,7 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader, Copy, CheckCircle, Pencil, XCircle, FileText } from "lucide-react";
+import { Loader, Copy, FileText, AlertTriangle, Check } from "lucide-react";
 import { intervalToDuration, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -48,6 +48,7 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
   const [leitos, setLeitos] = useState([]);
   const [infeccoes, setInfeccoes] = useState([]);
   const [regulacoes, setRegulacoes] = useState([]);
+  const [pacientes, setPacientes] = useState([]);
   const [loading, setLoading] = useState(true);
   
   // Estados dos modais
@@ -159,14 +160,16 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
         id: doc.id,
         ...doc.data()
       }));
-      
+
+      setPacientes(pacientesData);
+
       // Filtrar apenas pacientes com regulação ativa
-      const pacientesComRegulacao = pacientesData.filter(p => 
-        p.regulacaoAtiva && 
-        p.regulacaoAtiva.leitoOrigemId && 
+      const pacientesComRegulacao = pacientesData.filter(p =>
+        p.regulacaoAtiva &&
+        p.regulacaoAtiva.leitoOrigemId &&
         p.regulacaoAtiva.leitoDestinoId
       );
-      
+
       setRegulacoes(pacientesComRegulacao);
       setLoading(false);
     });
@@ -440,6 +443,32 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
     const { regulacaoAtiva } = paciente;
     const leitoOrigem = obterInfoLeito(regulacaoAtiva.leitoOrigemId);
     const leitoDestino = obterInfoLeito(regulacaoAtiva.leitoDestinoId);
+    const leitoDestinoAtual = leitos.find((l) => l.id === regulacaoAtiva.leitoDestinoId);
+
+    if (!leitoDestinoAtual) {
+      toast({
+        title: "Leito não encontrado",
+        description: "Não foi possível localizar o leito de destino desta regulação.",
+        variant: "destructive",
+      });
+      setModalConcluir({ open: false, paciente: null });
+      return;
+    }
+
+    const leitoEstaOcupado = leitoDestinoAtual.status === 'Ocupado';
+    const pacienteDiferente =
+      leitoDestinoAtual.pacienteId && leitoDestinoAtual.pacienteId !== paciente.id;
+
+    if (leitoEstaOcupado && pacienteDiferente) {
+      const pacienteOcupante = pacientes.find((p) => p.id === leitoDestinoAtual.pacienteId);
+      toast({
+        title: "Conclusão bloqueada",
+        description: `O leito ${leitoDestinoAtual.codigoLeito || 'destino'} está ocupado por ${pacienteOcupante?.nomePaciente || 'outro paciente'}. Altere a regulação antes de concluir.`,
+        variant: "destructive",
+      });
+      setModalConcluir({ open: false, paciente: null });
+      return;
+    }
 
     try {
       const batch = writeBatch(db);
@@ -564,99 +593,130 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
     const leitoOrigem = obterInfoLeito(regulacaoAtiva.leitoOrigemId);
     const leitoDestino = obterInfoLeito(regulacaoAtiva.leitoDestinoId);
     const tempoRegulacao = calcularTempoRegulacao(regulacaoAtiva.iniciadoEm);
+    const leitoDestinoAtual = leitos.find((l) => l.id === regulacaoAtiva.leitoDestinoId);
+    const leitoEstaOcupado = leitoDestinoAtual?.status === 'Ocupado';
+    const pacienteDiferente =
+      leitoDestinoAtual?.pacienteId && leitoDestinoAtual.pacienteId !== paciente.id;
+    const isConflito = Boolean(leitoEstaOcupado && pacienteDiferente);
+    const pacienteOcupante = isConflito
+      ? pacientes.find((p) => p.id === leitoDestinoAtual?.pacienteId)
+      : null;
 
     return (
-      <div className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between md:gap-6">
-        <div className="flex-1 min-w-0 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <h4 className="truncate text-sm font-semibold leading-tight text-foreground">
-              {paciente.nomePaciente}
-            </h4>
-            <Badge variant="outline" className="border-orange-300 bg-orange-100 text-xs font-medium text-orange-800">
-              Em Regulação
-            </Badge>
-          </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <div className="font-medium">
-              DE:{' '}
-              <span className="font-semibold text-foreground">{leitoOrigem.siglaSetor} - {leitoOrigem.codigo}</span>
+      <TooltipProvider>
+        <div className="flex flex-col gap-4 px-4 py-4 md:flex-row md:items-start md:justify-between md:gap-6">
+          <div className="flex-1 min-w-0 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <h4 className="truncate text-sm font-semibold leading-tight text-foreground">
+                {paciente.nomePaciente}
+              </h4>
+              <Badge variant="outline" className="border-orange-300 bg-orange-100 text-xs font-medium text-orange-800">
+                Em Regulação
+              </Badge>
             </div>
-            <div className="font-medium">
-              PARA:{' '}
-              <span className="font-semibold text-foreground">{leitoDestino.siglaSetor} - {leitoDestino.codigo}</span>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <div className="font-medium">
+                DE:{' '}
+                <span className="font-semibold text-foreground">{leitoOrigem.siglaSetor} - {leitoOrigem.codigo}</span>
+              </div>
+              <div className="font-medium">
+                PARA:{' '}
+                <span className="font-semibold text-foreground">{leitoDestino.siglaSetor} - {leitoDestino.codigo}</span>
+              </div>
             </div>
+            <div className="text-xs font-medium text-muted-foreground">{tempoRegulacao}</div>
+
+            {isConflito && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm">
+                <div className="flex items-center gap-2 text-destructive">
+                  <AlertTriangle className="h-5 w-5" />
+                  <h4 className="font-semibold">Leito de Destino Ocupado!</h4>
+                </div>
+                <p className="mt-2 text-destructive/90">
+                  O leito {leitoDestinoAtual?.codigoLeito || leitoDestino.codigo} está agora ocupado por
+                  {' '}
+                  <strong>{pacienteOcupante ? pacienteOcupante.nomePaciente : 'outro paciente'}</strong>.
+                </p>
+                <p className="mt-2 text-destructive/90">
+                  Por favor, <strong>altere</strong> a regulação para um novo leito.
+                </p>
+              </div>
+            )}
           </div>
-          <div className="text-xs font-medium text-muted-foreground">{tempoRegulacao}</div>
+
+          <div className="flex w-full flex-col items-stretch gap-3 md:w-auto md:items-end">
+            <div className="flex justify-end gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-muted-foreground"
+                    onClick={() => handleCopiarTexto(paciente)}
+                    aria-label="Copiar mensagem"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Copiar mensagem</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setModalCancelar({ open: true, paciente })}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant={isConflito ? "default" : "outline"}
+                size="sm"
+                onClick={() => abrirModalAlterar(paciente)}
+              >
+                {isConflito ? "Alterar (Obrigatório)" : "Alterar"}
+              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className={`inline-flex ${isConflito ? 'cursor-not-allowed' : ''}`}>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => setModalConcluir({ open: true, paciente })}
+                      disabled={isConflito}
+                      className="flex items-center"
+                    >
+                      <Check className="mr-1 h-4 w-4" />
+                      Concluir Regulação
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>
+                    {isConflito
+                      ? 'Não é possível concluir. O leito de destino foi ocupado.'
+                      : 'Concluir regulação'}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+
+            {isConflito && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="cursor-help text-xs text-muted-foreground">(Conclusão bloqueada)</span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Não é possível concluir. O leito de destino foi ocupado.</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
         </div>
-        <TooltipProvider>
-          <div className="flex items-center gap-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0 text-muted-foreground"
-                  onClick={() => handleCopiarTexto(paciente)}
-                  aria-label="Copiar mensagem"
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Copiar mensagem</p>
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0 text-green-600/90 hover:text-green-600"
-                  onClick={() => setModalConcluir({ open: true, paciente })}
-                  aria-label="Concluir regulação"
-                >
-                  <CheckCircle className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Concluir regulação</p>
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0 text-blue-600/90 hover:text-blue-600"
-                  onClick={() => abrirModalAlterar(paciente)}
-                  aria-label="Alterar regulação"
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Alterar regulação</p>
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0 text-destructive"
-                  onClick={() => setModalCancelar({ open: true, paciente })}
-                  aria-label="Cancelar regulação"
-                >
-                  <XCircle className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Cancelar regulação</p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        </TooltipProvider>
-      </div>
+      </TooltipProvider>
     );
   };
 
