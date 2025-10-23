@@ -6,13 +6,6 @@ import {
   CardTitle,
   CardDescription,
 } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ResponsiveContainer,
@@ -38,16 +31,8 @@ import {
   orderBy,
 } from '@/lib/firebase';
 import { onSnapshot } from 'firebase/firestore';
-import { endOfDay, format, isWithinInterval, subDays } from 'date-fns';
+import { format, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-
-const PERIOD_OPTIONS = [
-  { value: '24h', label: 'Últimas 24h' },
-  { value: '7d', label: 'Últimos 7 dias' },
-  { value: '15d', label: 'Últimos 15 dias' },
-  { value: '30d', label: 'Últimos 30 dias' },
-  { value: 'all', label: 'Todo o período' },
-];
 
 const PIE_COLORS = ['#2563eb', '#7c3aed', '#ea580c', '#059669', '#0ea5e9', '#facc15', '#14b8a6', '#f97316'];
 
@@ -132,8 +117,7 @@ const resolveSetorInfo = (registro, chave, setoresMap) => {
   return { id, label };
 };
 
-const IndicadoresRegulacao = () => {
-  const [period, setPeriod] = useState(PERIOD_OPTIONS[1].value);
+const IndicadoresRegulacao = ({ dateRange }) => {
   const [regulacoes, setRegulacoes] = useState([]);
   const [pacientes, setPacientes] = useState([]);
   const [setores, setSetores] = useState([]);
@@ -220,35 +204,36 @@ const IndicadoresRegulacao = () => {
 
   const setoresMap = useMemo(() => new Map(setores.map((setor) => [setor.id, setor])), [setores]);
 
+  const periodoSelecionadoLabel = useMemo(() => {
+    if (dateRange?.from) {
+      const inicio = format(dateRange.from, 'dd/MM/yyyy');
+      const fimBase = dateRange?.to ?? dateRange.from;
+      const fim = format(fimBase, 'dd/MM/yyyy');
+
+      if (inicio === fim) {
+        return inicio;
+      }
+
+      return `${inicio} - ${fim}`;
+    }
+
+    return null;
+  }, [dateRange]);
+
   const regulacoesFiltradas = useMemo(() => {
     if (!regulacoes.length) return [];
-    if (period === 'all') return regulacoes;
 
-    const agora = new Date();
-    const endDate = period === '24h' ? agora : endOfDay(agora);
+    const { from, to } = dateRange || {};
 
-    let startDate;
-    switch (period) {
-      case '24h':
-        startDate = subDays(endDate, 1);
-        break;
-      case '7d':
-        startDate = subDays(endDate, 6);
-        break;
-      case '15d':
-        startDate = subDays(endDate, 14);
-        break;
-      case '30d':
-        startDate = subDays(endDate, 29);
-        break;
-      default:
-        startDate = null;
-        break;
+    if (!from) {
+      return [];
     }
 
-    if (!startDate) {
-      return regulacoes;
-    }
+    const startDate = new Date(from);
+    startDate.setHours(0, 0, 0, 0);
+
+    const endDate = new Date(to ?? from);
+    endDate.setHours(23, 59, 59, 999);
 
     return regulacoes.filter((item) => {
       const dataInicio = parseFirestoreDate(item?.dataInicio);
@@ -266,7 +251,7 @@ const IndicadoresRegulacao = () => {
         })
       );
     });
-  }, [period, regulacoes]);
+  }, [dateRange, regulacoes]);
 
   const metricasGerais = useMemo(() => {
     if (!regulacoesFiltradas.length) {
@@ -553,21 +538,19 @@ const IndicadoresRegulacao = () => {
         <div className="space-y-1">
           <h3 className="text-lg font-semibold text-foreground">Histórico analisado</h3>
           <p className="text-sm text-muted-foreground">
-            Selecione o período para compreender como o volume e a eficiência de regulações evoluem.
+            Utilize o intervalo de datas para compreender como o volume e a eficiência de regulações evoluem.
           </p>
         </div>
-        <Select value={period} onValueChange={setPeriod}>
-          <SelectTrigger className="w-full md:w-56">
-            <SelectValue placeholder="Selecione o período" />
-          </SelectTrigger>
-          <SelectContent>
-            {PERIOD_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="text-sm text-muted-foreground md:text-right">
+          {periodoSelecionadoLabel ? (
+            <span>
+              Período analisado:{' '}
+              <span className="font-medium text-foreground">{periodoSelecionadoLabel}</span>
+            </span>
+          ) : (
+            'Selecione um intervalo de datas para visualizar os indicadores.'
+          )}
+        </div>
       </div>
 
       {error && (

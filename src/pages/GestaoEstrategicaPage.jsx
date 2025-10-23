@@ -4,11 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/use-toast";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Activity,
   AlignLeft,
   BarChart3,
-  Calendar,
+  Calendar as CalendarIcon,
   Info,
   Layers,
   PieChart as PieChartIcon,
@@ -38,9 +40,10 @@ import {
   getSetoresCollection
 } from '@/lib/firebase';
 import { calcularPermanenciaAtual } from '@/lib/historicoOcupacoes';
-import { getDay, getHours } from 'date-fns';
+import { format, getDay, getHours, subDays } from 'date-fns';
 import ListaPacientesPorSetorModal from '@/components/modals/ListaPacientesPorSetorModal';
 import IndicadoresRegulacao from '@/components/IndicadoresRegulacao';
+import { cn } from '@/lib/utils';
 
 const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const FAIXAS_HORARIO = ['0-6h', '6-12h', '12-18h', '18-24h'];
@@ -135,6 +138,27 @@ const GestaoEstrategicaPage = () => {
   const [loading, setLoading] = useState(true);
   const [modalIndicador, setModalIndicador] = useState({ open: false, indicadorId: null });
   const [modalPacientes, setModalPacientes] = useState({ open: false, setor: null, grupo: null });
+  const [regulacaoDateRange, setRegulacaoDateRange] = useState(() => ({
+    from: subDays(new Date(), 6),
+    to: new Date(),
+  }));
+
+  const handleRegulacaoDateChange = useCallback((range) => {
+    if (!range) {
+      return;
+    }
+
+    const { from, to } = range;
+
+    if (!from && !to) {
+      return;
+    }
+
+    setRegulacaoDateRange({
+      from: from ? new Date(from) : undefined,
+      to: to ? new Date(to) : undefined,
+    });
+  }, []);
 
   useEffect(() => {
     const unsubscribePacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
@@ -805,7 +829,7 @@ const GestaoEstrategicaPage = () => {
               <CardHeader className="flex items-start justify-between space-y-0 pb-4">
                 <div>
                   <CardTitle className="flex items-center gap-2 text-foreground">
-                    <Calendar className="h-5 w-5 text-primary" />
+                    <CalendarIcon className="h-5 w-5 text-primary" />
                     Padrão de Internações por Dia e Horário
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
@@ -911,15 +935,55 @@ const GestaoEstrategicaPage = () => {
 
         {/* Análise do Processo de Regulação */}
         <section className="space-y-6">
-          <div>
-            <h2 className="text-xl font-semibold text-foreground">Análise do Processo de Regulação</h2>
-            <p className="text-sm text-muted-foreground max-w-3xl">
-              Aprofunde-se nos indicadores de volume, eficiência e fluxo do histórico de regulações para identificar padrões,
-              gargalos e oportunidades de melhoria operacional.
-            </p>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-foreground">Análise do Processo de Regulação</h2>
+              <p className="text-sm text-muted-foreground max-w-3xl">
+                Aprofunde-se nos indicadores de volume, eficiência e fluxo do histórico de regulações para identificar padrões,
+                gargalos e oportunidades de melhoria operacional.
+              </p>
+            </div>
+            <div className="grid gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="regulacao-date-range"
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal md:w-[300px]",
+                      !regulacaoDateRange?.from && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {regulacaoDateRange?.from ? (
+                      regulacaoDateRange?.to ? (
+                        <>
+                          {format(regulacaoDateRange.from, 'dd/MM/yyyy')} -{' '}
+                          {format(regulacaoDateRange.to, 'dd/MM/yyyy')}
+                        </>
+                      ) : (
+                        format(regulacaoDateRange.from, 'dd/MM/yyyy')
+                      )
+                    ) : (
+                      <span>Selecione um período</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <Calendar
+                    initialFocus
+                    mode="range"
+                    defaultMonth={regulacaoDateRange?.from ?? regulacaoDateRange?.to}
+                    selected={regulacaoDateRange}
+                    onSelect={handleRegulacaoDateChange}
+                    numberOfMonths={2}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
 
-          <IndicadoresRegulacao />
+          <IndicadoresRegulacao dateRange={regulacaoDateRange} />
         </section>
       </div>
 
