@@ -1,11 +1,10 @@
 import { Toaster } from "@/components/ui/toaster";
+
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import RegulaFacil from "./components/RegulaFacil";
 import LoginPage from "./components/LoginPage";
 import FirstAccessModal from "./components/FirstAccessModal";
-import RegulacoesAtivasPage from "./pages/RegulacoesAtivasPage";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { Card, CardContent } from "./components/ui/card";
 
@@ -27,56 +26,30 @@ const AppContent = () => {
     );
   }
 
-  return (
-    <Routes>
-      {/* Rota Pública - Regulações Ativas */}
-      <Route path="/regulacoes_ativas" element={<RegulacoesAtivasPage />} />
-      
-      {/* Rota de Login */}
-      <Route 
-        path="/login" 
-        element={
-          currentUser ? <Navigate to="/" replace /> : <LoginPage onLoginSuccess={() => {}} />
-        } 
-      />
-      
-      {/* Rota Principal - Protegida */}
-      <Route 
-        path="/" 
-        element={
-          currentUser ? (
-            <>
-              <RegulaFacil />
-              {isFirstLogin && (
-                <FirstAccessModal 
-                  isOpen={true} 
-                  onComplete={() => setIsFirstLogin(false)} 
-                />
-              )}
-            </>
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        } 
-      />
-      
-      {/* Redirecionar rotas desconhecidas para home */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  );
+  if (currentUser && isFirstLogin) {
+    return (
+      <>
+        <RegulaFacil />
+        <FirstAccessModal isOpen={true} onComplete={() => setIsFirstLogin(false)} />
+      </>
+    );
+  }
+
+  if (currentUser && !isFirstLogin) {
+    return <RegulaFacil />;
+  }
+
+  return <LoginPage onLoginSuccess={() => {}} />;
 };
 
 const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AuthProvider>
-          <TooltipProvider>
-            <Toaster />
-            <AppContent />
-          </TooltipProvider>
-        </AuthProvider>
-      </BrowserRouter>
+      <TooltipProvider>
+        <Toaster />
+        
+        <AppContent />
+      </TooltipProvider>
     </QueryClientProvider>
   );
 };
