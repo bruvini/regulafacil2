@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ArrowRight, Clock, RefreshCw } from 'lucide-react';
+import { getIniciaisPaciente } from '@/lib/utils';
 
 // Hook para calcular o tempo de duração
 const useTempoDeRegulacao = (dataInicio) => {
@@ -83,13 +84,13 @@ const RegulacoesAtivasPage = () => {
     const unsubscribePacientes = onSnapshot(q, (snapshot) => {
       const regulacoesAtivas = snapshot.docs.map(doc => ({
         id: doc.id,
-        nomePaciente: doc.data().nomePaciente,
+        // LGPD: Anonimizar nome do paciente exibindo apenas iniciais
+        nomePaciente: getIniciaisPaciente(doc.data().nomePaciente),
         ...doc.data().regulacaoAtiva
       }));
       setRegulacoes(regulacoesAtivas);
       setLoading(false);
     }, (error) => {
-      console.error("Erro ao buscar regulações ativas:", error);
       setLoading(false);
     });
 

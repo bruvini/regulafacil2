@@ -116,6 +116,16 @@ const ModalUsuario = ({ isOpen, onClose, modo, usuario, onSave }) => {
     return snapshot.empty;
   };
 
+  // Gera senha temporária aleatória (8 caracteres alfanuméricos)
+  const gerarSenhaTemporaria = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let senha = '';
+    for (let i = 0; i < 8; i++) {
+      senha += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return senha;
+  };
+
   const onSubmit = async (data) => {
     if (modo === 'visualizar') return;
 
@@ -168,10 +178,13 @@ const ModalUsuario = ({ isOpen, onClose, modo, usuario, onSave }) => {
       };
 
       if (modo === 'criar') {
+        // Gerar senha temporária aleatória (segurança)
+        const senhaTemporaria = gerarSenhaTemporaria();
+        
         // Criar usuário no Firebase Auth sem afetar a sessão atual
         const user = await createUserWithoutSignIn(
           data.emailInstitucional,
-          'HMSJ@2025'
+          senhaTemporaria
         );
 
         // Adicionar UID aos dados e salvar no Firestore
@@ -180,9 +193,22 @@ const ModalUsuario = ({ isOpen, onClose, modo, usuario, onSave }) => {
 
         await logAction('Gestão de Usuários', `Usuário criado: ${dadosUsuario.nomeCompleto} (${dadosUsuario.emailInstitucional})`, currentUser);
         
+        // Exibir senha temporária para o administrador copiar
         toast({
-          title: "Usuário criado",
-          description: `${dadosUsuario.nomeCompleto} foi cadastrado com sucesso`
+          title: "✅ Usuário criado com sucesso",
+          description: (
+            <div className="space-y-2">
+              <p><strong>{dadosUsuario.nomeCompleto}</strong> foi cadastrado.</p>
+              <div className="bg-muted p-3 rounded border border-border">
+                <p className="text-xs text-muted-foreground mb-1">Senha temporária:</p>
+                <p className="font-mono font-bold text-lg">{senhaTemporaria}</p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                ⚠️ Copie esta senha e informe ao usuário. Ele deverá alterá-la no primeiro acesso.
+              </p>
+            </div>
+          ),
+          duration: 15000, // 15 segundos para dar tempo de copiar
         });
       } else if (modo === 'editar') {
         // Atualizar no Firestore
@@ -200,7 +226,6 @@ const ModalUsuario = ({ isOpen, onClose, modo, usuario, onSave }) => {
       onSave();
       onClose();
     } catch (error) {
-      console.error('Erro ao salvar usuário:', error);
       toast({
         variant: "destructive",
         title: "Erro",
@@ -405,7 +430,6 @@ const GestaoUsuariosPage = () => {
         description: `${usuario.nomeCompleto} foi removido do sistema`
       });
     } catch (error) {
-      console.error('Erro ao excluir usuário:', error);
       toast({
         variant: "destructive",
         title: "Erro",

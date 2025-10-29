@@ -1,0 +1,99 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================================
+    // FUNÇÕES DE AJUDA (HELPER FUNCTIONS)
+    // ============================================================
+    
+    function isAutenticado() {
+      return request.auth != null;
+    }
+
+    // Busca o tipo de usuário na coleção 'usuarios'
+    function getTipoUsuario() {
+      return get(/databases/$(database)/documents/artifacts/regulafacil/public/data/usuarios/$(request.auth.uid)).data.tipoUsuario;
+    }
+
+    function isAdmin() {
+      return isAutenticado() && getTipoUsuario() == 'Administrador';
+    }
+
+    // ============================================================
+    // REGRAS DE SEGURANÇA POR COLEÇÃO
+    // ============================================================
+
+    // --- PACIENTES (Acesso Público Limitado para /regulacoes_ativas) ---
+    match /artifacts/regulafacil/public/data/pacientes/{pacienteId} {
+      // Usuários autenticados (NIR, médicos, etc.) têm acesso completo
+      allow read, write: if isAutenticado();
+      
+      // PÁGINA PÚBLICA (/regulacoes_ativas):
+      // Permite listagem SOMENTE se a query for especificamente por regulações ativas
+      // Isso impede acesso a todos os pacientes e protege dados de LGPD
+      allow list: if request.auth == null 
+                  && request.query.where.size() == 1
+                  && request.query.where[0].field == "regulacaoAtiva"
+                  && request.query.where[0].op == "!="
+                  && request.query.where[0].value == null;
+    }
+
+    // --- SETORES (Leitura Pública para Filtros) ---
+    match /artifacts/regulafacil/public/data/setores/{setorId} {
+      // Leitura pública necessária para os filtros da página /regulacoes_ativas
+      allow get, list: if true;
+      
+      // Apenas administradores podem modificar setores
+      allow write: if isAdmin();
+    }
+
+    // --- LEITOS ---
+    match /artifacts/regulafacil/public/data/leitos/{leitoId} {
+      allow read: if isAutenticado();
+      allow write: if isAutenticado();
+    }
+
+    // --- USUÁRIOS (Server-Side Role Validation) ---
+    match /artifacts/regulafacil/public/data/usuarios/{userId} {
+      // Apenas administradores podem listar, criar e ler todos os usuários
+      allow read, list, create: if isAdmin();
+      
+      // Administradores podem atualizar qualquer usuário
+      allow update: if isAdmin();
+      
+      // Usuário pode atualizar seus próprios dados (ex: senha, nome)
+      allow update: if isAutenticado() && request.auth.uid == userId;
+    }
+
+    // --- AUDITORIA (Apenas Leitura para Admins) ---
+    match /artifacts/regulafacil/public/data/auditoria/{auditoriaId} {
+      allow read: if isAdmin();
+      allow create: if isAutenticado(); // Qualquer usuário autenticado pode criar logs
+    }
+
+    // --- HISTÓRICO DE OCUPAÇÕES ---
+    match /artifacts/regulafacil/public/data/historicoOcupacoes/{historicoId} {
+      allow read: if isAutenticado();
+      allow create: if isAutenticado();
+    }
+
+    // --- HISTÓRICO DE HIGIENIZAÇÕES ---
+    match /artifacts/regulafacil/public/data/historicoHigienizacoes/{historicoId} {
+      allow read: if isAutenticado();
+      allow create: if isAutenticado();
+    }
+
+    // --- HISTÓRICO DE REGULAÇÕES ---
+    match /artifacts/regulafacil/public/data/historicoRegulacoes/{historicoId} {
+      allow read: if isAutenticado();
+      allow create: if isAutenticado();
+    }
+
+    // --- REGRA PADRÃO (Fallback) ---
+    // Qualquer outra coleção requer autenticação
+    match /{document=**} {
+      allow read, write: if isAutenticado();
+    }
+  }
+}
