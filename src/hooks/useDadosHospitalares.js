@@ -79,7 +79,10 @@ const processarDados = (pacientes, leitos, setores, infeccoes) => {
       .filter(leito => leito.setorId === setor.id)
       .map(leito => {
         const paciente = pacientesPorLeitoId.get(leito.id) || null;
-        const regulacaoOrigem = regulacoesOrigemPorLeito[leito.id]
+        const regulacaoOrigemPaciente = regulacoesOrigemPorLeito[leito.id] || null;
+        const regulacaoDestinoPaciente = regulacoesDestinoPorLeito[leito.id] || null;
+
+        const regulacaoOrigem = regulacaoOrigemPaciente
           || (leito.regulacaoEmAndamento?.tipo === 'ORIGEM'
             ? {
                 destinoCodigo: leito.regulacaoEmAndamento.leitoParceiroCodigo || 'N/A',
@@ -89,7 +92,7 @@ const processarDados = (pacientes, leitos, setores, infeccoes) => {
               }
             : null);
 
-        const regulacaoDestino = regulacoesDestinoPorLeito[leito.id]
+        const regulacaoDestino = regulacaoDestinoPaciente
           || (leito.regulacaoEmAndamento?.tipo === 'DESTINO'
             ? {
                 pacienteNome: leito.regulacaoEmAndamento.pacienteNome,
@@ -108,6 +111,15 @@ const processarDados = (pacientes, leitos, setores, infeccoes) => {
           statusAjustado = 'Ocupado';
         }
 
+        // Detecta "reserva/regulação fantasma": status indica reserva/regulação,
+        // não é reserva externa, mas não há paciente real (regulacaoAtiva) que
+        // sustente esse vínculo. Usado para exibir botão de liberação forçada.
+        const temReservaExterna = !!leito.reservaExterna;
+        const regulacaoFantasma = !temReservaExterna
+          && (statusAjustado === 'Reservado' || statusAjustado === 'Regulado')
+          && !regulacaoOrigemPaciente
+          && !regulacaoDestinoPaciente;
+
         return {
           ...leito,
           paciente,
@@ -117,6 +129,7 @@ const processarDados = (pacientes, leitos, setores, infeccoes) => {
           tipoSetor: tipoSetorLabel,
           regulacaoOrigem,
           regulacaoReserva: regulacaoDestino,
+          regulacaoFantasma,
           restricaoCoorte: null,
         };
       })

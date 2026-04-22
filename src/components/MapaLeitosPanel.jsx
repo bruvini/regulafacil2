@@ -95,7 +95,8 @@ const LeitoCard = ({
   onAltaNoLeito,
   onCancelarReservaExterna,
   onConfirmarInternacaoExterna,
-  onInternarManual
+  onInternarManual,
+  onForcarLiberacaoFantasma
 }) => {
   const { toast } = useToast();
   const { currentUser } = useAuth();
@@ -661,6 +662,27 @@ const LeitoCard = ({
 
         <div className="mt-3 flex-1 space-y-3">
 
+          {/* Botão de emergência: leito com reserva/regulação fantasma */}
+          {leito.regulacaoFantasma && (
+            <div className="space-y-2 rounded-md border-2 border-destructive bg-destructive/10 p-3 text-xs sm:text-sm">
+              <p className="font-semibold text-destructive">
+                Reserva fantasma detectada
+              </p>
+              <p className="text-destructive/90">
+                Este leito está {String(leito.status || '').toLowerCase()} mas o paciente associado não foi encontrado no sistema.
+              </p>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="w-full"
+                onClick={() => onForcarLiberacaoFantasma?.(leito)}
+              >
+                <X className="h-4 w-4 mr-2" />
+                Forçar Liberação do Leito
+              </Button>
+            </div>
+          )}
+
           {/* Leito em regulação (origem) */}
           {leito.status === 'Regulado' && leito.paciente && regulacaoOrigemInfo && (
             <div className="space-y-2 rounded-md border border-orange-200 bg-orange-50 p-3 text-[0.75rem] text-orange-800 sm:text-xs sm:leading-relaxed">
@@ -1017,6 +1039,48 @@ const MapaLeitosPanel = React.forwardRef((_, ref) => {
         title: "Erro",
         description: "Erro ao alterar prioridade. Tente novamente.",
         variant: "destructive",
+      });
+    }
+  };
+
+  // Liberação forçada de leito com reserva/regulação fantasma
+  const handleForcarLiberacaoFantasma = async (leito) => {
+    if (!leito?.id) return;
+    const confirmar = window.confirm(
+      `Forçar liberação do leito ${leito.codigoLeito}?\n\nIsto removerá a reserva/regulação fantasma e liberará o leito.`
+    );
+    if (!confirmar) return;
+
+    try {
+      const leitoRef = doc(getLeitosCollection(), leito.id);
+      await updateDoc(leitoRef, {
+        status: 'Vago',
+        pacienteId: deleteField(),
+        regulacaoEmAndamento: deleteField(),
+        reservaExterna: deleteField(),
+        historico: arrayUnion({
+          status: 'Vago',
+          timestamp: new Date(),
+          motivo: 'Liberação forçada — reserva/regulação fantasma cancelada manualmente.'
+        })
+      });
+
+      await logAction(
+        'Mapa de Leitos',
+        `Liberação forçada do leito '${leito.codigoLeito}' — reserva/regulação fantasma cancelada manualmente.`,
+        currentUser
+      );
+
+      toast({
+        title: 'Leito liberado',
+        description: `Leito ${leito.codigoLeito} foi liberado com sucesso.`,
+      });
+    } catch (error) {
+      console.error('Erro ao forçar liberação:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível liberar o leito. Tente novamente.',
+        variant: 'destructive',
       });
     }
   };
@@ -1860,6 +1924,7 @@ const MapaLeitosPanel = React.forwardRef((_, ref) => {
                                   onCancelarReservaExterna={handleAbrirCancelarReservaExterna}
                                   onConfirmarInternacaoExterna={handleAbrirConfirmarInternacaoExterna}
                                   onInternarManual={handleAbrirInternacaoManual}
+                                  onForcarLiberacaoFantasma={handleForcarLiberacaoFantasma}
                                 />
                               ))}
                             </div>
@@ -1899,6 +1964,7 @@ const MapaLeitosPanel = React.forwardRef((_, ref) => {
                                   onCancelarReservaExterna={handleAbrirCancelarReservaExterna}
                                   onConfirmarInternacaoExterna={handleAbrirConfirmarInternacaoExterna}
                                   onInternarManual={handleAbrirInternacaoManual}
+                                  onForcarLiberacaoFantasma={handleForcarLiberacaoFantasma}
                                 />
                               ))}
                             </div>
