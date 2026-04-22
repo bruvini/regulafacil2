@@ -697,6 +697,74 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
         batch.update(leitoRef, updates);
       });
 
+      // ============================================================
+      // CHECK DE LEITOS ÓRFÃOS / RESERVAS FANTASMAS
+      // ------------------------------------------------------------
+      // Procura leitos marcados como Reservado/Regulado (ou com
+      // objeto regulacaoEmAndamento) cujo paciente associado NÃO
+      // consta mais na planilha importada (alta no MV). Reservas
+      // externas (reservaExterna) são preservadas pois não vêm da MV.
+      // ============================================================
+      const nomesPlanilhaSet = new Set(
+        Object.keys(pacientesArquivoMap || {}).map(n => n.toString().trim().toUpperCase())
+      );
+      const pacientesPorIdMap = Object.values(processedData.leitos || {})
+        ? Object.values(processedData.leitos || {}) && null
+        : null;
+      // Mapa auxiliar id -> paciente (do snapshot Firestore)
+      const pacientesFirestoreById = {};
+      Object.values(processedData.leitos || {}).forEach(() => {});
+      // Construir a partir do snapshot já carregado em memória:
+      try {
+        // pacientes (do Firestore) já está disponível via parâmetro do analyzeAndProceed,
+        // mas aqui temos acesso apenas via altas/movimentações. Usamos o objeto bruto:
+        (processedData.altas || []).forEach(p => { if (p?.id) pacientesFirestoreById[p.id] = p; });
+        (processedData.movimentacoes || []).forEach(({ paciente }) => {
+          if (paciente?.id) pacientesFirestoreById[paciente.id] = paciente;
+        });
+      } catch (_) { /* noop */ }
+
+      Object.values(processedData.leitos || {}).forEach(leito => {
+        if (!leito || !leito.id || !leitosIdSet.has(leito.id)) return;
+        // Não reprocessar leitos já tratados acima
+        if (leitosParaAtualizar.has(leito.id)) return;
+        if (leitosComStatusPersonalizado.has(leito.id)) return;
+
+        const temReservaExterna = !!leito.reservaExterna;
+        const temRegulacaoObj = !!leito.regulacaoEmAndamento;
+        const statusReservadoOuRegulado = ['Reservado', 'Regulado'].includes(leito.status);
+
+        if (!temRegulacaoObj && !statusReservadoOuRegulado) return;
+        if (temReservaExterna) return; // preservar reservas externas (SISREG/Onco)
+
+        // Tentar identificar o nome do paciente associado à reserva/regulação
+        const nomePacienteAssoc = (
+          leito.regulacaoEmAndamento?.pacienteNome
+          || (leito.pacienteId && pacientesFirestoreById[leito.pacienteId]?.nomePaciente)
+          || ''
+        ).toString().trim().toUpperCase();
+
+        // Se conseguimos identificar o paciente e ele AINDA está na planilha,
+        // a reserva/regulação continua válida — não mexer.
+        if (nomePacienteAssoc && nomesPlanilhaSet.has(nomePacienteAssoc)) {
+          return;
+        }
+
+        // Reserva/regulação fantasma — limpar leito.
+        const leitoRef = doc(db, BEDS_COLLECTION_PATH, leito.id);
+        batch.update(leitoRef, {
+          status: 'Vago',
+          pacienteId: deleteField(),
+          regulacaoEmAndamento: deleteField(),
+          reservaExterna: deleteField(),
+          historico: arrayUnion({
+            status: 'Vago',
+            timestamp: new Date(),
+            motivo: 'Reserva cancelada automaticamente pela sincronização (paciente ausente na planilha MV).'
+          })
+        });
+      });
+
       // Executar batch
       await batch.commit();
 
