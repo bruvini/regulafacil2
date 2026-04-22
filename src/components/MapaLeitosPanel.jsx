@@ -1924,6 +1924,7 @@ const MapaLeitosPanel = React.forwardRef((_, ref) => {
                                   onCancelarReservaExterna={handleAbrirCancelarReservaExterna}
                                   onConfirmarInternacaoExterna={handleAbrirConfirmarInternacaoExterna}
                                   onInternarManual={handleAbrirInternacaoManual}
+                                  onForcarLiberacaoFantasma={handleForcarLiberacaoFantasma}
                                 />
                               ))}
                             </div>
