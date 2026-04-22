@@ -1043,6 +1043,48 @@ const MapaLeitosPanel = React.forwardRef((_, ref) => {
     }
   };
 
+  // Liberação forçada de leito com reserva/regulação fantasma
+  const handleForcarLiberacaoFantasma = async (leito) => {
+    if (!leito?.id) return;
+    const confirmar = window.confirm(
+      `Forçar liberação do leito ${leito.codigoLeito}?\n\nIsto removerá a reserva/regulação fantasma e liberará o leito.`
+    );
+    if (!confirmar) return;
+
+    try {
+      const leitoRef = doc(getLeitosCollection(), leito.id);
+      await updateDoc(leitoRef, {
+        status: 'Vago',
+        pacienteId: deleteField(),
+        regulacaoEmAndamento: deleteField(),
+        reservaExterna: deleteField(),
+        historico: arrayUnion({
+          status: 'Vago',
+          timestamp: new Date(),
+          motivo: 'Liberação forçada — reserva/regulação fantasma cancelada manualmente.'
+        })
+      });
+
+      await logAction(
+        'Mapa de Leitos',
+        `Liberação forçada do leito '${leito.codigoLeito}' — reserva/regulação fantasma cancelada manualmente.`,
+        currentUser
+      );
+
+      toast({
+        title: 'Leito liberado',
+        description: `Leito ${leito.codigoLeito} foi liberado com sucesso.`,
+      });
+    } catch (error) {
+      console.error('Erro ao forçar liberação:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível liberar o leito. Tente novamente.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   // Handlers para leitos ocupados
   const handleLiberarLeito = async (leito, paciente) => {
     try {
