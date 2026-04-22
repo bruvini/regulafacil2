@@ -662,6 +662,27 @@ const LeitoCard = ({
 
         <div className="mt-3 flex-1 space-y-3">
 
+          {/* Botão de emergência: leito com reserva/regulação fantasma */}
+          {leito.regulacaoFantasma && (
+            <div className="space-y-2 rounded-md border-2 border-destructive bg-destructive/10 p-3 text-xs sm:text-sm">
+              <p className="font-semibold text-destructive">
+                Reserva fantasma detectada
+              </p>
+              <p className="text-destructive/90">
+                Este leito está {String(leito.status || '').toLowerCase()} mas o paciente associado não foi encontrado no sistema.
+              </p>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="w-full"
+                onClick={() => onForcarLiberacaoFantasma?.(leito)}
+              >
+                <X className="h-4 w-4 mr-2" />
+                Forçar Liberação do Leito
+              </Button>
+            </div>
+          )}
+
           {/* Leito em regulação (origem) */}
           {leito.status === 'Regulado' && leito.paciente && regulacaoOrigemInfo && (
             <div className="space-y-2 rounded-md border border-orange-200 bg-orange-50 p-3 text-[0.75rem] text-orange-800 sm:text-xs sm:leading-relaxed">
