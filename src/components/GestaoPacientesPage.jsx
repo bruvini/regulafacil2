@@ -200,7 +200,7 @@ const GestaoPacientesPage = () => {
           statusLeito: 'Vago',
           historicoMovimentacao: arrayUnion({
             statusLeito: 'Vago',
-            dataHora: new Date(),
+            dataHora: serverTimestamp(),
             usuario: 'Sistema - Gestão de Pacientes'
           }),
           pacienteId: deleteField(),
@@ -261,7 +261,7 @@ const GestaoPacientesPage = () => {
             statusLeito: 'Vago',
             historicoMovimentacao: arrayUnion({
               statusLeito: 'Vago',
-              dataHora: new Date(),
+              dataHora: serverTimestamp(),
               usuario: 'Sistema - Limpeza Geral'
             }),
             // Remove any patient/reservation associations
