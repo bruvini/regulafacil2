@@ -95,7 +95,8 @@ const LeitoCard = ({
   onAltaNoLeito,
   onCancelarReservaExterna,
   onConfirmarInternacaoExterna,
-  onInternarManual
+  onInternarManual,
+  onForcarLiberacaoFantasma
 }) => {
   const { toast } = useToast();
   const { currentUser } = useAuth();
