@@ -676,14 +676,25 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
         }
 
         const leitoRef = doc(db, BEDS_COLLECTION_PATH, leitoId);
-        const novoStatus = pacientesFinais[leitoId] ? 'Ocupado' : 'Vago';
-        batch.update(leitoRef, {
+        const ocupado = !!pacientesFinais[leitoId];
+        const novoStatus = ocupado ? 'Ocupado' : 'Vago';
+        const updates = {
           status: novoStatus,
           historico: arrayUnion({
             status: novoStatus,
             timestamp: new Date()
           })
-        });
+        };
+
+        // Se o leito ficou vago, limpar quaisquer vínculos residuais
+        // (pacientes "fantasmas", reservas e regulações pendentes)
+        if (!ocupado) {
+          updates.pacienteId = deleteField();
+          updates.reservaExterna = deleteField();
+          updates.regulacaoEmAndamento = deleteField();
+        }
+
+        batch.update(leitoRef, updates);
       });
 
       // Executar batch
