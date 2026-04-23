@@ -60,28 +60,47 @@ const RegulacaoLeitosPage = () => {
   const [ultimaSincronizacao, setUltimaSincronizacao] = useState(null);
 
   useEffect(() => {
-    const auditQuery = query(
-      getAuditoriaCollection(),
-      orderBy('timestamp', 'desc'),
-      limit(50)
-    );
-
-    const unsubscribe = onSnapshot(auditQuery, (snapshot) => {
-      const docs = snapshot.docs.map(d => d.data());
-      const sincDoc = docs.find(d =>
-        typeof d?.acao === 'string' && d.acao.includes('Sincronização via MV concluída')
+    let unsub = () => {};
+    try {
+      // Aumentamos o limite para 300 para garantir que pegamos o log de sincronização
+      // mesmo que o hospital tenha tido muitas movimentações recentes.
+      const q = query(
+        getAuditoriaCollection(),
+        orderBy('timestamp', 'desc'),
+        limit(300)
       );
 
-      if (sincDoc?.timestamp) {
-        const ts = sincDoc.timestamp;
-        const dataValida = typeof ts?.toDate === 'function' ? ts.toDate() : new Date(ts);
-        if (dataValida instanceof Date && !isNaN(dataValida.getTime())) {
-          setUltimaSincronizacao(dataValida);
-        }
-      }
-    });
+      unsub = onSnapshot(q, (snapshot) => {
+        try {
+          const logs = snapshot.docs.map(doc => doc.data());
+          // Busca especificamente pela string da MV
+          const lastSync = logs.find(l => l.acao && String(l.acao).includes('Sincronização via MV'));
 
-    return () => unsubscribe();
+          if (lastSync && lastSync.timestamp) {
+            let dataObj = null;
+
+            // Conversão segura do Timestamp do Firebase para Date do JS
+            if (typeof lastSync.timestamp.toDate === 'function') {
+              dataObj = lastSync.timestamp.toDate();
+            } else if (lastSync.timestamp.seconds) {
+              dataObj = new Date(lastSync.timestamp.seconds * 1000);
+            } else {
+              dataObj = new Date(lastSync.timestamp);
+            }
+
+            // Atualiza o estado apenas se for uma data válida
+            if (dataObj && !isNaN(dataObj.getTime())) {
+              setUltimaSincronizacao(dataObj);
+            }
+          }
+        } catch (err) {
+          console.error("Erro interno ao processar data da auditoria:", err);
+        }
+      });
+    } catch (e) {
+      console.error("Erro ao configurar listener de auditoria:", e);
+    }
+    return () => unsub();
   }, []);
 
   const handleFecharRegularModal = () => {
