@@ -1030,6 +1030,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     setSetoresFaltantes([]);
     setLeitosFaltantes([]);
     setParsedFileData(null);
+    setSetoresForm({});
   };
 
   const handleClose = () => {
