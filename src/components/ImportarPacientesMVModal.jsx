@@ -840,6 +840,95 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     setIsProcessing(false);
   };
 
+  // Cadastra setores e leitos faltantes em batch e prossegue automaticamente
+  const cadastrarPendenciasEContinuar = async () => {
+    // Validar siglas dos setores
+    const setoresSemSigla = setoresFaltantes.filter(
+      nome => !setoresForm[nome] || !setoresForm[nome].sigla?.trim()
+    );
+    if (setoresSemSigla.length > 0) {
+      toast.error(`Informe a sigla para: ${setoresSemSigla.join(', ')}`);
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      // Carrega snapshot atual para localizar setores existentes (caso só leitos faltem)
+      const { setores: setoresAtuais } = await loadFirestoreData();
+
+      const batch = writeBatch(db);
+      const novosSetoresIdMap = {}; // nomeSetor -> id
+
+      // 1) Cadastrar setores novos
+      setoresFaltantes.forEach(nomeSetor => {
+        const form = setoresForm[nomeSetor] || { sigla: '', tipo: 'Enfermaria' };
+        const sigla = sanitizeSigla(form.sigla);
+        const novoSetorRef = doc(getSetoresCollection());
+        batch.set(novoSetorRef, {
+          nomeSetor,
+          siglaSetor: sigla,
+          sigla,
+          tipoSetor: form.tipo || 'Enfermaria',
+          ativo: true,
+          createdAt: serverTimestamp()
+        });
+        novosSetoresIdMap[nomeSetor] = novoSetorRef.id;
+      });
+
+      // 2) Cadastrar leitos novos
+      Object.entries(leitosFaltantes).forEach(([nomeSetor, codigos]) => {
+        const setorId =
+          novosSetoresIdMap[nomeSetor] || setoresAtuais[nomeSetor]?.id;
+
+        if (!setorId) {
+          // Sem setor identificado — não dá para criar o leito
+          return;
+        }
+
+        codigos.forEach(codigoLeito => {
+          const novoLeitoRef = doc(getLeitosCollection());
+          batch.set(novoLeitoRef, {
+            codigoLeito,
+            codigo: codigoLeito,
+            setorId,
+            status: 'Vago',
+            ativo: true,
+            createdAt: serverTimestamp()
+          });
+        });
+      });
+
+      await batch.commit();
+
+      const totalSetores = setoresFaltantes.length;
+      const totalLeitos = Object.values(leitosFaltantes).reduce(
+        (acc, arr) => acc + arr.length,
+        0
+      );
+
+      toast.success(
+        `Cadastro concluído: ${totalSetores} setor(es) e ${totalLeitos} leito(s) criados.`
+      );
+
+      try {
+        await logAction(
+          'Gerenciamento de Leitos',
+          `Cadastro automático via importação MV: ${totalSetores} setor(es) e ${totalLeitos} leito(s) criados.`,
+          currentUser
+        );
+      } catch (_) { /* noop */ }
+
+      // Limpar form e prosseguir
+      setSetoresForm({});
+      await revalidarCadastros();
+    } catch (error) {
+      console.error('Erro ao cadastrar pendências:', error);
+      toast.error('Erro ao cadastrar pendências: ' + error.message);
+      setIsProcessing(false);
+    }
+  };
+
   // Nova função para revalidar cadastros
   const revalidarCadastros = async () => {
     if (!parsedFileData) return;
