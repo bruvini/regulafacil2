@@ -1,15 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { 
-  Upload, 
-  FileSpreadsheet, 
-  CheckCircle, 
-  AlertTriangle, 
+import { Badge } from '@/components/ui/badge';
+import {
+  Upload,
+  FileSpreadsheet,
+  CheckCircle,
+  AlertTriangle,
   Loader2,
   ExternalLink,
   Database,
@@ -17,7 +18,8 @@ import {
   UserPlus,
   UserMinus,
   Copy,
-  RefreshCw
+  RefreshCw,
+  Save
 } from 'lucide-react';
 import {
   getDocs,
@@ -64,6 +66,28 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
   const [setoresFaltantes, setSetoresFaltantes] = useState([]);
   const [leitosFaltantes, setLeitosFaltantes] = useState([]);
   const [parsedFileData, setParsedFileData] = useState(null); // Para armazenar dados do arquivo já processado
+  const [setoresForm, setSetoresForm] = useState({}); // Form inline: { [nomeSetor]: { sigla, tipo } }
+
+  const TIPOS_SETOR = ['Enfermaria', 'UTI', 'Emergência', 'Centro Cirúrgico'];
+
+  const sanitizeSigla = (valor) =>
+    (valor || '')
+      .toString()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '');
+
+  // Sempre que setoresFaltantes mudar, inicializar/sincronizar o formulário
+  useEffect(() => {
+    setSetoresForm(prev => {
+      const next = {};
+      setoresFaltantes.forEach(nome => {
+        next[nome] = prev[nome] || { sigla: '', tipo: 'Enfermaria' };
+      });
+      return next;
+    });
+  }, [setoresFaltantes]);
 
   const normalizarCodigoLeito = (codigo) => {
     if (!codigo) return '';
@@ -816,6 +840,95 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     setIsProcessing(false);
   };
 
+  // Cadastra setores e leitos faltantes em batch e prossegue automaticamente
+  const cadastrarPendenciasEContinuar = async () => {
+    // Validar siglas dos setores
+    const setoresSemSigla = setoresFaltantes.filter(
+      nome => !setoresForm[nome] || !setoresForm[nome].sigla?.trim()
+    );
+    if (setoresSemSigla.length > 0) {
+      toast.error(`Informe a sigla para: ${setoresSemSigla.join(', ')}`);
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      // Carrega snapshot atual para localizar setores existentes (caso só leitos faltem)
+      const { setores: setoresAtuais } = await loadFirestoreData();
+
+      const batch = writeBatch(db);
+      const novosSetoresIdMap = {}; // nomeSetor -> id
+
+      // 1) Cadastrar setores novos
+      setoresFaltantes.forEach(nomeSetor => {
+        const form = setoresForm[nomeSetor] || { sigla: '', tipo: 'Enfermaria' };
+        const sigla = sanitizeSigla(form.sigla);
+        const novoSetorRef = doc(getSetoresCollection());
+        batch.set(novoSetorRef, {
+          nomeSetor,
+          siglaSetor: sigla,
+          sigla,
+          tipoSetor: form.tipo || 'Enfermaria',
+          ativo: true,
+          createdAt: serverTimestamp()
+        });
+        novosSetoresIdMap[nomeSetor] = novoSetorRef.id;
+      });
+
+      // 2) Cadastrar leitos novos
+      Object.entries(leitosFaltantes).forEach(([nomeSetor, codigos]) => {
+        const setorId =
+          novosSetoresIdMap[nomeSetor] || setoresAtuais[nomeSetor]?.id;
+
+        if (!setorId) {
+          // Sem setor identificado — não dá para criar o leito
+          return;
+        }
+
+        codigos.forEach(codigoLeito => {
+          const novoLeitoRef = doc(getLeitosCollection());
+          batch.set(novoLeitoRef, {
+            codigoLeito,
+            codigo: codigoLeito,
+            setorId,
+            status: 'Vago',
+            ativo: true,
+            createdAt: serverTimestamp()
+          });
+        });
+      });
+
+      await batch.commit();
+
+      const totalSetores = setoresFaltantes.length;
+      const totalLeitos = Object.values(leitosFaltantes).reduce(
+        (acc, arr) => acc + arr.length,
+        0
+      );
+
+      toast.success(
+        `Cadastro concluído: ${totalSetores} setor(es) e ${totalLeitos} leito(s) criados.`
+      );
+
+      try {
+        await logAction(
+          'Gerenciamento de Leitos',
+          `Cadastro automático via importação MV: ${totalSetores} setor(es) e ${totalLeitos} leito(s) criados.`,
+          currentUser
+        );
+      } catch (_) { /* noop */ }
+
+      // Limpar form e prosseguir
+      setSetoresForm({});
+      await revalidarCadastros();
+    } catch (error) {
+      console.error('Erro ao cadastrar pendências:', error);
+      toast.error('Erro ao cadastrar pendências: ' + error.message);
+      setIsProcessing(false);
+    }
+  };
+
   // Nova função para revalidar cadastros
   const revalidarCadastros = async () => {
     if (!parsedFileData) return;
@@ -917,6 +1030,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     setSetoresFaltantes([]);
     setLeitosFaltantes([]);
     setParsedFileData(null);
+    setSetoresForm({});
   };
 
   const handleClose = () => {
@@ -987,94 +1101,150 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     </div>
   );
 
-  const renderValidation = () => (
-    <div className="space-y-6">
-      <Alert>
-        <AlertTriangle className="h-4 w-4" />
-        <AlertDescription>
-          <p className="font-semibold mb-2">Pré-requisitos pendentes</p>
-          <p>
-            Foram encontrados setores e/ou leitos no arquivo que não existem no sistema. 
-            Por favor, realize o cadastro manual no "Gerenciamento de Leitos" para prosseguir com a sincronização.
-          </p>
-        </AlertDescription>
-      </Alert>
+  const renderValidation = () => {
+    const totalLeitosFaltantes = Object.values(leitosFaltantes).reduce(
+      (acc, arr) => acc + arr.length,
+      0
+    );
 
-      <div className="max-h-[40vh] overflow-y-auto space-y-4">
-        {setoresFaltantes.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Setores que precisam ser cadastrados:</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="p-3 bg-muted rounded-md">
-                <code className="text-sm">{setoresFaltantes.join(', ')}</code>
-              </div>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                onClick={() => copyToClipboard(setoresFaltantes.join(', '))}
-                className="w-full"
-              >
-                <Copy className="h-4 w-4 mr-2" />
-                Copiar Lista de Setores
-              </Button>
-            </CardContent>
-          </Card>
-        )}
+    return (
+      <div className="space-y-6">
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <p className="font-semibold mb-1">Cadastro rápido de pendências</p>
+            <p className="text-sm">
+              Foram identificados novos setores e/ou leitos no arquivo. Preencha as
+              informações abaixo para cadastrá-los automaticamente e prosseguir com a
+              sincronização.
+            </p>
+          </AlertDescription>
+        </Alert>
 
-        {Object.keys(leitosFaltantes).length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Leitos que precisam ser cadastrados:</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {Object.entries(leitosFaltantes).map(([setor, leitos]) => (
-                <div key={setor} className="space-y-2">
-                  <p className="text-sm font-medium">{setor}:</p>
-                  <div className="p-3 bg-muted rounded-md">
-                    <code className="text-sm">{leitos.join(', ')}</code>
-                  </div>
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    onClick={() => copyToClipboard(leitos.join(', '))}
-                    className="w-full"
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copiar Leitos do {setor}
-                  </Button>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      <div className="flex gap-3">
-        <Button onClick={handleClose} variant="outline" className="flex-1">
-          Cancelar
-        </Button>
-        <Button 
-          onClick={revalidarCadastros}
-          disabled={isProcessing}
-          className="flex-1"
-        >
-          {isProcessing ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              Verificando...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Verificar Cadastros Novamente
-            </>
+        <div className="max-h-[50vh] overflow-y-auto space-y-4 pr-1">
+          {setoresFaltantes.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">
+                  Novos setores ({setoresFaltantes.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {setoresFaltantes.map(nomeSetor => {
+                  const form = setoresForm[nomeSetor] || { sigla: '', tipo: 'Enfermaria' };
+                  return (
+                    <div
+                      key={nomeSetor}
+                      className="grid grid-cols-1 md:grid-cols-[1fr_140px_180px] gap-2 items-end p-3 border rounded-md"
+                    >
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">
+                          Nome do setor
+                        </label>
+                        <p className="text-sm font-semibold mt-1 break-words">{nomeSetor}</p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">
+                          Sigla
+                        </label>
+                        <Input
+                          value={form.sigla}
+                          onChange={(e) =>
+                            setSetoresForm(prev => ({
+                              ...prev,
+                              [nomeSetor]: {
+                                ...(prev[nomeSetor] || { tipo: 'Enfermaria' }),
+                                sigla: sanitizeSigla(e.target.value)
+                              }
+                            }))
+                          }
+                          placeholder="Ex: UTI3"
+                          maxLength={10}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">
+                          Tipo de setor
+                        </label>
+                        <select
+                          value={form.tipo}
+                          onChange={(e) =>
+                            setSetoresForm(prev => ({
+                              ...prev,
+                              [nomeSetor]: {
+                                ...(prev[nomeSetor] || { sigla: '' }),
+                                tipo: e.target.value
+                              }
+                            }))
+                          }
+                          className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {TIPOS_SETOR.map(tipo => (
+                            <option key={tipo} value={tipo}>{tipo}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
           )}
-        </Button>
+
+          {totalLeitosFaltantes > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">
+                  Novos leitos ({totalLeitosFaltantes})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Estes leitos serão criados e vinculados automaticamente aos seus setores.
+                </p>
+                {Object.entries(leitosFaltantes).map(([setor, leitos]) => (
+                  <div key={setor} className="space-y-2">
+                    <p className="text-sm font-medium">{setor}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {leitos.map(codigo => (
+                        <Badge key={codigo} variant="secondary" className="font-mono text-xs">
+                          {codigo}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        <div className="flex gap-3">
+          <Button onClick={handleClose} variant="outline" className="flex-1">
+            Cancelar
+          </Button>
+          <Button
+            onClick={cadastrarPendenciasEContinuar}
+            disabled={isProcessing}
+            className="flex-1"
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                Cadastrando...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Cadastrar e Continuar
+              </>
+            )}
+          </Button>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderConfirmation = () => (
     <div className="space-y-6">

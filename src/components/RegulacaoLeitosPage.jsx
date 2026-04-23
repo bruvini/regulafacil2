@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +10,15 @@ import {
   Sparkles,
   PieChart
 } from "lucide-react";
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import {
+  getAuditoriaCollection,
+  onSnapshot,
+  query,
+  orderBy,
+  limit
+} from '@/lib/firebase';
 import ImportarPacientesMVModal from './ImportarPacientesMVModal';
 import AguardandoRegulacaoPanel from './AguardandoRegulacaoPanel';
 import FilaEsperaUTIPanel from './FilaEsperaUTIPanel';
@@ -48,6 +57,32 @@ const RegulacaoLeitosPage = () => {
   const [leitoSugestao, setLeitoSugestao] = useState(null);
   const [isPassagemPlantaoModalOpen, setPassagemPlantaoModalOpen] = useState(false);
   const [isSugestoesModalOpen, setIsSugestoesModalOpen] = useState(false);
+  const [ultimaSincronizacao, setUltimaSincronizacao] = useState(null);
+
+  useEffect(() => {
+    const auditQuery = query(
+      getAuditoriaCollection(),
+      orderBy('timestamp', 'desc'),
+      limit(50)
+    );
+
+    const unsubscribe = onSnapshot(auditQuery, (snapshot) => {
+      const docs = snapshot.docs.map(d => d.data());
+      const sincDoc = docs.find(d =>
+        typeof d?.acao === 'string' && d.acao.includes('Sincronização via MV concluída')
+      );
+
+      if (sincDoc?.timestamp) {
+        const ts = sincDoc.timestamp;
+        const dataValida = typeof ts?.toDate === 'function' ? ts.toDate() : new Date(ts);
+        if (dataValida instanceof Date && !isNaN(dataValida.getTime())) {
+          setUltimaSincronizacao(dataValida);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const handleFecharRegularModal = () => {
     setRegularModalAberto(false);
@@ -82,14 +117,21 @@ const RegulacaoLeitosPage = () => {
           </CardHeader>
           <CardContent className="p-4 sm:p-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Button
-                variant="outline"
-                className="flex items-center gap-2 text-xs sm:text-sm"
-                onClick={() => setShowImportModal(true)}
-              >
-                <DatabaseIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                Importar Pacientes MV
-              </Button>
+              <div className="flex flex-col">
+                <Button
+                  variant="outline"
+                  className="w-full flex items-center gap-2 text-xs sm:text-sm"
+                  onClick={() => setShowImportModal(true)}
+                >
+                  <DatabaseIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  Importar Pacientes MV
+                </Button>
+                {ultimaSincronizacao && (
+                  <span className="text-[10px] text-muted-foreground mt-1 text-center font-medium">
+                    Última att: {format(ultimaSincronizacao, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                  </span>
+                )}
+              </div>
               <Button
                 variant="outline"
                 className="flex items-center gap-2 text-xs sm:text-sm"
