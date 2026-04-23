@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -26,9 +26,9 @@ import { toast } from '@/hooks/use-toast';
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 
-const GerenciarIsolamentosModal = ({ isOpen, onClose, pacientes, infeccoes }) => {
-  const [etapa, setEtapa] = useState(1); // 1: Selecionar Paciente, 2: Gerenciar Isolamentos
-  const [pacienteSelecionado, setPacienteSelecionado] = useState(null);
+const GerenciarIsolamentosModal = ({ isOpen, onClose, pacientes, infeccoes, pacientePreSelecionado = null }) => {
+  const [etapa, setEtapa] = useState(pacientePreSelecionado ? 2 : 1); // 1: Selecionar Paciente, 2: Gerenciar Isolamentos
+  const [pacienteSelecionado, setPacienteSelecionado] = useState(pacientePreSelecionado || null);
   const [buscarPaciente, setBuscarPaciente] = useState('');
   const [showPacientes, setShowPacientes] = useState(false);
   const [buscaInfeccao, setBuscaInfeccao] = useState('');
@@ -40,19 +40,27 @@ const GerenciarIsolamentosModal = ({ isOpen, onClose, pacientes, infeccoes }) =>
   const { currentUser } = useAuth();
 
   const resetForm = () => {
-    setEtapa(1);
-    setPacienteSelecionado(null);
+    setEtapa(pacientePreSelecionado ? 2 : 1);
+    setPacienteSelecionado(pacientePreSelecionado || null);
     setBuscarPaciente('');
     setInfeccoesSelecionadas([]);
     setDadosIsolamentos({});
   };
+
+  // Sincroniza com paciente pré-selecionado quando o modal abre/muda
+  useEffect(() => {
+    if (isOpen && pacientePreSelecionado) {
+      setPacienteSelecionado(pacientePreSelecionado);
+      setEtapa(2);
+    }
+  }, [isOpen, pacientePreSelecionado]);
 
   const handleClose = () => {
     resetForm();
     onClose();
   };
 
-  const pacientesFiltrados = pacientes.filter(p =>
+  const pacientesFiltrados = (pacientes || []).filter(p =>
     p.nomePaciente?.toLowerCase().includes(buscarPaciente.toLowerCase())
   );
 
@@ -405,10 +413,16 @@ const GerenciarIsolamentosModal = ({ isOpen, onClose, pacientes, infeccoes }) =>
           <DialogFooter className="gap-2 border-t px-6 py-4">
             <Button
               variant="outline"
-              onClick={() => (etapa === 1 ? handleClose() : setEtapa(1))}
+              onClick={() => {
+                if (etapa === 1 || pacientePreSelecionado) {
+                  handleClose();
+                } else {
+                  setEtapa(1);
+                }
+              }}
               disabled={loading}
             >
-              Voltar
+              {etapa === 1 || pacientePreSelecionado ? 'Cancelar' : 'Voltar'}
             </Button>
             <Button
               onClick={handleSalvarIsolamentos}
