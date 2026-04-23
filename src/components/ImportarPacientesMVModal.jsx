@@ -706,7 +706,7 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       // externas (reservaExterna) são preservadas pois não vêm da MV.
       // ============================================================
       const nomesPlanilhaSet = new Set(
-        Object.keys(pacientesArquivoMap || {}).map(n => n.toString().trim().toUpperCase())
+        (parsedFileData || []).map(p => (p.nomePaciente || '').toString().trim().toUpperCase())
       );
       const pacientesPorIdMap = Object.values(processedData.leitos || {})
         ? Object.values(processedData.leitos || {}) && null
