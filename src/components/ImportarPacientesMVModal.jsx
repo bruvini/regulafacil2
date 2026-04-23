@@ -1101,94 +1101,150 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
     </div>
   );
 
-  const renderValidation = () => (
-    <div className="space-y-6">
-      <Alert>
-        <AlertTriangle className="h-4 w-4" />
-        <AlertDescription>
-          <p className="font-semibold mb-2">Pré-requisitos pendentes</p>
-          <p>
-            Foram encontrados setores e/ou leitos no arquivo que não existem no sistema. 
-            Por favor, realize o cadastro manual no "Gerenciamento de Leitos" para prosseguir com a sincronização.
-          </p>
-        </AlertDescription>
-      </Alert>
+  const renderValidation = () => {
+    const totalLeitosFaltantes = Object.values(leitosFaltantes).reduce(
+      (acc, arr) => acc + arr.length,
+      0
+    );
 
-      <div className="max-h-[40vh] overflow-y-auto space-y-4">
-        {setoresFaltantes.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Setores que precisam ser cadastrados:</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="p-3 bg-muted rounded-md">
-                <code className="text-sm">{setoresFaltantes.join(', ')}</code>
-              </div>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                onClick={() => copyToClipboard(setoresFaltantes.join(', '))}
-                className="w-full"
-              >
-                <Copy className="h-4 w-4 mr-2" />
-                Copiar Lista de Setores
-              </Button>
-            </CardContent>
-          </Card>
-        )}
+    return (
+      <div className="space-y-6">
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <p className="font-semibold mb-1">Cadastro rápido de pendências</p>
+            <p className="text-sm">
+              Foram identificados novos setores e/ou leitos no arquivo. Preencha as
+              informações abaixo para cadastrá-los automaticamente e prosseguir com a
+              sincronização.
+            </p>
+          </AlertDescription>
+        </Alert>
 
-        {Object.keys(leitosFaltantes).length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Leitos que precisam ser cadastrados:</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {Object.entries(leitosFaltantes).map(([setor, leitos]) => (
-                <div key={setor} className="space-y-2">
-                  <p className="text-sm font-medium">{setor}:</p>
-                  <div className="p-3 bg-muted rounded-md">
-                    <code className="text-sm">{leitos.join(', ')}</code>
-                  </div>
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    onClick={() => copyToClipboard(leitos.join(', '))}
-                    className="w-full"
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copiar Leitos do {setor}
-                  </Button>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      <div className="flex gap-3">
-        <Button onClick={handleClose} variant="outline" className="flex-1">
-          Cancelar
-        </Button>
-        <Button 
-          onClick={revalidarCadastros}
-          disabled={isProcessing}
-          className="flex-1"
-        >
-          {isProcessing ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              Verificando...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Verificar Cadastros Novamente
-            </>
+        <div className="max-h-[50vh] overflow-y-auto space-y-4 pr-1">
+          {setoresFaltantes.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">
+                  Novos setores ({setoresFaltantes.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {setoresFaltantes.map(nomeSetor => {
+                  const form = setoresForm[nomeSetor] || { sigla: '', tipo: 'Enfermaria' };
+                  return (
+                    <div
+                      key={nomeSetor}
+                      className="grid grid-cols-1 md:grid-cols-[1fr_140px_180px] gap-2 items-end p-3 border rounded-md"
+                    >
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">
+                          Nome do setor
+                        </label>
+                        <p className="text-sm font-semibold mt-1 break-words">{nomeSetor}</p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">
+                          Sigla
+                        </label>
+                        <Input
+                          value={form.sigla}
+                          onChange={(e) =>
+                            setSetoresForm(prev => ({
+                              ...prev,
+                              [nomeSetor]: {
+                                ...(prev[nomeSetor] || { tipo: 'Enfermaria' }),
+                                sigla: sanitizeSigla(e.target.value)
+                              }
+                            }))
+                          }
+                          placeholder="Ex: UTI3"
+                          maxLength={10}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">
+                          Tipo de setor
+                        </label>
+                        <select
+                          value={form.tipo}
+                          onChange={(e) =>
+                            setSetoresForm(prev => ({
+                              ...prev,
+                              [nomeSetor]: {
+                                ...(prev[nomeSetor] || { sigla: '' }),
+                                tipo: e.target.value
+                              }
+                            }))
+                          }
+                          className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {TIPOS_SETOR.map(tipo => (
+                            <option key={tipo} value={tipo}>{tipo}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
           )}
-        </Button>
+
+          {totalLeitosFaltantes > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">
+                  Novos leitos ({totalLeitosFaltantes})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Estes leitos serão criados e vinculados automaticamente aos seus setores.
+                </p>
+                {Object.entries(leitosFaltantes).map(([setor, leitos]) => (
+                  <div key={setor} className="space-y-2">
+                    <p className="text-sm font-medium">{setor}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {leitos.map(codigo => (
+                        <Badge key={codigo} variant="secondary" className="font-mono text-xs">
+                          {codigo}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        <div className="flex gap-3">
+          <Button onClick={handleClose} variant="outline" className="flex-1">
+            Cancelar
+          </Button>
+          <Button
+            onClick={cadastrarPendenciasEContinuar}
+            disabled={isProcessing}
+            className="flex-1"
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                Cadastrando...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Cadastrar e Continuar
+              </>
+            )}
+          </Button>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderConfirmation = () => (
     <div className="space-y-6">
