@@ -34,7 +34,8 @@ import {
   LogOut,
   Search,
   Filter,
-  X
+  X,
+  ShieldAlert
 } from 'lucide-react';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -96,7 +97,8 @@ const LeitoCard = ({
   onCancelarReservaExterna,
   onConfirmarInternacaoExterna,
   onInternarManual,
-  onForcarLiberacaoFantasma
+  onForcarLiberacaoFantasma,
+  onGerenciarIsolamento
 }) => {
   const { toast } = useToast();
   const { currentUser } = useAuth();
@@ -427,6 +429,12 @@ const LeitoCard = ({
               <StickyNote className="h-4 w-4 mr-2" />
               OBSERVAÇÕES
             </DropdownMenuItem>
+            {isOcupado && onGerenciarIsolamento && (
+              <DropdownMenuItem onClick={() => onGerenciarIsolamento(leito)}>
+                <ShieldAlert className="h-4 w-4 mr-2" />
+                GERENCIAR ISOLAMENTOS
+              </DropdownMenuItem>
+            )}
             {(() => {
               const estaEmSetorUTI = (leito.tipoSetor || '').toUpperCase() === 'UTI';
               const item = (
@@ -785,7 +793,7 @@ const LeitoCard = ({
 };
 
 // Componente principal MapaLeitosPanel
-const MapaLeitosPanel = React.forwardRef((_, ref) => {
+const MapaLeitosPanel = React.forwardRef(({ onGerenciarIsolamento } = {}, ref) => {
   const {
     estrutura,
     pacientesEnriquecidos,
@@ -1925,6 +1933,7 @@ const MapaLeitosPanel = React.forwardRef((_, ref) => {
                                   onConfirmarInternacaoExterna={handleAbrirConfirmarInternacaoExterna}
                                   onInternarManual={handleAbrirInternacaoManual}
                                   onForcarLiberacaoFantasma={handleForcarLiberacaoFantasma}
+                                  onGerenciarIsolamento={onGerenciarIsolamento}
                                 />
                               ))}
                             </div>
@@ -1965,6 +1974,7 @@ const MapaLeitosPanel = React.forwardRef((_, ref) => {
                                   onConfirmarInternacaoExterna={handleAbrirConfirmarInternacaoExterna}
                                   onInternarManual={handleAbrirInternacaoManual}
                                   onForcarLiberacaoFantasma={handleForcarLiberacaoFantasma}
+                                  onGerenciarIsolamento={onGerenciarIsolamento}
                                 />
                               ))}
                             </div>
