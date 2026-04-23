@@ -1933,6 +1933,7 @@ const MapaLeitosPanel = React.forwardRef(({ onGerenciarIsolamento } = {}, ref) =
                                   onConfirmarInternacaoExterna={handleAbrirConfirmarInternacaoExterna}
                                   onInternarManual={handleAbrirInternacaoManual}
                                   onForcarLiberacaoFantasma={handleForcarLiberacaoFantasma}
+                                  onGerenciarIsolamento={onGerenciarIsolamento}
                                 />
                               ))}
                             </div>
@@ -1973,6 +1974,7 @@ const MapaLeitosPanel = React.forwardRef(({ onGerenciarIsolamento } = {}, ref) =
                                   onConfirmarInternacaoExterna={handleAbrirConfirmarInternacaoExterna}
                                   onInternarManual={handleAbrirInternacaoManual}
                                   onForcarLiberacaoFantasma={handleForcarLiberacaoFantasma}
+                                  onGerenciarIsolamento={onGerenciarIsolamento}
                                 />
                               ))}
                             </div>
