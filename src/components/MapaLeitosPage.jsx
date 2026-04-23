@@ -26,6 +26,7 @@ import ImportarPacientesMVModal from './ImportarPacientesMVModal';
 import RelatorioIsolamentosModal from './modals/RelatorioIsolamentosModal';
 import RelatorioLeitosVagosModal from './modals/RelatorioLeitosVagosModal';
 import ReservasLeitosModal from './modals/ReservasLeitosModal';
+import GerenciarIsolamentosModal from './modals/GerenciarIsolamentosModal';
 
 const MapaLeitosPage = () => {
   const [dados, setDados] = useState({
@@ -42,7 +43,27 @@ const MapaLeitosPage = () => {
   const [showRelatorioIsolamentosModal, setShowRelatorioIsolamentosModal] = useState(false);
   const [showRelatorioLeitosVagosModal, setShowRelatorioLeitosVagosModal] = useState(false);
   const [showReservasLeitosModal, setShowReservasLeitosModal] = useState(false);
+  const [isIsolamentoModalOpen, setIsIsolamentoModalOpen] = useState(false);
+  const [pacienteSelecionadoIsolamento, setPacienteSelecionadoIsolamento] = useState(null);
   const mapaLeitosRef = useRef(null);
+
+  const handleGerenciarIsolamento = (leito) => {
+    const pacienteDoLeito = leito?.paciente;
+    if (!pacienteDoLeito) return;
+
+    // Tenta resolver o paciente "completo" a partir do estado (com isolamentos atualizados)
+    const pacienteCompleto = dados.pacientes.find(
+      (p) => p.id === pacienteDoLeito.id
+    ) || pacienteDoLeito;
+
+    setPacienteSelecionadoIsolamento(pacienteCompleto);
+    setIsIsolamentoModalOpen(true);
+  };
+
+  const handleCloseIsolamentoModal = () => {
+    setIsIsolamentoModalOpen(false);
+    setPacienteSelecionadoIsolamento(null);
+  };
 
   // Carregar dados do Firestore
   useEffect(() => {
@@ -186,7 +207,7 @@ const MapaLeitosPage = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="px-3 py-4 sm:px-6 sm:py-6">
-          <MapaLeitosPanel ref={mapaLeitosRef} />
+          <MapaLeitosPanel ref={mapaLeitosRef} onGerenciarIsolamento={handleGerenciarIsolamento} />
         </CardContent>
       </Card>
 
@@ -214,6 +235,14 @@ const MapaLeitosPage = () => {
       <ReservasLeitosModal 
         isOpen={showReservasLeitosModal} 
         onClose={() => setShowReservasLeitosModal(false)} 
+      />
+
+      <GerenciarIsolamentosModal
+        isOpen={isIsolamentoModalOpen}
+        onClose={handleCloseIsolamentoModal}
+        pacientes={dados.pacientes}
+        infeccoes={dados.infeccoes}
+        pacientePreSelecionado={pacienteSelecionadoIsolamento}
       />
     </div>
   );
