@@ -117,14 +117,21 @@ const RegulacaoLeitosPage = () => {
           </CardHeader>
           <CardContent className="p-4 sm:p-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Button
-                variant="outline"
-                className="flex items-center gap-2 text-xs sm:text-sm"
-                onClick={() => setShowImportModal(true)}
-              >
-                <DatabaseIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                Importar Pacientes MV
-              </Button>
+              <div className="flex flex-col">
+                <Button
+                  variant="outline"
+                  className="w-full flex items-center gap-2 text-xs sm:text-sm"
+                  onClick={() => setShowImportModal(true)}
+                >
+                  <DatabaseIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  Importar Pacientes MV
+                </Button>
+                {ultimaSincronizacao && (
+                  <span className="text-[10px] text-muted-foreground mt-1 text-center font-medium">
+                    Última att: {format(ultimaSincronizacao, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                  </span>
+                )}
+              </div>
               <Button
                 variant="outline"
                 className="flex items-center gap-2 text-xs sm:text-sm"
