@@ -57,6 +57,32 @@ const RegulacaoLeitosPage = () => {
   const [leitoSugestao, setLeitoSugestao] = useState(null);
   const [isPassagemPlantaoModalOpen, setPassagemPlantaoModalOpen] = useState(false);
   const [isSugestoesModalOpen, setIsSugestoesModalOpen] = useState(false);
+  const [ultimaSincronizacao, setUltimaSincronizacao] = useState(null);
+
+  useEffect(() => {
+    const auditQuery = query(
+      getAuditoriaCollection(),
+      orderBy('timestamp', 'desc'),
+      limit(50)
+    );
+
+    const unsubscribe = onSnapshot(auditQuery, (snapshot) => {
+      const docs = snapshot.docs.map(d => d.data());
+      const sincDoc = docs.find(d =>
+        typeof d?.acao === 'string' && d.acao.includes('Sincronização via MV concluída')
+      );
+
+      if (sincDoc?.timestamp) {
+        const ts = sincDoc.timestamp;
+        const dataValida = typeof ts?.toDate === 'function' ? ts.toDate() : new Date(ts);
+        if (dataValida instanceof Date && !isNaN(dataValida.getTime())) {
+          setUltimaSincronizacao(dataValida);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const handleFecharRegularModal = () => {
     setRegularModalAberto(false);
