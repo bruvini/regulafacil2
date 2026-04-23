@@ -66,6 +66,28 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
   const [setoresFaltantes, setSetoresFaltantes] = useState([]);
   const [leitosFaltantes, setLeitosFaltantes] = useState([]);
   const [parsedFileData, setParsedFileData] = useState(null); // Para armazenar dados do arquivo já processado
+  const [setoresForm, setSetoresForm] = useState({}); // Form inline: { [nomeSetor]: { sigla, tipo } }
+
+  const TIPOS_SETOR = ['Enfermaria', 'UTI', 'Emergência', 'Centro Cirúrgico'];
+
+  const sanitizeSigla = (valor) =>
+    (valor || '')
+      .toString()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '');
+
+  // Sempre que setoresFaltantes mudar, inicializar/sincronizar o formulário
+  useEffect(() => {
+    setSetoresForm(prev => {
+      const next = {};
+      setoresFaltantes.forEach(nome => {
+        next[nome] = prev[nome] || { sigla: '', tipo: 'Enfermaria' };
+      });
+      return next;
+    });
+  }, [setoresFaltantes]);
 
   const normalizarCodigoLeito = (codigo) => {
     if (!codigo) return '';
