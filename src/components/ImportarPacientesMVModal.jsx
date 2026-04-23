@@ -5,11 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { 
-  Upload, 
-  FileSpreadsheet, 
-  CheckCircle, 
-  AlertTriangle, 
+import { Badge } from '@/components/ui/badge';
+import {
+  Upload,
+  FileSpreadsheet,
+  CheckCircle,
+  AlertTriangle,
   Loader2,
   ExternalLink,
   Database,
@@ -17,7 +18,8 @@ import {
   UserPlus,
   UserMinus,
   Copy,
-  RefreshCw
+  RefreshCw,
+  Save
 } from 'lucide-react';
 import {
   getDocs,
