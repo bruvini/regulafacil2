@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Copy } from "lucide-react";
+import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
 const ResumoRegulacoesModal = ({ isOpen, onClose, regulacoes, leitos, setores }) => {
