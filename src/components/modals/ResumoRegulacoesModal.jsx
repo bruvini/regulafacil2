@@ -226,7 +226,18 @@ const ResumoRegulacoesModal = ({ isOpen, onClose, regulacoes, leitos, setores })
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl">
         <DialogHeader>
-          <DialogTitle>Resumo de Regulações em Andamento</DialogTitle>
+          <div className="flex items-center justify-between gap-4 pr-6">
+            <DialogTitle>Resumo de Regulações em Andamento</DialogTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-2"
+              onClick={handleCopiarParaWhatsapp}
+            >
+              <Copy className="h-4 w-4" />
+              Copiar para WhatsApp
+            </Button>
+          </div>
         </DialogHeader>
         <ScrollArea className="max-h-[80vh]">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
