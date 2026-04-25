@@ -728,6 +728,7 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
             <CardTitle className="flex items-center gap-2 text-lg">
               <Loader className="h-5 w-5 text-orange-600" />
               Regulações em Andamento
+              <Badge variant="secondary">{regulacoes.length}</Badge>
             </CardTitle>
             <TooltipProvider>
               <Tooltip>
