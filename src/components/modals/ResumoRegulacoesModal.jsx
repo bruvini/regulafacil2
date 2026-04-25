@@ -86,6 +86,71 @@ const ResumoRegulacoesModal = ({ isOpen, onClose, regulacoes, leitos, setores })
     return { agrupadoPorOrigem, agrupadoPorDestino };
   }, [regulacoes, leitos, setores]);
 
+  const handleCopiarParaWhatsapp = async () => {
+    if (!regulacoes || regulacoes.length === 0) {
+      toast({
+        title: "Sem regulações",
+        description: "Não há regulações pendentes para copiar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    let texto = "REGULAÇÕES PENDENTES\n\n";
+
+    regulacoes.forEach((reg, index) => {
+      const regAtiva = reg.regulacaoAtiva || {};
+      const dataRaw = regAtiva.iniciadoEm;
+      let dataObj = null;
+      try {
+        if (dataRaw?.toDate) dataObj = dataRaw.toDate();
+        else if (dataRaw?.seconds) dataObj = new Date(dataRaw.seconds * 1000);
+        else if (dataRaw) dataObj = new Date(dataRaw);
+      } catch (e) {
+        dataObj = null;
+      }
+      const inicioStr = dataObj && !isNaN(dataObj.getTime())
+        ? format(dataObj, "dd/MM/yyyy HH:mm")
+        : "Data não disponível";
+
+      const leitoOrigem = leitos.find(l => l.id === regAtiva.leitoOrigemId) || {};
+      const leitoDestino = leitos.find(l => l.id === regAtiva.leitoDestinoId) || {};
+      const setorOrigem = setores.find(s => s.id === leitoOrigem.setorId) || {};
+      const setorDestino = setores.find(s => s.id === leitoDestino.setorId) || {};
+
+      const origemSetor = setorOrigem.siglaSetor || setorOrigem.nomeSetor || "N/A";
+      const origemLeito = leitoOrigem.codigoLeito || "";
+      const destinoSetor = setorDestino.siglaSetor || setorDestino.nomeSetor || "N/A";
+      const destinoLeito = leitoDestino.codigoLeito || "";
+
+      const origemCompleta = origemLeito ? `${origemSetor} · ${origemLeito}` : origemSetor;
+      const destinoCompleto = destinoLeito ? `${destinoSetor} · ${destinoLeito}` : destinoSetor;
+
+      const statusStr = regAtiva.status || "Em andamento";
+      const nomePaciente = reg.nomePaciente || "PACIENTE NÃO IDENTIFICADO";
+
+      texto += `${index + 1}. ${nomePaciente.toUpperCase()} — ${statusStr}\n`;
+      texto += `   Início: ${inicioStr}\n`;
+      texto += `   Origem: ${origemCompleta}\n`;
+      texto += `   Destino atual: ${destinoCompleto}\n\n`;
+    });
+
+    try {
+      await navigator.clipboard.writeText(texto.trim());
+      toast({
+        title: "Resumo copiado",
+        description: "Resumo copiado para a área de transferência!",
+      });
+    } catch (error) {
+      console.error("Erro ao copiar:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível copiar o resumo.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleCopiarResumoOrigem = async (setor, regulacoesDoSetor) => {
     const nomeSetor = setor.nomeSetor || 'Setor Desconhecido';
     
