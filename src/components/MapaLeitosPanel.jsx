@@ -77,6 +77,40 @@ const getSectorTypeColor = (tipoSetor) => {
   return colorMap[tipoSetor] || 'border-t-4 border-gray-500';
 };
 
+// Indicador visual de ocupação (% + barra colorida + contagem)
+const OcupacaoIndicator = ({ emUso = 0, operacionais = 0, size = 'sm' }) => {
+  const pct = operacionais > 0 ? Math.round((emUso / operacionais) * 100) : 0;
+
+  // Escala de cores (semáforo)
+  let barColor = 'bg-emerald-500';
+  let textColor = 'text-emerald-600';
+  if (pct >= 90) {
+    barColor = 'bg-red-500';
+    textColor = 'text-red-600';
+  } else if (pct >= 61) {
+    barColor = 'bg-amber-500';
+    textColor = 'text-amber-600';
+  }
+
+  const barWidth = size === 'lg' ? 'w-32 sm:w-40' : 'w-24 sm:w-28';
+  const pctText = size === 'lg' ? 'text-sm' : 'text-xs';
+
+  return (
+    <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+      <span className={cn('font-bold tabular-nums', pctText, textColor)}>{pct}%</span>
+      <div className={cn('h-1.5 overflow-hidden rounded-full bg-gray-200', barWidth)}>
+        <div
+          className={cn('h-full rounded-full transition-all', barColor)}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="text-[10px] font-medium text-muted-foreground tabular-nums whitespace-nowrap">
+        ({emUso}/{operacionais} leitos)
+      </span>
+    </div>
+  );
+};
+
 // Componente LeitoCard Dinâmico
 const LeitoCard = ({
   leito,
