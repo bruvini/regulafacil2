@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Plus, UserSearch } from 'lucide-react';
+import { CalendarIcon, Plus, Trash2, UserSearch } from 'lucide-react';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { format, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -19,6 +19,7 @@ import {
   doc, 
   arrayUnion 
 } from '@/lib/firebase';
+import { toast as sonnerToast } from 'sonner';
 import { db } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
@@ -140,6 +141,36 @@ const GerenciarIsolamentosModal = ({ isOpen, onClose, pacientes, infeccoes, paci
         [campo]: valor
       }
     }));
+  };
+
+  const handleRemoverIsolamento = async (isolamento) => {
+    if (!pacienteSelecionado) return;
+    const confirmado = window.confirm("Deseja realmente remover este isolamento?");
+    if (!confirmado) return;
+
+    try {
+      const isolamentosAtualizados = (pacienteSelecionado.isolamentos || []).filter(
+        (iso) => iso.id !== isolamento.id
+      );
+
+      const pacienteRef = doc(db, getPacientesCollection().path, pacienteSelecionado.id);
+      await updateDoc(pacienteRef, { isolamentos: isolamentosAtualizados });
+
+      const infeccao = infeccoes.find(inf => inf.id === isolamento.infeccaoId);
+      await logAction(
+        "Gestão de Isolamentos",
+        `Isolamento removido de ${pacienteSelecionado.nomePaciente}: ${infeccao?.nomeInfeccao || 'Infecção desconhecida'}`,
+        currentUser
+      );
+
+      // Atualiza estado local imediatamente
+      setPacienteSelecionado(prev => prev ? { ...prev, isolamentos: isolamentosAtualizados } : prev);
+
+      sonnerToast.success("Isolamento removido com sucesso!");
+    } catch (error) {
+      console.error('Erro ao remover isolamento:', error);
+      sonnerToast.error("Erro ao remover isolamento. Tente novamente.");
+    }
   };
 
   const handleSalvarIsolamentos = async () => {
@@ -277,11 +308,22 @@ const GerenciarIsolamentosModal = ({ isOpen, onClose, pacientes, infeccoes, paci
                                     Data: {formatarDataInclusao(isolamento.dataInclusao)}
                                   </div>
                                 </div>
-                                {infeccao?.siglaInfeccao && (
-                                  <Badge variant="outline" className="uppercase">
-                                    {infeccao.siglaInfeccao}
-                                  </Badge>
-                                )}
+                                <div className="flex items-center gap-2">
+                                  {infeccao?.siglaInfeccao && (
+                                    <Badge variant="outline" className="uppercase">
+                                      {infeccao.siglaInfeccao}
+                                    </Badge>
+                                  )}
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-destructive hover:text-destructive"
+                                    onClick={() => handleRemoverIsolamento(isolamento)}
+                                    title="Remover isolamento"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
                               </div>
                             );
                           })}
