@@ -77,6 +77,40 @@ const getSectorTypeColor = (tipoSetor) => {
   return colorMap[tipoSetor] || 'border-t-4 border-gray-500';
 };
 
+// Indicador visual de ocupação (% + barra colorida + contagem)
+const OcupacaoIndicator = ({ emUso = 0, operacionais = 0, size = 'sm' }) => {
+  const pct = operacionais > 0 ? Math.round((emUso / operacionais) * 100) : 0;
+
+  // Escala de cores (semáforo)
+  let barColor = 'bg-emerald-500';
+  let textColor = 'text-emerald-600';
+  if (pct >= 90) {
+    barColor = 'bg-red-500';
+    textColor = 'text-red-600';
+  } else if (pct >= 61) {
+    barColor = 'bg-amber-500';
+    textColor = 'text-amber-600';
+  }
+
+  const barWidth = size === 'lg' ? 'w-32 sm:w-40' : 'w-24 sm:w-28';
+  const pctText = size === 'lg' ? 'text-sm' : 'text-xs';
+
+  return (
+    <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+      <span className={cn('font-bold tabular-nums', pctText, textColor)}>{pct}%</span>
+      <div className={cn('h-1.5 overflow-hidden rounded-full bg-gray-200', barWidth)}>
+        <div
+          className={cn('h-full rounded-full transition-all', barColor)}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="text-[10px] font-medium text-muted-foreground tabular-nums whitespace-nowrap">
+        ({emUso}/{operacionais} leitos)
+      </span>
+    </div>
+  );
+};
+
 // Componente LeitoCard Dinâmico
 const LeitoCard = ({
   leito,
@@ -1865,19 +1899,20 @@ const MapaLeitosPanel = React.forwardRef(({ onGerenciarIsolamento } = {}, ref) =
         <Accordion type="single" collapsible className="space-y-3 sm:space-y-4">
           {Object.entries(dadosFiltrados).map(([tipoSetor, setoresDoTipo]) => {
             const STATUS_OPERACIONAIS = ['Vago', 'Ocupado', 'Regulado', 'Reservado', 'Higienização'];
+            const STATUS_EM_USO = ['Ocupado', 'Regulado', 'Reservado'];
             const contarLeitosSetor = (setor) => {
               const todos = [
                 ...(setor.leitosSemQuarto || []),
                 ...((setor.quartos || []).flatMap(q => q.leitos || []))
               ];
               const operacionais = todos.filter(l => STATUS_OPERACIONAIS.includes(l.status)).length;
-              const ocupados = todos.filter(l => l.status === 'Ocupado').length;
-              return { operacionais, ocupados };
+              const emUso = todos.filter(l => STATUS_EM_USO.includes(l.status)).length;
+              return { operacionais, emUso };
             };
             const totaisGrupo = setoresDoTipo.reduce((acc, s) => {
-              const { operacionais, ocupados } = contarLeitosSetor(s);
-              return { operacionais: acc.operacionais + operacionais, ocupados: acc.ocupados + ocupados };
-            }, { operacionais: 0, ocupados: 0 });
+              const { operacionais, emUso } = contarLeitosSetor(s);
+              return { operacionais: acc.operacionais + operacionais, emUso: acc.emUso + emUso };
+            }, { operacionais: 0, emUso: 0 });
 
             return (
             <AccordionItem
@@ -1886,8 +1921,8 @@ const MapaLeitosPanel = React.forwardRef(({ onGerenciarIsolamento } = {}, ref) =
               className={`rounded-xl border border-gray-200 ${getSectorTypeColor(tipoSetor)}`}
             >
               <AccordionTrigger className="h-auto w-full justify-between px-3 py-3 text-left text-base font-medium hover:bg-gray-50 sm:px-4 sm:py-4">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <div>
+                <div className="flex w-full items-center justify-between gap-4 pr-2">
+                  <div className="min-w-0">
                     <h2 className="text-lg font-semibold text-gray-900 sm:text-xl">
                       {tipoSetor}
                     </h2>
@@ -1895,16 +1930,14 @@ const MapaLeitosPanel = React.forwardRef(({ onGerenciarIsolamento } = {}, ref) =
                       {setoresDoTipo.length} setor(es)
                     </p>
                   </div>
-                  <Badge variant="outline" className="text-xs font-medium">
-                    {totaisGrupo.ocupados}/{totaisGrupo.operacionais}
-                  </Badge>
+                  <OcupacaoIndicator emUso={totaisGrupo.emUso} operacionais={totaisGrupo.operacionais} size="lg" />
                 </div>
               </AccordionTrigger>
 
               <AccordionContent className="px-3 pb-4 pt-0 sm:px-4 sm:pb-5">
                 <Accordion type="single" collapsible className="space-y-4 sm:space-y-6">
                   {setoresDoTipo.map(setor => {
-                    const { operacionais: setorOperacionais, ocupados: setorOcupados } = contarLeitosSetor(setor);
+                    const { operacionais: setorOperacionais, emUso: setorEmUso } = contarLeitosSetor(setor);
                     return (
                     <AccordionItem
                       key={setor.id}
@@ -1912,8 +1945,8 @@ const MapaLeitosPanel = React.forwardRef(({ onGerenciarIsolamento } = {}, ref) =
                       className="rounded-xl border border-gray-100"
                     >
                       <AccordionTrigger className="h-auto w-full justify-between px-3 py-3 text-left text-sm font-medium hover:bg-gray-50 sm:px-4">
-                        <div className="flex items-center gap-3 flex-wrap">
-                          <div>
+                        <div className="flex w-full items-center justify-between gap-4 pr-2">
+                          <div className="min-w-0">
                             <h3 className="text-base font-medium text-gray-800 sm:text-lg">
                               {setor.nomeSetor} ({setor.siglaSetor})
                             </h3>
@@ -1922,9 +1955,7 @@ const MapaLeitosPanel = React.forwardRef(({ onGerenciarIsolamento } = {}, ref) =
                                (setor.leitosSemQuarto.length + setor.quartos.reduce((acc, q) => acc + q.leitos.length, 0)) + " leito(s)"}
                             </p>
                           </div>
-                          <Badge variant="outline" className="text-[0.7rem] font-medium">
-                            {setorOcupados}/{setorOperacionais}
-                          </Badge>
+                          <OcupacaoIndicator emUso={setorEmUso} operacionais={setorOperacionais} size="sm" />
                         </div>
                       </AccordionTrigger>
 
