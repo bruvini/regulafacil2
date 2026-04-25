@@ -185,9 +185,9 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
   // Função para calcular tempo desde o início da regulação
   const calcularTempoRegulacao = (iniciadoEm) => {
     if (!iniciadoEm) return 'Tempo não definido';
-    
+
     let dataObj;
-    
+
     // Se for um timestamp do Firebase
     if (iniciadoEm && typeof iniciadoEm.toDate === 'function') {
       dataObj = iniciadoEm.toDate();
@@ -196,20 +196,22 @@ const RegulacoesEmAndamentoPanel = ({ filtros, sortConfig }) => {
     else {
       dataObj = new Date(iniciadoEm);
     }
-    
+
     // Verificar se a data é válida
     if (isNaN(dataObj.getTime())) {
       return 'Tempo inválido';
     }
-    
+
     const agora = new Date();
     const duracao = intervalToDuration({ start: dataObj, end: agora });
-    
-    if (duracao.hours > 0) {
-      return `Ativa há ${duracao.hours}h ${duracao.minutes || 0}m`;
-    } else {
-      return `Ativa há ${duracao.minutes || 0}m`;
-    }
+
+    const tempoRelativo = duracao.hours > 0
+      ? `${duracao.hours}h ${duracao.minutes || 0}m`
+      : `${duracao.minutes || 0}m`;
+
+    const dataFormatada = format(dataObj, 'dd/MM HH:mm', { locale: ptBR });
+
+    return `Ativa há ${tempoRelativo} - (Iniciada em: ${dataFormatada})`;
   };
 
   // Função para obter informações do leito

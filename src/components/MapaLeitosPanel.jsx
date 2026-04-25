@@ -1863,40 +1863,68 @@ const MapaLeitosPanel = React.forwardRef(({ onGerenciarIsolamento } = {}, ref) =
         </div>
       ) : (
         <Accordion type="single" collapsible className="space-y-3 sm:space-y-4">
-          {Object.entries(dadosFiltrados).map(([tipoSetor, setoresDoTipo]) => (
+          {Object.entries(dadosFiltrados).map(([tipoSetor, setoresDoTipo]) => {
+            const STATUS_OPERACIONAIS = ['Vago', 'Ocupado', 'Regulado', 'Reservado', 'Higienização'];
+            const contarLeitosSetor = (setor) => {
+              const todos = [
+                ...(setor.leitosSemQuarto || []),
+                ...((setor.quartos || []).flatMap(q => q.leitos || []))
+              ];
+              const operacionais = todos.filter(l => STATUS_OPERACIONAIS.includes(l.status)).length;
+              const ocupados = todos.filter(l => l.status === 'Ocupado').length;
+              return { operacionais, ocupados };
+            };
+            const totaisGrupo = setoresDoTipo.reduce((acc, s) => {
+              const { operacionais, ocupados } = contarLeitosSetor(s);
+              return { operacionais: acc.operacionais + operacionais, ocupados: acc.ocupados + ocupados };
+            }, { operacionais: 0, ocupados: 0 });
+
+            return (
             <AccordionItem
               key={tipoSetor}
               value={tipoSetor}
               className={`rounded-xl border border-gray-200 ${getSectorTypeColor(tipoSetor)}`}
             >
               <AccordionTrigger className="h-auto w-full justify-between px-3 py-3 text-left text-base font-medium hover:bg-gray-50 sm:px-4 sm:py-4">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900 sm:text-xl">
-                    {tipoSetor}
-                  </h2>
-                  <p className="text-xs text-muted-foreground sm:text-sm">
-                    {setoresDoTipo.length} setor(es)
-                  </p>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900 sm:text-xl">
+                      {tipoSetor}
+                    </h2>
+                    <p className="text-xs text-muted-foreground sm:text-sm">
+                      {setoresDoTipo.length} setor(es)
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="text-xs font-medium">
+                    {totaisGrupo.ocupados}/{totaisGrupo.operacionais}
+                  </Badge>
                 </div>
               </AccordionTrigger>
 
               <AccordionContent className="px-3 pb-4 pt-0 sm:px-4 sm:pb-5">
                 <Accordion type="single" collapsible className="space-y-4 sm:space-y-6">
-                  {setoresDoTipo.map(setor => (
+                  {setoresDoTipo.map(setor => {
+                    const { operacionais: setorOperacionais, ocupados: setorOcupados } = contarLeitosSetor(setor);
+                    return (
                     <AccordionItem
                       key={setor.id}
                       value={setor.id}
                       className="rounded-xl border border-gray-100"
                     >
                       <AccordionTrigger className="h-auto w-full justify-between px-3 py-3 text-left text-sm font-medium hover:bg-gray-50 sm:px-4">
-                        <div>
-                          <h3 className="text-base font-medium text-gray-800 sm:text-lg">
-                            {setor.nomeSetor} ({setor.siglaSetor})
-                          </h3>
-                          <p className="text-xs text-muted-foreground sm:text-sm">
-                            {(setor.quartos.length > 0 ? setor.quartos.length + " quarto(s), " : "") +
-                             (setor.leitosSemQuarto.length + setor.quartos.reduce((acc, q) => acc + q.leitos.length, 0)) + " leito(s)"}
-                          </p>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <div>
+                            <h3 className="text-base font-medium text-gray-800 sm:text-lg">
+                              {setor.nomeSetor} ({setor.siglaSetor})
+                            </h3>
+                            <p className="text-xs text-muted-foreground sm:text-sm">
+                              {(setor.quartos.length > 0 ? setor.quartos.length + " quarto(s), " : "") +
+                               (setor.leitosSemQuarto.length + setor.quartos.reduce((acc, q) => acc + q.leitos.length, 0)) + " leito(s)"}
+                            </p>
+                          </div>
+                          <Badge variant="outline" className="text-[0.7rem] font-medium">
+                            {setorOcupados}/{setorOperacionais}
+                          </Badge>
                         </div>
                       </AccordionTrigger>
 
@@ -1982,11 +2010,13 @@ const MapaLeitosPanel = React.forwardRef(({ onGerenciarIsolamento } = {}, ref) =
                         )}
                       </AccordionContent>
                     </AccordionItem>
-                  ))}
+                    );
+                  })}
                 </Accordion>
               </AccordionContent>
             </AccordionItem>
-          ))}
+            );
+          })}
         </Accordion>
       )}
       
