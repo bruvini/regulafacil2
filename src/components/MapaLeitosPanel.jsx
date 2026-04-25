@@ -2010,11 +2010,13 @@ const MapaLeitosPanel = React.forwardRef(({ onGerenciarIsolamento } = {}, ref) =
                         )}
                       </AccordionContent>
                     </AccordionItem>
-                  ))}
+                    );
+                  })}
                 </Accordion>
               </AccordionContent>
             </AccordionItem>
-          ))}
+            );
+          })}
         </Accordion>
       )}
       
