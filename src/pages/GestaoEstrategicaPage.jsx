@@ -43,6 +43,7 @@ import { calcularPermanenciaAtual } from '@/lib/historicoOcupacoes';
 import { format, getDay, getHours, subDays } from 'date-fns';
 import ListaPacientesPorSetorModal from '@/components/modals/ListaPacientesPorSetorModal';
 import IndicadoresRegulacao from '@/components/IndicadoresRegulacao';
+import TendenciasGargalosPanel from '@/components/TendenciasGargalosPanel';
 import { useInfeccoes } from '@/hooks/useCollections';
 import { cn } from '@/lib/utils';
 
@@ -941,6 +942,11 @@ const GestaoEstrategicaPage = () => {
               </CardContent>
             </Card>
           </div>
+        </section>
+
+        {/* Tendências e Gargalos (últimos 7/30 dias) */}
+        <section className="space-y-6">
+          <TendenciasGargalosPanel />
         </section>
 
         {/* Análise do Processo de Regulação */}
