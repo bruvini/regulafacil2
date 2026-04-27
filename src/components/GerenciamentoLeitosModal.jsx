@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { X, Plus, Edit, Trash2, Save, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import * as XLSX from 'xlsx';
+import { X, Plus, Edit, Trash2, Save, Loader2, Download, Upload } from 'lucide-react';
+import { writeBatch } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -32,7 +34,8 @@ import {
   doc,
   onSnapshot,
   getDocs,
-  serverTimestamp
+  serverTimestamp,
+  db
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
@@ -406,6 +409,179 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
     return codigos.length === 1;
   };
 
+  // === Exportação CSV ===
+  const fileInputRef = useRef(null);
+  const [importando, setImportando] = useState(false);
+
+  const handleBaixarDados = () => {
+    try {
+      const setoresMap = setores.reduce((acc, s) => {
+        acc[s.id] = s;
+        return acc;
+      }, {});
+
+      const linhas = [['Setor', 'Leito']];
+      leitos.forEach((leito) => {
+        const setor = setoresMap[leito.setorId];
+        if (!setor) return;
+        const nomeSetor = (setor.nomeSetor || '').replace(/"/g, '""');
+        const codigo = (leito.codigoLeito || '').replace(/"/g, '""');
+        linhas.push([nomeSetor, codigo]);
+      });
+
+      const csvContent = linhas
+        .map((row) => row.map((c) => `"${c}"`).join(','))
+        .join('\n');
+
+      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'infraestrutura_hospitalar.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast({ title: 'Dados exportados com sucesso!' });
+    } catch (error) {
+      toast({
+        title: 'Erro ao exportar dados',
+        description: error.message,
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // === Importação CSV ===
+  const parseCSVFile = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheet = workbook.Sheets[workbook.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false });
+          resolve(rows);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+
+  const handleArquivoSelecionado = async (event) => {
+    const file = event.target.files?.[0];
+    if (event.target) event.target.value = '';
+    if (!file) return;
+
+    setImportando(true);
+    try {
+      const rows = await parseCSVFile(file);
+
+      // Detectar e remover cabeçalho se presente
+      const dataRows = rows.filter((r) => Array.isArray(r) && r.length >= 2 && (r[0] || r[1]));
+      if (dataRows.length === 0) {
+        toast({ title: 'Arquivo vazio ou inválido', variant: 'destructive' });
+        setImportando(false);
+        return;
+      }
+
+      const primeira = dataRows[0];
+      const isHeader =
+        (primeira[0] || '').toString().trim().toLowerCase() === 'setor' &&
+        (primeira[1] || '').toString().trim().toLowerCase() === 'leito';
+      const linhas = isHeader ? dataRows.slice(1) : dataRows;
+
+      // Mapear setores existentes por nome (case-insensitive)
+      const setoresPorNome = setores.reduce((acc, s) => {
+        const key = (s.nomeSetor || '').toString().trim().toUpperCase();
+        if (key) acc[key] = s;
+        return acc;
+      }, {});
+
+      // Leitos existentes por setorId+codigo (evitar duplicatas)
+      const leitosExistentes = new Set(
+        leitos.map((l) => `${l.setorId}|${(l.codigoLeito || '').toString().trim().toUpperCase()}`)
+      );
+
+      const batch = writeBatch(db);
+      const setoresCriadosLocal = {}; // nomeUpper -> docRef
+      let novosSetores = 0;
+      let novosLeitos = 0;
+
+      for (const linha of linhas) {
+        const nomeSetor = (linha[0] || '').toString().trim();
+        const codigoLeito = (linha[1] || '').toString().trim();
+        if (!nomeSetor || !codigoLeito) continue;
+
+        const chaveSetor = nomeSetor.toUpperCase();
+        let setorRef;
+        let setorId;
+
+        if (setoresPorNome[chaveSetor]) {
+          setorId = setoresPorNome[chaveSetor].id;
+        } else if (setoresCriadosLocal[chaveSetor]) {
+          setorRef = setoresCriadosLocal[chaveSetor];
+          setorId = setorRef.id;
+        } else {
+          setorRef = doc(getSetoresCollection());
+          batch.set(setorRef, {
+            nomeSetor,
+            siglaSetor: nomeSetor,
+            tipoSetor: 'Enfermaria'
+          });
+          setoresCriadosLocal[chaveSetor] = setorRef;
+          setorId = setorRef.id;
+          novosSetores++;
+        }
+
+        const chaveLeito = `${setorId}|${codigoLeito.toUpperCase()}`;
+        if (leitosExistentes.has(chaveLeito)) continue;
+        leitosExistentes.add(chaveLeito);
+
+        const leitoRef = doc(getLeitosCollection());
+        batch.set(leitoRef, {
+          codigoLeito,
+          setorId,
+          status: 'Vago',
+          isPCP: false,
+          historico: [{ status: 'Vago', timestamp: new Date() }]
+        });
+        novosLeitos++;
+      }
+
+      if (novosSetores === 0 && novosLeitos === 0) {
+        toast({ title: 'Nenhum dado novo para importar.' });
+        setImportando(false);
+        return;
+      }
+
+      await batch.commit();
+
+      toast({
+        title: 'Importação concluída!',
+        description: `${novosSetores} setor(es) e ${novosLeitos} leito(s) importados.`
+      });
+      await logAction(
+        'Gerenciamento de Leitos',
+        `Importação CSV: ${novosSetores} setor(es) e ${novosLeitos} leito(s) criados.`,
+        currentUser
+      );
+    } catch (error) {
+      console.error('Erro na importação:', error);
+      toast({
+        title: 'Erro ao importar dados',
+        description: error.message,
+        variant: 'destructive'
+      });
+    } finally {
+      setImportando(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -414,14 +590,45 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
           <h2 className="text-2xl font-semibold">Gerenciamento de Leitos</h2>
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={onClose}
-            className="h-8 w-8 p-0"
-          >
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={handleArquivoSelecionado}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBaixarDados}
+              disabled={importando}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Baixar Dados
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importando}
+            >
+              {importando ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="mr-2 h-4 w-4" />
+              )}
+              Carregar Dados
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              className="h-8 w-8 p-0"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Content */}
@@ -510,7 +717,7 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
                 <CardHeader>
                   <CardTitle>Setores Cadastrados</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="max-h-[60vh] overflow-y-auto pr-2">
                   {setores.length === 0 ? (
                     <p className="text-muted-foreground text-center py-4">
                       Nenhum setor cadastrado ainda.
@@ -653,7 +860,7 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
                 <CardHeader>
                   <CardTitle>Leitos Cadastrados</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="max-h-[60vh] overflow-y-auto pr-2">
                   {leitos.length === 0 ? (
                     <p className="text-muted-foreground text-center py-4">
                       Nenhum leito cadastrado ainda.
