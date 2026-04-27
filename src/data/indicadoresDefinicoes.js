@@ -263,5 +263,122 @@ export const definicoesIndicadores = {
     periodicidade: "Histórico (período selecionado)",
     impactoGestao: "Tempos altos em determinadas faixas horárias indicam falta de equipe ou processos lentos nesses turnos.",
     resultado: "Tempo médio em minutos por faixa horária."
+  },
+
+  // ============================================================
+  // Indicadores do bloco "Análise do Processo de Regulação"
+  // (componente src/components/IndicadoresRegulacao.jsx)
+  // ============================================================
+
+  historicoTotalRegulacoes: {
+    nome: "Total de Regulações (Período)",
+    unidadeMedida: "Regulações",
+    meta: "Acompanhamento contínuo",
+    direcao: "Análise de volume",
+    definicao: "Volume total de regulações de leito (movimentações internas) registradas no histórico durante o período selecionado.",
+    fonte: "Coleção 'historicoRegulacoes' no Firestore.",
+    numerador: "Contagem de documentos cuja dataInicio ou dataConclusao está dentro do intervalo selecionado.",
+    denominador: "—",
+    criteriosInclusao: "Regulações com pelo menos uma data válida (início ou conclusão) dentro do período.",
+    criteriosExclusao: "Registros sem datas válidas.",
+    formula: "Contagem de regulações no intervalo [from, to]",
+    periodicidade: "Histórico — varia conforme o intervalo selecionado",
+    impactoGestao: "Mostra o esforço total de regulação. Picos podem indicar surtos de demanda ou represamento; quedas podem indicar bloqueio de fluxo."
+  },
+
+  historicoTempoMedio: {
+    nome: "Tempo Médio de Conclusão",
+    unidadeMedida: "Minutos / Horas",
+    meta: "Quanto menor, melhor (referência interna)",
+    direcao: "Quanto menos, melhor",
+    definicao: "Tempo médio entre o início e a conclusão das regulações finalizadas no período selecionado.",
+    fonte: "Coleção 'historicoRegulacoes' (campo tempoRegulacaoMinutos).",
+    numerador: "Somatório do tempo (em minutos) das regulações concluídas no período.",
+    denominador: "Número de regulações concluídas no período.",
+    criteriosInclusao: "Regulações com statusFinal = 'concluida' e tempoRegulacaoMinutos > 0.",
+    criteriosExclusao: "Regulações canceladas, alteradas, em andamento ou sem tempo registrado.",
+    formula: "Σ(tempoRegulacaoMinutos) / N(regulações concluídas)",
+    periodicidade: "Histórico (período selecionado)",
+    impactoGestao: "Tempo alto sugere gargalos no processo (autorização, higienização, transporte). Compare entre períodos para medir melhorias."
+  },
+
+  historicoTaxaSucesso: {
+    nome: "Taxa de Sucesso das Regulações",
+    unidadeMedida: "%",
+    meta: "≥ 85%",
+    direcao: "Quanto mais, melhor",
+    definicao: "Percentual de regulações iniciadas no período que foram efetivamente concluídas (paciente acomodado).",
+    fonte: "Coleção 'historicoRegulacoes' (campo statusFinal).",
+    numerador: "Número de regulações com statusFinal = 'concluida'.",
+    denominador: "Total de regulações no período.",
+    criteriosInclusao: "Todas as regulações com pelo menos uma data dentro do período.",
+    criteriosExclusao: "Registros corrompidos ou sem statusFinal.",
+    formula: "(Concluídas / Total) × 100",
+    periodicidade: "Histórico (período selecionado)",
+    impactoGestao: "Taxa baixa indica muitos cancelamentos: revise critérios de regulação, comunicação entre setores e disponibilidade real do leito destino."
+  },
+
+  desfechoRegulacoes: {
+    nome: "Desfecho das Regulações",
+    unidadeMedida: "Contagem",
+    meta: "Maximizar concluídas, minimizar canceladas",
+    direcao: "Mais conclusões, menos cancelamentos",
+    definicao: "Distribuição das regulações por desfecho final (concluída, cancelada, alterada, em andamento) no período selecionado.",
+    fonte: "Coleções 'historicoRegulacoes' (statusFinal) e 'pacientes' (regulacaoAtiva, para 'Em Andamento').",
+    numerador: "Contagem de regulações por statusFinal.",
+    denominador: "Total de regulações no período.",
+    criteriosInclusao: "Regulações no período + pacientes com regulação ativa (em andamento).",
+    criteriosExclusao: "Registros sem statusFinal e sem regulacaoAtiva.",
+    formula: "Contagem agrupada por statusFinal",
+    periodicidade: "Histórico (período selecionado) + tempo real para 'Em Andamento'",
+    impactoGestao: "Use para identificar padrões: muitas alterações sugerem instabilidade clínica; muitos cancelamentos sugerem falha de processo."
+  },
+
+  iniciosPorHora: {
+    nome: "Inícios de Regulação por Hora do Dia",
+    unidadeMedida: "Contagem",
+    meta: "Distribuição alinhada à escala assistencial",
+    direcao: "Análise de padrão",
+    definicao: "Distribuição das regulações iniciadas por hora do dia (0–23h) no período selecionado, segmentada por turno (manhã/tarde/noite).",
+    fonte: "Coleção 'historicoRegulacoes' (campo dataInicio).",
+    numerador: "Contagem de regulações iniciadas em cada hora.",
+    denominador: "Total de regulações no período.",
+    criteriosInclusao: "Regulações com dataInicio válido dentro do período.",
+    criteriosExclusao: "Regulações sem dataInicio.",
+    formula: "Contagem agrupada por hora(dataInicio)",
+    periodicidade: "Histórico (período selecionado)",
+    impactoGestao: "Identifica picos para dimensionar plantão da regulação. Picos noturnos sugerem reforço de equipe nos turnos menos cobertos."
+  },
+
+  eficienciaSetorOrigemDestino: {
+    nome: "Eficiência por Setor: Origem vs. Destino",
+    unidadeMedida: "Minutos",
+    meta: "Equilíbrio entre origem e destino",
+    direcao: "Quanto menos, melhor",
+    definicao: "Comparação do tempo médio de regulação quando o setor atua como origem (paciente saindo) vs. destino (paciente chegando).",
+    fonte: "Coleção 'historicoRegulacoes' (tempoRegulacaoMinutos + setorOrigemId / setorDestinoId).",
+    numerador: "Somatório do tempo de regulação concluída em que o setor figura como origem ou destino.",
+    denominador: "Número de regulações concluídas com aquele setor como origem/destino.",
+    criteriosInclusao: "Regulações concluídas com tempo > 0 e setores identificados.",
+    criteriosExclusao: "Regulações canceladas, alteradas ou sem identificação de setor.",
+    formula: "Para cada setor: Σ(tempo) / N(regulações) — separado por papel (origem ou destino)",
+    periodicidade: "Histórico (período selecionado)",
+    impactoGestao: "Setores que demoram para liberar (origem alta) indicam gargalo de alta. Setores que demoram para receber (destino alto) indicam gargalo de admissão/higienização."
+  },
+
+  volumeSemanalTurno: {
+    nome: "Volume Semanal por Turno",
+    unidadeMedida: "Regulações",
+    meta: "Distribuição alinhada à escala",
+    direcao: "Análise de padrão",
+    definicao: "Volume de regulações iniciadas por dia da semana, segmentado por turno (manhã, tarde, noite).",
+    fonte: "Coleção 'historicoRegulacoes' (campo dataInicio).",
+    numerador: "Contagem de regulações iniciadas por [diaSemana, turno].",
+    denominador: "Total de regulações no período.",
+    criteriosInclusao: "Regulações com dataInicio válido.",
+    criteriosExclusao: "Regulações sem dataInicio.",
+    formula: "Contagem agrupada por [dayOfWeek(dataInicio), turno(dataInicio)]",
+    periodicidade: "Histórico (período selecionado)",
+    impactoGestao: "Permite alinhar escala de plantonistas e regulação aos picos semanais. Dias com volume alto + turno noturno fraco merecem reforço."
   }
 };

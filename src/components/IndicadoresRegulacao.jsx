@@ -7,6 +7,8 @@ import {
   CardDescription,
 } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { Info } from 'lucide-react';
 import {
   ResponsiveContainer,
   PieChart,
@@ -33,6 +35,20 @@ import {
 import { onSnapshot } from 'firebase/firestore';
 import { format, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import IndicadorInfoModal from '@/components/modals/IndicadorInfoModal';
+
+const InfoIndicadorButton = ({ onClick, label }) => (
+  <Button
+    variant="ghost"
+    size="icon"
+    className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+    onClick={onClick}
+    aria-label={label || 'Ver detalhes do indicador'}
+  >
+    <Info className="h-4 w-4" />
+  </Button>
+);
+
 
 const PIE_COLORS = ['#2563eb', '#7c3aed', '#ea580c', '#059669', '#0ea5e9', '#facc15', '#14b8a6', '#f97316'];
 
@@ -123,6 +139,9 @@ const IndicadoresRegulacao = ({ dateRange }) => {
   const [setores, setSetores] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [modalIndicador, setModalIndicador] = useState({ open: false, indicadorId: null });
+  const abrirModalIndicador = (indicadorId) => setModalIndicador({ open: true, indicadorId });
+  const fecharModalIndicador = () => setModalIndicador({ open: false, indicadorId: null });
 
   useEffect(() => {
     const unsubscribe = onSnapshot(getSetoresCollection(), (snapshot) => {
@@ -574,11 +593,14 @@ const IndicadoresRegulacao = ({ dateRange }) => {
           <section>
             <div className="grid gap-4 md:grid-cols-3">
               <Card className="border-muted">
-                <CardHeader>
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Total de Regulações
-                  </CardTitle>
-                  <CardDescription>Volume total de movimentações no período.</CardDescription>
+                <CardHeader className="flex flex-row items-start justify-between space-y-0">
+                  <div className="space-y-1">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Total de Regulações
+                    </CardTitle>
+                    <CardDescription>Volume total de movimentações no período.</CardDescription>
+                  </div>
+                  <InfoIndicadorButton onClick={() => abrirModalIndicador('historicoTotalRegulacoes')} />
                 </CardHeader>
                 <CardContent>
                   <p className="text-3xl font-semibold text-foreground">{metricasGerais.total}</p>
@@ -586,13 +608,16 @@ const IndicadoresRegulacao = ({ dateRange }) => {
               </Card>
 
               <Card className="border-muted">
-                <CardHeader>
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Tempo Médio de Conclusão
-                  </CardTitle>
-                  <CardDescription>
-                    Considera apenas regulações concluídas no período.
-                  </CardDescription>
+                <CardHeader className="flex flex-row items-start justify-between space-y-0">
+                  <div className="space-y-1">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Tempo Médio de Conclusão
+                    </CardTitle>
+                    <CardDescription>
+                      Considera apenas regulações concluídas no período.
+                    </CardDescription>
+                  </div>
+                  <InfoIndicadorButton onClick={() => abrirModalIndicador('historicoTempoMedio')} />
                 </CardHeader>
                 <CardContent>
                   <p className="text-3xl font-semibold text-foreground">
@@ -605,11 +630,14 @@ const IndicadoresRegulacao = ({ dateRange }) => {
               </Card>
 
               <Card className="border-muted">
-                <CardHeader>
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Taxa de Sucesso
-                  </CardTitle>
-                  <CardDescription>Percentual de regulações concluídas no período.</CardDescription>
+                <CardHeader className="flex flex-row items-start justify-between space-y-0">
+                  <div className="space-y-1">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Taxa de Sucesso
+                    </CardTitle>
+                    <CardDescription>Percentual de regulações concluídas no período.</CardDescription>
+                  </div>
+                  <InfoIndicadorButton onClick={() => abrirModalIndicador('historicoTaxaSucesso')} />
                 </CardHeader>
                 <CardContent>
                   <p className="text-3xl font-semibold text-foreground">
@@ -630,13 +658,16 @@ const IndicadoresRegulacao = ({ dateRange }) => {
           <section>
             <div className="grid gap-4 lg:grid-cols-2">
               <Card className="border-muted">
-                <CardHeader>
-                  <CardTitle className="text-base font-semibold text-foreground">
-                    Desfecho das Regulações
-                  </CardTitle>
-                  <CardDescription>
-                    Avalie o resultado final das movimentações do período.
-                  </CardDescription>
+                <CardHeader className="flex flex-row items-start justify-between space-y-0">
+                  <div className="space-y-1">
+                    <CardTitle className="text-base font-semibold text-foreground">
+                      Desfecho das Regulações
+                    </CardTitle>
+                    <CardDescription>
+                      Avalie o resultado final das movimentações do período.
+                    </CardDescription>
+                  </div>
+                  <InfoIndicadorButton onClick={() => abrirModalIndicador('desfechoRegulacoes')} />
                 </CardHeader>
                 <CardContent>
                   <div className="h-80">
@@ -676,13 +707,16 @@ const IndicadoresRegulacao = ({ dateRange }) => {
               </Card>
 
               <Card className="border-muted">
-                <CardHeader>
-                  <CardTitle className="text-base font-semibold text-foreground">
-                    Inícios por Hora do Dia
-                  </CardTitle>
-                  <CardDescription>
-                    Identifique horários de pico para planejar a equipe assistencial.
-                  </CardDescription>
+                <CardHeader className="flex flex-row items-start justify-between space-y-0">
+                  <div className="space-y-1">
+                    <CardTitle className="text-base font-semibold text-foreground">
+                      Inícios por Hora do Dia
+                    </CardTitle>
+                    <CardDescription>
+                      Identifique horários de pico para planejar a equipe assistencial.
+                    </CardDescription>
+                  </div>
+                  <InfoIndicadorButton onClick={() => abrirModalIndicador('iniciosPorHora')} />
                 </CardHeader>
                 <CardContent>
                   <div className="h-80">
@@ -724,13 +758,16 @@ const IndicadoresRegulacao = ({ dateRange }) => {
           <section>
             <div className="grid gap-4">
               <Card className="border-muted lg:col-span-2">
-                <CardHeader>
-                  <CardTitle className="text-base font-semibold text-foreground">
-                    Principais Fluxos de Regulação
-                  </CardTitle>
-                  <CardDescription>
-                    Top 10 trajetos Origem → Destino com maior volume de pacientes.
-                  </CardDescription>
+                <CardHeader className="flex flex-row items-start justify-between space-y-0">
+                  <div className="space-y-1">
+                    <CardTitle className="text-base font-semibold text-foreground">
+                      Principais Fluxos de Regulação
+                    </CardTitle>
+                    <CardDescription>
+                      Top 10 trajetos Origem → Destino com maior volume de pacientes.
+                    </CardDescription>
+                  </div>
+                  <InfoIndicadorButton onClick={() => abrirModalIndicador('fluxoRegulacoes')} />
                 </CardHeader>
                 <CardContent>
                   <div className="max-h-80 overflow-y-auto">
@@ -771,14 +808,17 @@ const IndicadoresRegulacao = ({ dateRange }) => {
               </Card>
 
               <Card className="border-muted lg:col-span-2">
-                <CardHeader>
-                  <CardTitle className="text-base font-semibold text-foreground">
-                    Eficiência por Setor: Origem vs. Destino
-                  </CardTitle>
-                  <CardDescription>
-                    Compare o tempo médio para regular pacientes quando o setor é origem ou
-                    destino.
-                  </CardDescription>
+                <CardHeader className="flex flex-row items-start justify-between space-y-0">
+                  <div className="space-y-1">
+                    <CardTitle className="text-base font-semibold text-foreground">
+                      Eficiência por Setor: Origem vs. Destino
+                    </CardTitle>
+                    <CardDescription>
+                      Compare o tempo médio para regular pacientes quando o setor é origem ou
+                      destino.
+                    </CardDescription>
+                  </div>
+                  <InfoIndicadorButton onClick={() => abrirModalIndicador('eficienciaSetorOrigemDestino')} />
                 </CardHeader>
                 <CardContent>
                   <div className="h-[600px]">
@@ -846,13 +886,16 @@ const IndicadoresRegulacao = ({ dateRange }) => {
 
           <section>
             <Card className="border-muted">
-              <CardHeader>
-                <CardTitle className="text-base font-semibold text-foreground">
-                  Volume Semanal por Turno
-                </CardTitle>
-                <CardDescription>
-                  Visualize como a demanda de regulações varia por dia da semana e turno.
-                </CardDescription>
+              <CardHeader className="flex flex-row items-start justify-between space-y-0">
+                <div className="space-y-1">
+                  <CardTitle className="text-base font-semibold text-foreground">
+                    Volume Semanal por Turno
+                  </CardTitle>
+                  <CardDescription>
+                    Visualize como a demanda de regulações varia por dia da semana e turno.
+                  </CardDescription>
+                </div>
+                <InfoIndicadorButton onClick={() => abrirModalIndicador('volumeSemanalTurno')} />
               </CardHeader>
               <CardContent>
                 <div className="h-80">
@@ -897,6 +940,11 @@ const IndicadoresRegulacao = ({ dateRange }) => {
           </section>
         </div>
       )}
+      <IndicadorInfoModal
+        isOpen={modalIndicador.open}
+        onClose={fecharModalIndicador}
+        indicadorId={modalIndicador.indicadorId}
+      />
     </div>
   );
 };
