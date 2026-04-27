@@ -1,145 +1,150 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Info, TrendingUp, TrendingDown, Target, Calculator, Database, Filter, X } from "lucide-react";
-import { getDefinicoesIndicadoresCollection, onSnapshot } from "@/lib/firebase";
-import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Info,
+  TrendingUp,
+  TrendingDown,
+  Target,
+  Calculator,
+  Database,
+  Filter,
+  X,
+  Clock,
+  Lightbulb,
+} from "lucide-react";
+import { definicoesIndicadores } from "@/data/indicadoresDefinicoes";
 
+/**
+ * Ficha do Indicador
+ * Fonte: src/data/indicadoresDefinicoes.js (estático, versionado).
+ * Antes lia de uma coleção Firestore "definicoesIndicadores" que nunca foi
+ * populada — por isso o modal aparecia vazio. A leitura local é instantânea,
+ * elimina o onSnapshot desnecessário e remove o risco de memory leak.
+ */
 const IndicadorInfoModal = ({ isOpen, onClose, indicadorId }) => {
-  const [indicador, setIndicador] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!isOpen || !indicadorId) return;
-
-    setLoading(true);
-    const unsubscribe = onSnapshot(getDefinicoesIndicadoresCollection(), (snapshot) => {
-      const indicadorDoc = snapshot.docs.find(doc => doc.id === indicadorId);
-      if (indicadorDoc) {
-        setIndicador({ id: indicadorDoc.id, ...indicadorDoc.data() });
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [isOpen, indicadorId]);
+  const indicador = useMemo(() => {
+    if (!indicadorId) return null;
+    const def = definicoesIndicadores[indicadorId];
+    return def ? { id: indicadorId, ...def } : null;
+  }, [indicadorId]);
 
   if (!isOpen) return null;
 
   const getDirecaoIcon = (direcao) => {
-    if (direcao?.includes('menos')) return <TrendingDown className="h-4 w-4 text-green-600" />;
-    if (direcao?.includes('mais')) return <TrendingUp className="h-4 w-4 text-blue-600" />;
-    return <Target className="h-4 w-4 text-gray-600" />;
+    const d = String(direcao || '').toLowerCase();
+    if (d.includes('menos')) return <TrendingDown className="h-4 w-4 text-emerald-600" />;
+    if (d.includes('mais')) return <TrendingUp className="h-4 w-4 text-blue-600" />;
+    return <Target className="h-4 w-4 text-muted-foreground" />;
   };
 
   const getDirecaoColor = (direcao) => {
-    if (direcao?.includes('menos')) return 'bg-green-100 text-green-800';
-    if (direcao?.includes('mais')) return 'bg-blue-100 text-blue-800';
-    return 'bg-gray-100 text-gray-800';
+    const d = String(direcao || '').toLowerCase();
+    if (d.includes('menos')) return 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100';
+    if (d.includes('mais')) return 'bg-blue-100 text-blue-800 hover:bg-blue-100';
+    return 'bg-muted text-foreground hover:bg-muted';
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Info className="h-5 w-5 text-blue-600" />
+            <Info className="h-5 w-5 text-primary" />
             Ficha do Indicador
           </DialogTitle>
         </DialogHeader>
 
-        {loading ? (
-          <div className="space-y-4">
-            <Skeleton className="h-8 w-3/4" />
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-32 w-full" />
-          </div>
-        ) : indicador ? (
+        {indicador ? (
           <div className="space-y-6">
-            {/* Header do Indicador */}
+            {/* Cabeçalho */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xl font-semibold text-foreground">{indicador.nome}</h3>
-                <Badge variant="outline" className="flex items-center gap-1">
-                  {indicador.unidadeMedida}
-                </Badge>
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <h3 className="text-xl font-semibold text-foreground">
+                  {indicador.nome}
+                </h3>
+                {indicador.unidadeMedida && (
+                  <Badge variant="outline">{indicador.unidadeMedida}</Badge>
+                )}
               </div>
-              
-              {indicador.meta && (
-                <div className="flex items-center gap-2">
-                  <Target className="h-4 w-4 text-orange-600" />
-                  <span className="text-sm font-medium">Meta:</span>
-                  <Badge variant="secondary">{indicador.meta}</Badge>
-                </div>
-              )}
 
-              {indicador.direcao && (
-                <div className="flex items-center gap-2">
-                  {getDirecaoIcon(indicador.direcao)}
-                  <span className="text-sm font-medium">Direção:</span>
-                  <Badge className={getDirecaoColor(indicador.direcao)}>
-                    {indicador.direcao}
-                  </Badge>
-                </div>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {indicador.meta && (
+                  <div className="flex items-center gap-1.5 text-sm">
+                    <Target className="h-4 w-4 text-orange-600" />
+                    <span className="font-medium">Meta:</span>
+                    <Badge variant="secondary">{indicador.meta}</Badge>
+                  </div>
+                )}
+                {indicador.direcao && (
+                  <div className="flex items-center gap-1.5 text-sm">
+                    {getDirecaoIcon(indicador.direcao)}
+                    <span className="font-medium">Direção:</span>
+                    <Badge className={getDirecaoColor(indicador.direcao)}>
+                      {indicador.direcao}
+                    </Badge>
+                  </div>
+                )}
+                {indicador.periodicidade && (
+                  <div className="flex items-center gap-1.5 text-sm">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">Periodicidade:</span>
+                    <Badge variant="outline">{indicador.periodicidade}</Badge>
+                  </div>
+                )}
+              </div>
             </div>
 
             <Separator />
 
-            {/* Definição */}
+            {/* Objetivo / Definição */}
             {indicador.definicao && (
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
+                  <CardTitle className="text-base flex items-center gap-2">
                     <Info className="h-4 w-4" />
-                    Definição
+                    Objetivo
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-muted-foreground leading-relaxed">
+                  <p className="text-muted-foreground leading-relaxed text-sm">
                     {indicador.definicao}
                   </p>
                 </CardContent>
               </Card>
             )}
 
-            {/* Fórmula de Cálculo */}
+            {/* Cálculo */}
             {(indicador.formula || indicador.numerador || indicador.denominador) && (
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
+                  <CardTitle className="text-base flex items-center gap-2">
                     <Calculator className="h-4 w-4" />
-                    Cálculo
+                    Fórmula de Cálculo
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {indicador.formula && (
                     <div>
                       <p className="text-sm font-medium text-foreground mb-1">Fórmula:</p>
-                      <code className="bg-muted px-3 py-2 rounded text-sm block">
+                      <code className="bg-muted px-3 py-2 rounded text-sm block break-words">
                         {indicador.formula}
                       </code>
                     </div>
                   )}
-                  
                   {indicador.numerador && (
                     <div>
                       <p className="text-sm font-medium text-foreground mb-1">Numerador:</p>
-                      <p className="text-sm text-muted-foreground">
-                        {indicador.numerador}
-                      </p>
+                      <p className="text-sm text-muted-foreground">{indicador.numerador}</p>
                     </div>
                   )}
-                  
                   {indicador.denominador && (
                     <div>
                       <p className="text-sm font-medium text-foreground mb-1">Denominador:</p>
-                      <p className="text-sm text-muted-foreground">
-                        {indicador.denominador}
-                      </p>
+                      <p className="text-sm text-muted-foreground">{indicador.denominador}</p>
                     </div>
                   )}
                 </CardContent>
@@ -150,7 +155,7 @@ const IndicadorInfoModal = ({ isOpen, onClose, indicadorId }) => {
             {(indicador.criteriosInclusao || indicador.criteriosExclusao) && (
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
+                  <CardTitle className="text-base flex items-center gap-2">
                     <Filter className="h-4 w-4" />
                     Critérios
                   </CardTitle>
@@ -158,21 +163,20 @@ const IndicadorInfoModal = ({ isOpen, onClose, indicadorId }) => {
                 <CardContent className="space-y-3">
                   {indicador.criteriosInclusao && (
                     <div>
-                      <p className="text-sm font-medium text-green-700 mb-1 flex items-center gap-1">
+                      <p className="text-sm font-medium text-emerald-700 mb-1 flex items-center gap-1">
                         <Filter className="h-3 w-3" />
-                        Inclusão:
+                        Inclusão
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {indicador.criteriosInclusao}
                       </p>
                     </div>
                   )}
-                  
                   {indicador.criteriosExclusao && (
                     <div>
                       <p className="text-sm font-medium text-red-700 mb-1 flex items-center gap-1">
                         <X className="h-3 w-3" />
-                        Exclusão:
+                        Exclusão
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {indicador.criteriosExclusao}
@@ -183,51 +187,54 @@ const IndicadorInfoModal = ({ isOpen, onClose, indicadorId }) => {
               </Card>
             )}
 
-            {/* Fonte dos Dados */}
+            {/* Fonte */}
             {indicador.fonte && (
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
+                  <CardTitle className="text-base flex items-center gap-2">
                     <Database className="h-4 w-4" />
-                    Fonte dos Dados
+                    Fonte de Dados
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    {indicador.fonte}
-                  </p>
+                  <p className="text-sm text-muted-foreground">{indicador.fonte}</p>
                 </CardContent>
               </Card>
             )}
 
-            {/* Resultado Esperado */}
-            {indicador.resultado && (
+            {/* Resultado / Impacto */}
+            {(indicador.resultado || indicador.impactoGestao) && (
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg">Resultado</CardTitle>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Lightbulb className="h-4 w-4 text-amber-500" />
+                    Impacto na Gestão
+                  </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    {indicador.resultado}
-                  </p>
+                <CardContent className="space-y-2">
+                  {indicador.impactoGestao && (
+                    <p className="text-sm text-muted-foreground">{indicador.impactoGestao}</p>
+                  )}
+                  {indicador.resultado && (
+                    <p className="text-sm text-muted-foreground">{indicador.resultado}</p>
+                  )}
                 </CardContent>
               </Card>
             )}
 
-            <div className="pt-4">
-              <Button onClick={onClose} className="w-full">
-                Fechar
-              </Button>
+            <div className="pt-2">
+              <Button onClick={onClose} className="w-full">Fechar</Button>
             </div>
           </div>
         ) : (
-          <div className="text-center py-8">
+          <div className="text-center py-8 space-y-3">
             <p className="text-muted-foreground">
-              Indicador não encontrado ou ainda não foi configurado.
+              Indicador não encontrado ou ainda não foi documentado.
             </p>
-            <Button onClick={onClose} className="mt-4">
-              Fechar
-            </Button>
+            <p className="text-xs text-muted-foreground">
+              ID solicitado: <code className="bg-muted px-1.5 py-0.5 rounded">{indicadorId || '—'}</code>
+            </p>
+            <Button onClick={onClose} className="mt-2">Fechar</Button>
           </div>
         )}
       </DialogContent>
