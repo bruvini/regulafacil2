@@ -860,7 +860,7 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
                 <CardHeader>
                   <CardTitle>Leitos Cadastrados</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="max-h-[60vh] overflow-y-auto pr-2">
                   {leitos.length === 0 ? (
                     <p className="text-muted-foreground text-center py-4">
                       Nenhum leito cadastrado ainda.
