@@ -7,6 +7,8 @@ import {
   CardDescription,
 } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { Info } from 'lucide-react';
 import {
   ResponsiveContainer,
   PieChart,
@@ -33,6 +35,20 @@ import {
 import { onSnapshot } from 'firebase/firestore';
 import { format, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import IndicadorInfoModal from '@/components/modals/IndicadorInfoModal';
+
+const InfoIndicadorButton = ({ onClick, label }) => (
+  <Button
+    variant="ghost"
+    size="icon"
+    className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+    onClick={onClick}
+    aria-label={label || 'Ver detalhes do indicador'}
+  >
+    <Info className="h-4 w-4" />
+  </Button>
+);
+
 
 const PIE_COLORS = ['#2563eb', '#7c3aed', '#ea580c', '#059669', '#0ea5e9', '#facc15', '#14b8a6', '#f97316'];
 
@@ -123,6 +139,9 @@ const IndicadoresRegulacao = ({ dateRange }) => {
   const [setores, setSetores] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [modalIndicador, setModalIndicador] = useState({ open: false, indicadorId: null });
+  const abrirModalIndicador = (indicadorId) => setModalIndicador({ open: true, indicadorId });
+  const fecharModalIndicador = () => setModalIndicador({ open: false, indicadorId: null });
 
   useEffect(() => {
     const unsubscribe = onSnapshot(getSetoresCollection(), (snapshot) => {
