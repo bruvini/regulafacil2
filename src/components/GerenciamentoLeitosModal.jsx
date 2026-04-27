@@ -717,7 +717,7 @@ const GerenciamentoLeitosModal = ({ isOpen, onClose }) => {
                 <CardHeader>
                   <CardTitle>Setores Cadastrados</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="max-h-[60vh] overflow-y-auto pr-2">
                   {setores.length === 0 ? (
                     <p className="text-muted-foreground text-center py-4">
                       Nenhum setor cadastrado ainda.
