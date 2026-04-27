@@ -43,6 +43,7 @@ import { calcularPermanenciaAtual } from '@/lib/historicoOcupacoes';
 import { format, getDay, getHours, subDays } from 'date-fns';
 import ListaPacientesPorSetorModal from '@/components/modals/ListaPacientesPorSetorModal';
 import IndicadoresRegulacao from '@/components/IndicadoresRegulacao';
+import { useInfeccoes } from '@/hooks/useCollections';
 import { cn } from '@/lib/utils';
 
 const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -142,6 +143,15 @@ const GestaoEstrategicaPage = () => {
     from: subDays(new Date(), 6),
     to: new Date(),
   }));
+
+  const { data: infeccoes = [] } = useInfeccoes();
+  const infeccoesPorId = useMemo(
+    () => (infeccoes || []).reduce((acc, inf) => {
+      if (inf?.id) acc[inf.id] = inf;
+      return acc;
+    }, {}),
+    [infeccoes]
+  );
 
   const handleRegulacaoDateChange = useCallback((range) => {
     if (!range) {
@@ -993,6 +1003,7 @@ const GestaoEstrategicaPage = () => {
         setor={modalPacientes.setor}
         grupo={modalPacientes.grupo}
         pacientes={pacientesAtivosEnriquecidos}
+        infeccoesPorId={infeccoesPorId}
       />
 
       <IndicadorInfoModal
