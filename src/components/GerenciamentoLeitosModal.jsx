@@ -34,7 +34,8 @@ import {
   doc,
   onSnapshot,
   getDocs,
-  serverTimestamp
+  serverTimestamp,
+  db
 } from '@/lib/firebase';
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
