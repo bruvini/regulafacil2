@@ -4,8 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/use-toast";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Activity,
   AlignLeft,
@@ -29,7 +34,10 @@ import {
   CartesianGrid,
   XAxis,
   YAxis,
-  Bar
+  ZAxis,
+  Bar,
+  ScatterChart,
+  Scatter
 } from 'recharts';
 import IndicadorInfoModal from '@/components/modals/IndicadorInfoModal';
 import { onSnapshot } from '@/lib/firebase';
@@ -40,13 +48,24 @@ import {
   getSetoresCollection
 } from '@/lib/firebase';
 import { calcularPermanenciaAtual } from '@/lib/historicoOcupacoes';
-import { format, getDay, getHours, subDays } from 'date-fns';
+import { getDay, getHours, subDays, startOfDay, endOfDay } from 'date-fns';
 import ListaPacientesPorSetorModal from '@/components/modals/ListaPacientesPorSetorModal';
 import IndicadoresRegulacao from '@/components/IndicadoresRegulacao';
 import TendenciasGargalosPanel from '@/components/TendenciasGargalosPanel';
 import GiroEficienciaLeitosPanel from '@/components/GiroEficienciaLeitosPanel';
 import { useInfeccoes } from '@/hooks/useCollections';
-import { cn } from '@/lib/utils';
+
+const OPCOES_PERIODO = [
+  { value: 1, label: 'Últimas 24h' },
+  { value: 2, label: 'Últimas 48h' },
+  { value: 3, label: 'Últimas 72h' },
+  { value: 7, label: 'Últimos 7 dias' },
+  { value: 15, label: 'Últimos 15 dias' },
+  { value: 30, label: 'Últimos 30 dias' },
+  { value: 60, label: 'Últimos 60 dias' },
+  { value: 90, label: 'Últimos 90 dias' },
+  { value: 180, label: 'Últimos 180 dias' },
+];
 
 const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const FAIXAS_HORARIO = ['0-6h', '6-12h', '12-18h', '18-24h'];
@@ -141,10 +160,13 @@ const GestaoEstrategicaPage = () => {
   const [loading, setLoading] = useState(true);
   const [modalIndicador, setModalIndicador] = useState({ open: false, indicadorId: null });
   const [modalPacientes, setModalPacientes] = useState({ open: false, setor: null, grupo: null });
-  const [regulacaoDateRange, setRegulacaoDateRange] = useState(() => ({
-    from: subDays(new Date(), 6),
-    to: new Date(),
-  }));
+  const [periodoAnalise, setPeriodoAnalise] = useState(7);
+
+  const dateRangeGlobal = useMemo(() => {
+    const to = endOfDay(new Date());
+    const from = startOfDay(subDays(new Date(), Math.max(0, periodoAnalise - 1)));
+    return { from, to };
+  }, [periodoAnalise]);
 
   const { data: infeccoes = [] } = useInfeccoes();
   const infeccoesPorId = useMemo(
@@ -154,23 +176,6 @@ const GestaoEstrategicaPage = () => {
     }, {}),
     [infeccoes]
   );
-
-  const handleRegulacaoDateChange = useCallback((range) => {
-    if (!range) {
-      return;
-    }
-
-    const { from, to } = range;
-
-    if (!from && !to) {
-      return;
-    }
-
-    setRegulacaoDateRange({
-      from: from ? new Date(from) : undefined,
-      to: to ? new Date(to) : undefined,
-    });
-  }, []);
 
   useEffect(() => {
     const unsubscribePacientes = onSnapshot(getPacientesCollection(), (snapshot) => {
@@ -695,7 +700,7 @@ const GestaoEstrategicaPage = () => {
           </Card>
         </section>
 
-        {/* Nível 3 */}
+        {/* Nível 3 - Perfil do Paciente */}
         <section className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
@@ -705,7 +710,9 @@ const GestaoEstrategicaPage = () => {
               </p>
             </div>
           </div>
-          <div className="grid gap-6 lg:grid-cols-2">
+
+          {/* Linha 1: Distribuição por Clínicas + Permanência por Grupo Clínico */}
+          <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
             <Card className="border-muted">
               <CardHeader className="flex items-start justify-between space-y-0 pb-4">
                 <div>
@@ -777,133 +784,6 @@ const GestaoEstrategicaPage = () => {
               <CardHeader className="flex items-start justify-between space-y-0 pb-4">
                 <div>
                   <CardTitle className="flex items-center gap-2 text-foreground">
-                    <AlignLeft className="h-5 w-5 text-primary" />
-                    Especialidades por Setor
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    Distribuição dos grupos clínicos predominantes em cada setor assistencial.
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => abrirModalIndicador('especialidadesPorSetor')}
-                >
-                  <Info className="h-4 w-4" />
-                </Button>
-              </CardHeader>
-              <CardContent>
-                {dadosEspecialidadesPorSetor.length ? (
-                  <div className="h-80">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={dadosEspecialidadesPorSetor} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="setor" tick={{ fontSize: 12 }} interval={0} angle={-15} textAnchor="end" height={70} />
-                        <YAxis allowDecimals={false} />
-                        <RechartsTooltip />
-                        <Legend />
-                        {gruposAtivosNoSetor.map((grupo) => (
-                          <Bar
-                            key={grupo}
-                            dataKey={grupo}
-                            stackId="a"
-                            name={grupo}
-                            fill={GRUPO_CORES[grupo] || '#94a3b8'}
-                            cursor="pointer"
-                            onClick={(data) => handleAbrirModalPacientesPorSetor(grupo, data)}
-                          />
-                        ))}
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                ) : (
-                  <div className="flex h-80 items-center justify-center text-sm text-muted-foreground">
-                    Nenhuma combinação de setor e especialidade encontrada.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </section>
-
-        {/* Nível 4 */}
-        <section className="space-y-6">
-          <div>
-            <h2 className="text-xl font-semibold text-foreground">Fluxo e Eficiência</h2>
-            <p className="text-sm text-muted-foreground">
-              Identifique padrões de entrada e permanência para otimizar o uso dos leitos.
-            </p>
-          </div>
-
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card className="border-muted">
-              <CardHeader className="flex items-start justify-between space-y-0 pb-4">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-foreground">
-                    <CalendarIcon className="h-5 w-5 text-primary" />
-                    Padrão de Internações por Dia e Horário
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    Concentre esforços assistenciais nos períodos de maior demanda de admissões.
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => abrirModalIndicador('internacoesHorario')}
-                >
-                  <Info className="h-4 w-4" />
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <div className="grid min-w-[640px] grid-cols-[120px_repeat(7,1fr)] gap-2">
-                    <div />
-                    {DIAS_SEMANA.map((dia) => (
-                      <div key={dia} className="rounded bg-muted p-2 text-center text-xs font-medium">
-                        {dia}
-                      </div>
-                    ))}
-                    {FAIXAS_HORARIO.map((faixa) => (
-                      <React.Fragment key={faixa}>
-                        <div className="flex items-center rounded bg-muted p-2 text-xs font-medium">
-                          {faixa}
-                        </div>
-                        {DIAS_SEMANA.map((dia) => {
-                          const valor = dadosHeatmap[dia]?.[faixa] || 0;
-                          const maxValor = Math.max(
-                            ...DIAS_SEMANA.flatMap((diaSemana) =>
-                              FAIXAS_HORARIO.map((faixaHorario) => dadosHeatmap[diaSemana]?.[faixaHorario] || 0)
-                            )
-                          );
-                          const intensidade = maxValor > 0 ? valor / maxValor : 0;
-
-                          return (
-                            <div
-                              key={`${dia}-${faixa}`}
-                              className="rounded p-2 text-center text-xs font-medium"
-                              style={{
-                                backgroundColor: `hsl(211, 96%, ${95 - intensidade * 35}%)`,
-                                color: intensidade > 0.6 ? '#fff' : '#0f172a'
-                              }}
-                            >
-                              {valor}
-                            </div>
-                          );
-                        })}
-                      </React.Fragment>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-muted">
-              <CardHeader className="flex items-start justify-between space-y-0 pb-4">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-foreground">
                     <Users className="h-5 w-5 text-primary" />
                     Permanência Atual por Grupo Clínico
                   </CardTitle>
@@ -943,6 +823,166 @@ const GestaoEstrategicaPage = () => {
               </CardContent>
             </Card>
           </div>
+
+          {/* Linha 2: Especialidades por Setor (full-width) */}
+          <Card className="border-muted">
+            <CardHeader className="flex items-start justify-between space-y-0 pb-4">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-foreground">
+                  <AlignLeft className="h-5 w-5 text-primary" />
+                  Especialidades por Setor
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Distribuição dos grupos clínicos predominantes em cada setor assistencial.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => abrirModalIndicador('especialidadesPorSetor')}
+              >
+                <Info className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {dadosEspecialidadesPorSetor.length ? (
+                <div className="h-96">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={dadosEspecialidadesPorSetor} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="setor" tick={{ fontSize: 12 }} interval={0} angle={-15} textAnchor="end" height={70} />
+                      <YAxis allowDecimals={false} />
+                      <RechartsTooltip />
+                      <Legend />
+                      {gruposAtivosNoSetor.map((grupo) => (
+                        <Bar
+                          key={grupo}
+                          dataKey={grupo}
+                          stackId="a"
+                          name={grupo}
+                          fill={GRUPO_CORES[grupo] || '#94a3b8'}
+                          cursor="pointer"
+                          onClick={(data) => handleAbrirModalPacientesPorSetor(grupo, data)}
+                        />
+                      ))}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="flex h-96 items-center justify-center text-sm text-muted-foreground">
+                  Nenhuma combinação de setor e especialidade encontrada.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* Nível 4 - Padrão de Internações (Heatmap full-width) */}
+        <section className="space-y-6">
+          <div>
+            <h2 className="text-xl font-semibold text-foreground">Fluxo e Eficiência</h2>
+            <p className="text-sm text-muted-foreground">
+              Identifique padrões de entrada para otimizar o uso dos leitos.
+            </p>
+          </div>
+
+          <Card className="border-muted">
+            <CardHeader className="flex items-start justify-between space-y-0 pb-4">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-foreground">
+                  <CalendarIcon className="h-5 w-5 text-primary" />
+                  Padrão de Internações por Dia e Horário
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Mapa de calor: a intensidade da cor e o tamanho da bolha indicam o volume de admissões.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => abrirModalIndicador('internacoesHorario')}
+              >
+                <Info className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const pontos = [];
+                let maxValor = 0;
+                DIAS_SEMANA.forEach((dia, diaIdx) => {
+                  FAIXAS_HORARIO.forEach((faixa, faixaIdx) => {
+                    const valor = dadosHeatmap[dia]?.[faixa] || 0;
+                    if (valor > maxValor) maxValor = valor;
+                    pontos.push({
+                      diaIdx,
+                      faixaIdx,
+                      dia,
+                      faixa,
+                      valor,
+                    });
+                  });
+                });
+
+                const getColor = (v) => {
+                  const intensidade = maxValor > 0 ? v / maxValor : 0;
+                  if (v === 0) return 'hsl(211, 20%, 92%)';
+                  return `hsl(211, 96%, ${Math.max(35, 85 - intensidade * 50)}%)`;
+                };
+
+                return (
+                  <div className="h-[380px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 30 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" />
+                        <XAxis
+                          type="number"
+                          dataKey="diaIdx"
+                          name="Dia"
+                          domain={[-0.5, DIAS_SEMANA.length - 0.5]}
+                          ticks={DIAS_SEMANA.map((_, i) => i)}
+                          tickFormatter={(i) => DIAS_SEMANA[i] || ''}
+                          tick={{ fontSize: 12 }}
+                        />
+                        <YAxis
+                          type="number"
+                          dataKey="faixaIdx"
+                          name="Faixa"
+                          domain={[-0.5, FAIXAS_HORARIO.length - 0.5]}
+                          ticks={FAIXAS_HORARIO.map((_, i) => i)}
+                          tickFormatter={(i) => FAIXAS_HORARIO[i] || ''}
+                          tick={{ fontSize: 12 }}
+                          reversed
+                        />
+                        <ZAxis type="number" dataKey="valor" range={[80, 900]} name="Internações" />
+                        <RechartsTooltip
+                          cursor={{ strokeDasharray: '3 3' }}
+                          contentStyle={{
+                            background: 'hsl(var(--background))',
+                            border: '1px solid hsl(var(--border))',
+                            borderRadius: 8,
+                            fontSize: 12,
+                          }}
+                          formatter={(value, name, props) => {
+                            if (name === 'Internações') return [`${value} internações`, 'Volume'];
+                            if (name === 'Dia') return [DIAS_SEMANA[value] || '—', 'Dia'];
+                            if (name === 'Faixa') return [FAIXAS_HORARIO[value] || '—', 'Faixa'];
+                            return [value, name];
+                          }}
+                        />
+                        <Scatter data={pontos} shape="circle">
+                          {pontos.map((p, i) => (
+                            <Cell key={`cell-${i}`} fill={getColor(p.valor)} />
+                          ))}
+                        </Scatter>
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
         </section>
 
         {/* Análise do Processo de Regulação */}
