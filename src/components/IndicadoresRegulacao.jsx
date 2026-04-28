@@ -656,8 +656,7 @@ const IndicadoresRegulacao = ({ dateRange }) => {
           </section>
 
           <section>
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Card className="border-muted">
+            <Card className="border-muted">
                 <CardHeader className="flex flex-row items-start justify-between space-y-0">
                   <div className="space-y-1">
                     <CardTitle className="text-base font-semibold text-foreground">
@@ -705,54 +704,6 @@ const IndicadoresRegulacao = ({ dateRange }) => {
                   </div>
                 </CardContent>
               </Card>
-
-              <Card className="border-muted">
-                <CardHeader className="flex flex-row items-start justify-between space-y-0">
-                  <div className="space-y-1">
-                    <CardTitle className="text-base font-semibold text-foreground">
-                      Inícios por Hora do Dia
-                    </CardTitle>
-                    <CardDescription>
-                      Identifique horários de pico para planejar a equipe assistencial.
-                    </CardDescription>
-                  </div>
-                  <InfoIndicadorButton onClick={() => abrirModalIndicador('iniciosPorHora')} />
-                </CardHeader>
-                <CardContent>
-                  <div className="h-80">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={dadosPorHora}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="hora" interval={1} tick={{ fontSize: 12 }} />
-                        <YAxis allowDecimals={false} />
-                        <RechartsTooltip
-                          formatter={(value, _name, { payload }) => [
-                            `${value} regulações`,
-                            SHIFT_CONFIG[payload.turno]?.label || 'Turno',
-                          ]}
-                        />
-                        <Legend
-                          payload={Object.entries(SHIFT_CONFIG).map(([key, info]) => ({
-                            id: key,
-                            type: 'square',
-                            value: info.label,
-                            color: info.color,
-                          }))}
-                        />
-                        <Bar dataKey="total" name="Regulações" radius={[4, 4, 0, 0]}>
-                          {dadosPorHora.map((entry, index) => (
-                            <Cell
-                              key={`turno-${entry.hora}-${index}`}
-                              fill={SHIFT_CONFIG[entry.turno]?.color || '#94a3b8'}
-                            />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
           </section>
 
           <section>
@@ -889,7 +840,7 @@ const IndicadoresRegulacao = ({ dateRange }) => {
               <CardHeader className="flex flex-row items-start justify-between space-y-0">
                 <div className="space-y-1">
                   <CardTitle className="text-base font-semibold text-foreground">
-                    Volume Semanal por Turno
+                    Padrão de Regulações por Dia e Turno
                   </CardTitle>
                   <CardDescription>
                     Visualize como a demanda de regulações varia por dia da semana e turno.
@@ -900,39 +851,24 @@ const IndicadoresRegulacao = ({ dateRange }) => {
               <CardContent>
                 <div className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={dadosVolumePorDiaTurno} margin={{ left: 12, right: 12 }}>
+                    <BarChart data={dadosVolumePorDiaTurno} margin={{ left: 12, right: 12 }}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="dia" tick={{ fontSize: 12 }} />
                       <YAxis allowDecimals={false} />
                       <RechartsTooltip
                         formatter={(value, name) => [`${value} regulações`, name]}
+                        contentStyle={{
+                          background: 'hsl(var(--background))',
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: 8,
+                          fontSize: 12,
+                        }}
                       />
                       <Legend />
-                      <Line
-                        type="monotone"
-                        dataKey="manha"
-                        name={SHIFT_CONFIG.manha.label}
-                        stroke={SHIFT_CONFIG.manha.color}
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="tarde"
-                        name={SHIFT_CONFIG.tarde.label}
-                        stroke={SHIFT_CONFIG.tarde.color}
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="noite"
-                        name={SHIFT_CONFIG.noite.label}
-                        stroke={SHIFT_CONFIG.noite.color}
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                    </LineChart>
+                      <Bar dataKey="manha" stackId="a" name={SHIFT_CONFIG.manha.label} fill={SHIFT_CONFIG.manha.color} radius={[0, 0, 4, 4]} />
+                      <Bar dataKey="tarde" stackId="a" name={SHIFT_CONFIG.tarde.label} fill={SHIFT_CONFIG.tarde.color} />
+                      <Bar dataKey="noite" stackId="a" name={SHIFT_CONFIG.noite.label} fill={SHIFT_CONFIG.noite.color} radius={[4, 4, 0, 0]} />
+                    </BarChart>
                   </ResponsiveContainer>
                 </div>
               </CardContent>

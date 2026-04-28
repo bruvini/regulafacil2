@@ -16,6 +16,39 @@
 //  - resultado:          Saída esperada (texto livre)
 
 export const definicoesIndicadores = {
+  tempoSubstituicao: {
+    nome: "Tempo de Substituição do Leito",
+    unidadeMedida: "Horas/Minutos",
+    meta: "< 2 horas",
+    direcao: "Quanto menor, melhor",
+    definicao: "Mede o 'Turnaround Time' do leito, ou seja, o tempo total de ociosidade e higienização entre a saída de um paciente e a admissão de outro no mesmo leito.",
+    fonte: "Coleção 'historicoOcupacoes' (calculando a diferença entre dataSaida e a dataEntrada da próxima ocupação no mesmo leito) e/ou logs de status.",
+    numerador: "Soma do tempo entre as altas e as novas internações no mesmo leito.",
+    denominador: "Total de substituições avaliadas no período.",
+    criteriosInclusao: "Apenas leitos operacionais que tiveram paciente saindo e depois outro paciente entrando no período analisado.",
+    criteriosExclusao: "Leitos interditados, bloqueados ou desativados por tempo prolongado.",
+    formula: "Média das diferenças: (DataEntrada_{n+1} - DataSaida_{n})",
+    periodicidade: "Período selecionado (geralmente últimos 7 ou 30 dias)",
+    impactoGestao: "Gargalos de higienização ou morosidade na regulação e alocação geram altos tempos de substituição. Reduzir esse tempo é equivalente a adicionar novos leitos sem construir paredes.",
+  },
+
+  giroLeitosSetor: {
+    nome: "Giro de Leito por Setor",
+    unidadeMedida: "Pacientes/Leito",
+    meta: "Específica por setor (ex: Pronto Socorro: alto giro)",
+    direcao: "Quanto maior dentro da meta, mais dinâmico o setor",
+    definicao: "Avalia a dinâmica do setor. Indica quantos pacientes, em média, ocuparam o mesmo leito durante um período específico.",
+    fonte: "Coleção 'historicoOcupacoes' e Coleção 'leitos'.",
+    numerador: "Total de saídas/altas de pacientes de um setor no período.",
+    denominador: "Média de leitos operacionais disponíveis no setor no mesmo período.",
+    criteriosInclusao: "Saídas concluídas, independente do desfecho (alta, óbito, transferência).",
+    criteriosExclusao: "Leitos inativos ou temporários que não constam como operacionais.",
+    formula: "Total de Saídas / Total de Leitos Operacionais",
+    periodicidade: "Período selecionado (geralmente últimos 30 dias ou mês fechado)",
+    impactoGestao: "Giro alto com permanência alta indica pressão; giro alto com permanência baixa indica alta resolutividade. Comparar entre setores permite alocar melhor a equipe médica e de enfermagem.",
+  },
+
+
   internacoesAtivas: {
     nome: "Internações Ativas",
     unidadeMedida: "Pacientes",

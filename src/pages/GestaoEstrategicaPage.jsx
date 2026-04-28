@@ -44,6 +44,7 @@ import { format, getDay, getHours, subDays } from 'date-fns';
 import ListaPacientesPorSetorModal from '@/components/modals/ListaPacientesPorSetorModal';
 import IndicadoresRegulacao from '@/components/IndicadoresRegulacao';
 import TendenciasGargalosPanel from '@/components/TendenciasGargalosPanel';
+import GiroEficienciaLeitosPanel from '@/components/GiroEficienciaLeitosPanel';
 import { useInfeccoes } from '@/hooks/useCollections';
 import { cn } from '@/lib/utils';
 
@@ -944,11 +945,6 @@ const GestaoEstrategicaPage = () => {
           </div>
         </section>
 
-        {/* Tendências e Gargalos (últimos 7/30 dias) */}
-        <section className="space-y-6">
-          <TendenciasGargalosPanel />
-        </section>
-
         {/* Análise do Processo de Regulação */}
         <section className="space-y-6">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1000,6 +996,16 @@ const GestaoEstrategicaPage = () => {
           </div>
 
           <IndicadoresRegulacao dateRange={regulacaoDateRange} />
+        </section>
+
+        {/* Tendências e Gargalos (últimos 7/30 dias) */}
+        <section className="space-y-6">
+          <TendenciasGargalosPanel />
+        </section>
+
+        {/* Giro de Leito e Eficiência (Fase 3) */}
+        <section className="space-y-6">
+          <GiroEficienciaLeitosPanel />
         </section>
       </div>
 
