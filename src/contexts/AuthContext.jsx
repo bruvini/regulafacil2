@@ -1,8 +1,8 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { 
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import {
   auth,
   db,
-  signInWithEmailAndPassword, 
+  signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
   updatePassword,
@@ -17,7 +17,42 @@ import {
 } from '@/lib/firebase';
 import { USERS_COLLECTION_PATH } from '@/lib/firebase-constants';
 import { logAction } from '@/lib/auditoria';
+import useSessionTimeout, { clearActivity, touchActivity } from '@/hooks/useSessionTimeout';
 import { toast } from '@/components/ui/use-toast';
+
+const SESSION_START_KEY = 'rf_session_started_at';
+const SESSION_TIMEOUT_MINUTES = 120;
+
+const getSessionStart = () => {
+  try {
+    const v = Number(sessionStorage.getItem(SESSION_START_KEY));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+};
+const setSessionStart = (ts) => {
+  try {
+    sessionStorage.setItem(SESSION_START_KEY, String(ts));
+  } catch {
+    /* noop */
+  }
+};
+const clearSessionStart = () => {
+  try {
+    sessionStorage.removeItem(SESSION_START_KEY);
+  } catch {
+    /* noop */
+  }
+};
+const formatDuracao = (ms) => {
+  if (!Number.isFinite(ms) || ms <= 0) return '0min';
+  const min = Math.round(ms / 60000);
+  if (min < 60) return `${min}min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}min`;
+};
 
 const AuthContext = createContext();
 
