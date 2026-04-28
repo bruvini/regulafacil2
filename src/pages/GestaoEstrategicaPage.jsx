@@ -995,57 +995,37 @@ const GestaoEstrategicaPage = () => {
                 gargalos e oportunidades de melhoria operacional.
               </p>
             </div>
-            <div className="grid gap-2">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    id="regulacao-date-range"
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal md:w-[300px]",
-                      !regulacaoDateRange?.from && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {regulacaoDateRange?.from ? (
-                      regulacaoDateRange?.to ? (
-                        <>
-                          {format(regulacaoDateRange.from, 'dd/MM/yyyy')} -{' '}
-                          {format(regulacaoDateRange.to, 'dd/MM/yyyy')}
-                        </>
-                      ) : (
-                        format(regulacaoDateRange.from, 'dd/MM/yyyy')
-                      )
-                    ) : (
-                      <span>Selecione um período</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="end">
-                  <Calendar
-                    initialFocus
-                    mode="range"
-                    defaultMonth={regulacaoDateRange?.from ?? regulacaoDateRange?.to}
-                    selected={regulacaoDateRange}
-                    onSelect={handleRegulacaoDateChange}
-                    numberOfMonths={2}
-                  />
-                </PopoverContent>
-              </Popover>
+            <div className="flex items-center gap-2">
+              <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+              <Select
+                value={String(periodoAnalise)}
+                onValueChange={(v) => setPeriodoAnalise(Number(v))}
+              >
+                <SelectTrigger className="w-full md:w-[220px]">
+                  <SelectValue placeholder="Selecione o período" />
+                </SelectTrigger>
+                <SelectContent>
+                  {OPCOES_PERIODO.map((opt) => (
+                    <SelectItem key={opt.value} value={String(opt.value)}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
-          <IndicadoresRegulacao dateRange={regulacaoDateRange} />
+          <IndicadoresRegulacao dateRange={dateRangeGlobal} />
         </section>
 
-        {/* Tendências e Gargalos (últimos 7/30 dias) */}
+        {/* Tendências e Gargalos (respeitam o período global) */}
         <section className="space-y-6">
-          <TendenciasGargalosPanel />
+          <TendenciasGargalosPanel dateRange={dateRangeGlobal} />
         </section>
 
-        {/* Giro de Leito e Eficiência (Fase 3) */}
+        {/* Giro de Leito e Eficiência (respeita o período global) */}
         <section className="space-y-6">
-          <GiroEficienciaLeitosPanel />
+          <GiroEficienciaLeitosPanel dateRange={dateRangeGlobal} />
         </section>
       </div>
 
