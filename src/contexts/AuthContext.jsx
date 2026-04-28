@@ -1,8 +1,8 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { 
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import {
   auth,
   db,
-  signInWithEmailAndPassword, 
+  signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
   updatePassword,
@@ -17,7 +17,42 @@ import {
 } from '@/lib/firebase';
 import { USERS_COLLECTION_PATH } from '@/lib/firebase-constants';
 import { logAction } from '@/lib/auditoria';
+import useSessionTimeout, { clearActivity, touchActivity } from '@/hooks/useSessionTimeout';
 import { toast } from '@/components/ui/use-toast';
+
+const SESSION_START_KEY = 'rf_session_started_at';
+const SESSION_TIMEOUT_MINUTES = 120;
+
+const getSessionStart = () => {
+  try {
+    const v = Number(sessionStorage.getItem(SESSION_START_KEY));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+};
+const setSessionStart = (ts) => {
+  try {
+    sessionStorage.setItem(SESSION_START_KEY, String(ts));
+  } catch {
+    /* noop */
+  }
+};
+const clearSessionStart = () => {
+  try {
+    sessionStorage.removeItem(SESSION_START_KEY);
+  } catch {
+    /* noop */
+  }
+};
+const formatDuracao = (ms) => {
+  if (!Number.isFinite(ms) || ms <= 0) return '0min';
+  const min = Math.round(ms / 60000);
+  if (min < 60) return `${min}min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}min`;
+};
 
 const AuthContext = createContext();
 
@@ -101,18 +136,32 @@ export const AuthProvider = ({ children }) => {
         ...userProfile,
       });
 
-      // Passo 3: Verificar se é o primeiro acesso
+      // Passo 3: Marcar início da sessão (sessionStorage) e registrar auditoria
+      const agora = Date.now();
+      setSessionStart(agora);
+      touchActivity();
+
+      const sessionUser = {
+        uid: authenticatedUser.uid,
+        email: authenticatedUser.email,
+        ...userProfile,
+      };
+
+      // Passo 4: Verificar se é o primeiro acesso
       const firstAccess = userProfile.ultimoAcesso === null || userProfile.ultimoAcesso === undefined;
       if (firstAccess) {
         setIsFirstLogin(true);
+        // Ainda assim registra "Sessão Iniciada" para auditoria completa
+        logAction('Sessão', 'Sessão Iniciada', sessionUser).catch(() => {});
         return { success: true, firstLogin: true };
       }
 
-      // Passo 4: Executar auditoria de login para usuários recorrentes
+      // Passo 5: Auditoria de login para usuários recorrentes
       await updateDoc(doc(usersRef, userProfile.id), {
         qtdAcessos: increment(1),
         ultimoAcesso: serverTimestamp(),
       });
+      logAction('Sessão', 'Sessão Iniciada', sessionUser).catch(() => {});
       setIsFirstLogin(false);
       return { success: true, firstLogin: false };
     } catch (error) {
@@ -146,18 +195,46 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = async () => {
+  const logout = useCallback(async (motivo = 'Manual') => {
     try {
+      const inicio = getSessionStart();
+      const duracaoMs = inicio ? Date.now() - inicio : 0;
+      const detalhe = `Sessão Encerrada (${motivo}) - duração: ${formatDuracao(duracaoMs)}`;
+
       if (currentUser) {
-        await logAction('Sistema', `Usuário deslogado: ${currentUser.nomeCompleto}`, currentUser);
+        await logAction('Sessão', detalhe, currentUser).catch(() => {});
       }
       await signOut(auth);
+      clearSessionStart();
+      clearActivity();
       setCurrentUser(null);
       setAuthUser(null);
     } catch (error) {
       console.error('Erro ao fazer logout:', error);
     }
-  };
+  }, [currentUser]);
+
+  // Monitoramento de inatividade absoluta (anti frozen tabs / Chrome institucional).
+  // Ao exceder o limite, desloga e força reload para limpar cache de código em memória
+  // (os dados do Firestore ficam salvos em IndexedDB, então reads não são penalizados).
+  const handleSessionTimeout = useCallback(async () => {
+    try {
+      await logout('Timeout');
+    } finally {
+      try {
+        window.location.replace('/');
+      } catch {
+        /* noop */
+      }
+      window.location.reload();
+    }
+  }, [logout]);
+
+  useSessionTimeout({
+    enabled: Boolean(authUser),
+    onTimeout: handleSessionTimeout,
+    timeoutMinutes: SESSION_TIMEOUT_MINUTES,
+  });
 
   const updateUserPassword = async (newPassword) => {
     try {

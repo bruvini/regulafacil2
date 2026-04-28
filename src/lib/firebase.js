@@ -1,30 +1,33 @@
 // Firebase configuration and initialization
 import { initializeApp, deleteApp } from 'firebase/app';
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  addDoc, 
-  setDoc, 
-  deleteDoc, 
-  updateDoc, 
-  onSnapshot, 
-  query, 
-  getDocs, 
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  getFirestore,
+  collection,
+  doc,
+  addDoc,
+  setDoc,
+  deleteDoc,
+  updateDoc,
+  onSnapshot,
+  query,
+  getDocs,
   getDoc,
-  serverTimestamp, 
-  arrayUnion, 
-  deleteField, 
-  where, 
-  orderBy, 
+  serverTimestamp,
+  arrayUnion,
+  deleteField,
+  where,
+  orderBy,
   limit,
   increment,
   writeBatch
 } from 'firebase/firestore';
-import { 
-  getAuth, 
-  createUserWithEmailAndPassword, 
-  deleteUser, 
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  deleteUser,
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
@@ -43,7 +46,22 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+
+// Firestore com cache persistente em IndexedDB (poupa reads após reload).
+// Fallback para getFirestore() caso o IndexedDB não esteja disponível
+// (ex.: modo anônimo, navegadores muito antigos ou ambientes restritos).
+let db;
+try {
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager(),
+    }),
+  });
+} catch (err) {
+  console.warn('[Firestore] Persistência local indisponível, usando cache em memória:', err);
+  db = getFirestore(app);
+}
+
 const auth = getAuth(app);
 
 export const createUserWithoutSignIn = async (email, password) => {
