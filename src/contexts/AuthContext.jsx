@@ -195,18 +195,46 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = async () => {
+  const logout = useCallback(async (motivo = 'Manual') => {
     try {
+      const inicio = getSessionStart();
+      const duracaoMs = inicio ? Date.now() - inicio : 0;
+      const detalhe = `Sessão Encerrada (${motivo}) - duração: ${formatDuracao(duracaoMs)}`;
+
       if (currentUser) {
-        await logAction('Sistema', `Usuário deslogado: ${currentUser.nomeCompleto}`, currentUser);
+        await logAction('Sessão', detalhe, currentUser).catch(() => {});
       }
       await signOut(auth);
+      clearSessionStart();
+      clearActivity();
       setCurrentUser(null);
       setAuthUser(null);
     } catch (error) {
       console.error('Erro ao fazer logout:', error);
     }
-  };
+  }, [currentUser]);
+
+  // Monitoramento de inatividade absoluta (anti frozen tabs / Chrome institucional).
+  // Ao exceder o limite, desloga e força reload para limpar cache de código em memória
+  // (os dados do Firestore ficam salvos em IndexedDB, então reads não são penalizados).
+  const handleSessionTimeout = useCallback(async () => {
+    try {
+      await logout('Timeout');
+    } finally {
+      try {
+        window.location.replace('/');
+      } catch {
+        /* noop */
+      }
+      window.location.reload();
+    }
+  }, [logout]);
+
+  useSessionTimeout({
+    enabled: Boolean(authUser),
+    onTimeout: handleSessionTimeout,
+    timeoutMinutes: SESSION_TIMEOUT_MINUTES,
+  });
 
   const updateUserPassword = async (newPassword) => {
     try {
