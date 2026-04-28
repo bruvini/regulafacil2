@@ -136,18 +136,32 @@ export const AuthProvider = ({ children }) => {
         ...userProfile,
       });
 
-      // Passo 3: Verificar se é o primeiro acesso
+      // Passo 3: Marcar início da sessão (sessionStorage) e registrar auditoria
+      const agora = Date.now();
+      setSessionStart(agora);
+      touchActivity();
+
+      const sessionUser = {
+        uid: authenticatedUser.uid,
+        email: authenticatedUser.email,
+        ...userProfile,
+      };
+
+      // Passo 4: Verificar se é o primeiro acesso
       const firstAccess = userProfile.ultimoAcesso === null || userProfile.ultimoAcesso === undefined;
       if (firstAccess) {
         setIsFirstLogin(true);
+        // Ainda assim registra "Sessão Iniciada" para auditoria completa
+        logAction('Sessão', 'Sessão Iniciada', sessionUser).catch(() => {});
         return { success: true, firstLogin: true };
       }
 
-      // Passo 4: Executar auditoria de login para usuários recorrentes
+      // Passo 5: Auditoria de login para usuários recorrentes
       await updateDoc(doc(usersRef, userProfile.id), {
         qtdAcessos: increment(1),
         ultimoAcesso: serverTimestamp(),
       });
+      logAction('Sessão', 'Sessão Iniciada', sessionUser).catch(() => {});
       setIsFirstLogin(false);
       return { success: true, firstLogin: false };
     } catch (error) {
