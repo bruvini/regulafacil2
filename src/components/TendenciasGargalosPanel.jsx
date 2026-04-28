@@ -12,11 +12,8 @@ import {
   Tooltip as RechartsTooltip,
   Legend,
 } from 'recharts';
-import {
-  Info,
-  TrendingUp,
-} from 'lucide-react';
-import { format, subDays, startOfDay, eachDayOfInterval, isAfter } from 'date-fns';
+import { Info, TrendingUp } from 'lucide-react';
+import { format, eachDayOfInterval, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   onSnapshot,
@@ -43,20 +40,26 @@ const normalizar = (s) =>
     .toLowerCase()
     .trim();
 
-const TendenciasGargalosPanel = () => {
+const TendenciasGargalosPanel = ({ dateRange }) => {
   const [historicoRegulacoes, setHistoricoRegulacoes] = useState(null);
-  const [setores, setSetores] = useState([]);
-  const [janela, setJanela] = useState(7); // 7 ou 30 dias
+  const [, setSetores] = useState([]);
   const [modalIndicador, setModalIndicador] = useState({ open: false, indicadorId: null });
 
-  // Snapshots com cleanup
-  useEffect(() => {
-    const dataLimite = startOfDay(subDays(new Date(), 30));
+  const inicioPeriodo = useMemo(
+    () => (dateRange?.from ? startOfDay(dateRange.from) : startOfDay(new Date())),
+    [dateRange?.from]
+  );
+  const fimPeriodo = useMemo(
+    () => (dateRange?.to ? endOfDay(dateRange.to) : endOfDay(new Date())),
+    [dateRange?.to]
+  );
 
+  // Snapshot com filtro de data baseado no período global
+  useEffect(() => {
     const unsubRegulacoes = onSnapshot(
       query(
         getHistoricoRegulacoesCollection(),
-        where('dataInicio', '>=', dataLimite),
+        where('dataInicio', '>=', inicioPeriodo),
         orderBy('dataInicio', 'desc')
       ),
       (snap) => {
@@ -76,21 +79,13 @@ const TendenciasGargalosPanel = () => {
       unsubRegulacoes();
       unsubSetores();
     };
-  }, []);
+  }, [inicioPeriodo]);
 
   const loading = historicoRegulacoes === null;
 
-  const dataInicioJanela = useMemo(
-    () => startOfDay(subDays(new Date(), janela - 1)),
-    [janela]
-  );
-
   // === Tendência: Regulações Iniciadas vs Concluídas por dia ===
   const dadosTendencia = useMemo(() => {
-    const dias = eachDayOfInterval({
-      start: dataInicioJanela,
-      end: new Date(),
-    });
+    const dias = eachDayOfInterval({ start: inicioPeriodo, end: fimPeriodo });
 
     const base = dias.map((dia) => ({
       data: format(dia, 'dd/MM', { locale: ptBR }),
@@ -104,17 +99,21 @@ const TendenciasGargalosPanel = () => {
     );
 
     (historicoRegulacoes || []).forEach((reg) => {
-      // Regulações Iniciadas
       const dataInicio = parseDate(reg?.dataInicio);
-      if (dataInicio && isAfter(dataInicio, dataInicioJanela)) {
+      if (dataInicio && dataInicio >= inicioPeriodo && dataInicio <= fimPeriodo) {
         const chave = format(dataInicio, 'yyyy-MM-dd');
         const idx = indexPorDia.get(chave);
         if (idx !== undefined) base[idx].regulacoesIniciadas += 1;
       }
 
-      // Regulações Concluídas
-      const dataConclusao = parseDate(reg?.dataFim);
-      if (dataConclusao && normalizar(reg?.status) === 'concluida' && isAfter(dataConclusao, dataInicioJanela)) {
+      // Correção: priorizar dataConclusao (campo real), com fallback legado para dataFim
+      const dataConclusao = parseDate(reg?.dataConclusao || reg?.dataFim);
+      if (
+        dataConclusao &&
+        normalizar(reg?.statusFinal || reg?.status) === 'concluida' &&
+        dataConclusao >= inicioPeriodo &&
+        dataConclusao <= fimPeriodo
+      ) {
         const chave = format(dataConclusao, 'yyyy-MM-dd');
         const idx = indexPorDia.get(chave);
         if (idx !== undefined) base[idx].regulacoesConcluidas += 1;
@@ -122,14 +121,17 @@ const TendenciasGargalosPanel = () => {
     });
 
     return base;
-  }, [historicoRegulacoes, dataInicioJanela]);
+  }, [historicoRegulacoes, inicioPeriodo, fimPeriodo]);
+
+  const totalIniciadas = useMemo(
+    () => dadosTendencia.reduce((acc, d) => acc + d.regulacoesIniciadas, 0),
+    [dadosTendencia]
+  );
 
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="grid gap-4 md:grid-cols-1">
-          <Skeleton className="h-28 w-full" />
-        </div>
+        <Skeleton className="h-28 w-full" />
         <Skeleton className="h-80 w-full" />
       </div>
     );
@@ -137,37 +139,14 @@ const TendenciasGargalosPanel = () => {
 
   return (
     <div className="space-y-6">
-      {/* Cabeçalho com toggle 7/30d */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-foreground">Tendências e Gargalos</h2>
-          <p className="text-sm text-muted-foreground">
-            O "filme" da operação: como regulações e fluxos evoluem nos últimos dias.
-          </p>
-        </div>
-        <div className="inline-flex rounded-md border bg-background p-1 text-sm">
-          <button
-            type="button"
-            onClick={() => setJanela(7)}
-            className={`rounded px-3 py-1 transition ${
-              janela === 7 ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Últimos 7 dias
-          </button>
-          <button
-            type="button"
-            onClick={() => setJanela(30)}
-            className={`rounded px-3 py-1 transition ${
-              janela === 30 ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Últimos 30 dias
-          </button>
-        </div>
+      <div>
+        <h2 className="text-xl font-semibold text-foreground">Tendências e Gargalos</h2>
+        <p className="text-sm text-muted-foreground">
+          O "filme" da operação: como regulações e fluxos evoluem no período selecionado.
+        </p>
       </div>
 
-      {/* KPIs de eficiência */}
+      {/* KPI de volume */}
       <div className="grid gap-4 md:grid-cols-1">
         <Card>
           <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
@@ -175,12 +154,7 @@ const TendenciasGargalosPanel = () => {
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 Regulações no período
               </CardTitle>
-              <p className="mt-2 text-3xl font-bold">
-                {(historicoRegulacoes || []).filter((r) => {
-                  const d = parseDate(r?.dataInicio);
-                  return d && isAfter(d, dataInicioJanela);
-                }).length}
-              </p>
+              <p className="mt-2 text-3xl font-bold">{totalIniciadas}</p>
               <p className="text-xs text-muted-foreground">Movimentações internas iniciadas</p>
             </div>
             <Button

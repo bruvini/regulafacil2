@@ -13,7 +13,7 @@ import {
   Cell
 } from 'recharts';
 import { Info, Activity } from 'lucide-react';
-import { subDays, startOfDay, isAfter } from 'date-fns';
+import { startOfDay, endOfDay } from 'date-fns';
 import {
   onSnapshot,
   query,
@@ -42,20 +42,28 @@ const formatMinutes = (minutes) => {
   return `${horas}h ${mins}min`;
 };
 
-const GiroEficienciaLeitosPanel = () => {
+const STATUS_OPERACIONAIS = ['Vago', 'Ocupado', 'Higienização', 'Reservado', 'Regulado'];
+
+const GiroEficienciaLeitosPanel = ({ dateRange }) => {
   const [historicoOcupacoes, setHistoricoOcupacoes] = useState(null);
   const [setores, setSetores] = useState([]);
   const [leitos, setLeitos] = useState([]);
-  const [janela, setJanela] = useState(30); // Usaremos 30 dias por padrão para giro
   const [modalIndicador, setModalIndicador] = useState({ open: false, indicadorId: null });
 
-  useEffect(() => {
-    const dataLimite = startOfDay(subDays(new Date(), janela));
+  const dataInicioJanela = useMemo(
+    () => (dateRange?.from ? startOfDay(dateRange.from) : startOfDay(new Date())),
+    [dateRange?.from]
+  );
+  const dataFimJanela = useMemo(
+    () => (dateRange?.to ? endOfDay(dateRange.to) : endOfDay(new Date())),
+    [dateRange?.to]
+  );
 
+  useEffect(() => {
     const unsubOcupacoes = onSnapshot(
       query(
         getHistoricoOcupacoesCollection(),
-        where('dataSaida', '>=', dataLimite),
+        where('dataSaida', '>=', dataInicioJanela),
         orderBy('dataSaida', 'desc')
       ),
       (snap) => {
@@ -80,15 +88,9 @@ const GiroEficienciaLeitosPanel = () => {
       unsubSetores();
       unsubLeitos();
     };
-  }, [janela]);
+  }, [dataInicioJanela]);
 
   const loading = historicoOcupacoes === null;
-
-
-  const dataInicioJanela = useMemo(
-    () => startOfDay(subDays(new Date(), janela - 1)),
-    [janela]
-  );
 
   const { tempoMedioSubstituicao, giroPorSetor } = useMemo(() => {
     if (!historicoOcupacoes || !leitos || !setores) {
@@ -97,7 +99,7 @@ const GiroEficienciaLeitosPanel = () => {
 
     const ocupacoesValidas = historicoOcupacoes.filter(reg => {
       const dataSaida = parseDate(reg?.dataSaida);
-      return dataSaida && isAfter(dataSaida, dataInicioJanela);
+      return dataSaida && dataSaida >= dataInicioJanela && dataSaida <= dataFimJanela;
     }).sort((a, b) => {
       const dateA = parseDate(a?.dataEntrada)?.getTime() || 0;
       const dateB = parseDate(b?.dataEntrada)?.getTime() || 0;
@@ -152,9 +154,13 @@ const GiroEficienciaLeitosPanel = () => {
     // (Total de Saídas no setor) / (Leitos Operacionais do setor)
     const setoresMap = new Map(setores.map(s => [s.id, { ...s, leitosOperacionais: 0, totalSaidas: 0 }]));
 
-    // Contar leitos operacionais (status diferente de inativo)
+    // Contar leitos operacionais (apenas status estritamente operacionais)
     leitos.forEach(leito => {
-       if (leito.setorId && setoresMap.has(leito.setorId) && leito.status !== 'inativo') {
+       if (
+         leito.setorId &&
+         setoresMap.has(leito.setorId) &&
+         STATUS_OPERACIONAIS.includes(leito.status)
+       ) {
            setoresMap.get(leito.setorId).leitosOperacionais += 1;
        }
     });
@@ -181,7 +187,7 @@ const GiroEficienciaLeitosPanel = () => {
       tempoMedioSubstituicao: tempoMedio,
       giroPorSetor: giro
     };
-  }, [historicoOcupacoes, leitos, setores, dataInicioJanela]);
+  }, [historicoOcupacoes, leitos, setores, dataInicioJanela, dataFimJanela]);
 
 
   if (loading) {
@@ -195,33 +201,11 @@ const GiroEficienciaLeitosPanel = () => {
 
   return (
     <div className="space-y-6">
-       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-foreground">Giro de Leito e Eficiência</h2>
-          <p className="text-sm text-muted-foreground">
-            Acompanhe o tempo de substituição (ociosidade) e a dinâmica (giro) dos leitos.
-          </p>
-        </div>
-        <div className="inline-flex rounded-md border bg-background p-1 text-sm">
-          <button
-            type="button"
-            onClick={() => setJanela(7)}
-            className={`rounded px-3 py-1 transition ${
-              janela === 7 ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Últimos 7 dias
-          </button>
-          <button
-            type="button"
-            onClick={() => setJanela(30)}
-            className={`rounded px-3 py-1 transition ${
-              janela === 30 ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Últimos 30 dias
-          </button>
-        </div>
+      <div>
+        <h2 className="text-xl font-semibold text-foreground">Giro de Leito e Eficiência</h2>
+        <p className="text-sm text-muted-foreground">
+          Acompanhe o tempo de substituição (ociosidade) e a dinâmica (giro) dos leitos.
+        </p>
       </div>
 
       {/* KPIs de eficiência */}
