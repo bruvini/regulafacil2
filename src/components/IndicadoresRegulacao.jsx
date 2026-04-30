@@ -8,7 +8,9 @@ import {
 } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { Info } from 'lucide-react';
+import { Info, Lightbulb, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { gerarInsightsFluxo, resumoIcone } from '@/lib/geradorInsightsFluxo';
+import FluxoInsightsModal from '@/components/modals/FluxoInsightsModal';
 import {
   ResponsiveContainer,
   PieChart,
