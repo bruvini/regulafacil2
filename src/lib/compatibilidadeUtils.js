@@ -390,10 +390,9 @@ export const encontrarLeitosCompativeis = (
       return;
     }
 
-    // Regra PCP (Refatorada para maior clareza e correção)
+    // Regra PCP (Hard Rule reforçada)
     if (leito.isPCP) {
-      // Para um leito PCP, o paciente DEVE ser elegível.
-      // Vamos verificar todas as condições de elegibilidade.
+      // Verificações estritas
       const isAgeOk = idade !== null && idade >= 18 && idade <= 60;
       const hasNoIsolation = chavesPaciente.size === 0;
       const origemNormalizada = [
@@ -405,17 +404,25 @@ export const encontrarLeitosCompativeis = (
         pacienteAlvo.localizacaoAtual,
       ]
         .map((valor) => removerAcentos(textoUpper(valor)))
-        .find((texto) => texto);
-      const isOriginOk = origemNormalizada !== 'CC - RECUPERACAO';
+        .find((texto) => texto) || '';
 
-      // O paciente só é elegível se TODAS as condições forem verdadeiras.
+      // HARD RULE: Pacientes vindos de CC - RECUPERAÇÃO (RPA) NUNCA podem ir para leito PCP.
+      // RPA não tem perfil clínico para Cuidados Prolongados/Paliativos diretos do bloco cirúrgico.
+      const isFromRPA =
+        origemNormalizada === 'CC - RECUPERACAO'
+        || origemNormalizada.includes('RECUPERACAO')
+        || origemNormalizada.includes('RPA');
+
+      if (isFromRPA) {
+        return; // Rejeita imediatamente — regra inviolável
+      }
+
+      const isOriginOk = !isFromRPA;
       const isPcpEligible = isAgeOk && hasNoIsolation && isOriginOk;
 
-      // Se o paciente NÃO for elegível para PCP, este leito não é compatível.
       if (!isPcpEligible) {
-        return; // Rejeita o leito
+        return;
       }
-      // Se for elegível, a função continua para as próximas verificações (coorte, sexo, etc.).
     }
 
     const outrosLeitosDoQuarto = (leitosDoQuarto || []).filter((outro) => outro?.id !== leito.id);
