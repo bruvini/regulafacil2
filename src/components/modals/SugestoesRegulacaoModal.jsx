@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { ErrorBoundary } from '../ErrorBoundary';
 import {
   Dialog,
   DialogContent,
@@ -29,422 +30,9 @@ import { Sparkles, CalendarClock } from "lucide-react";
 import { useDadosHospitalares } from "@/hooks/useDadosHospitalares";
 import { useQuartos } from "@/hooks/useCollections";
 import { getLeitosVagosPorSetor } from "@/lib/leitosDisponiveisUtils";
-import { encontrarLeitosCompativeis, calcularIdade } from "@/lib/compatibilidadeUtils";
-import { intervalToDuration } from "date-fns";
-
-const PERFIS_DE_SETOR_POR_ESPECIALIDADE = {
-  "UNID. JS ORTOPEDIA": [
-    "NEUROCIRURGIA",
-    "ODONTOLOGIA C.TRAUM.B.M.F.",
-    "ORTOPEDIA/TRAUMATOLOGIA",
-    "BUCOMAXILO",
-  ],
-  "UNID. INT. GERAL - UIG": [
-    "CLINICA GERAL",
-    "INTENSIVISTA",
-    "NEUROLOGIA",
-    "PROCTOLOGIA",
-    "UROLOGIA",
-    "MASTOLOGIA",
-  ],
-  "UNID. CLINICA MEDICA": [
-    "CLINICA GERAL",
-    "INTENSIVISTA",
-    "NEUROLOGIA",
-    "PROCTOLOGIA",
-    "UROLOGIA",
-    "MASTOLOGIA",
-  ],
-  "UNID. ONCOLOGIA": [
-    "HEMATOLOGIA",
-    "ONCOLOGIA CIRURGICA",
-    "ONCOLOGIA CLINICA/CANCEROLOGIA",
-  ],
-  "UNID. CIRURGICA": [
-    "CIRURGIA CABECA E PESCOCO",
-    "CIRURGIA GERAL",
-    "CIRURGIA TORACICA",
-    "CIRURGIA VASCULAR",
-    "NEUROCIRURGIA",
-    "PROCTOLOGIA",
-    "UROLOGIA",
-    "ONCOLOGIA CIRURGICA",
-    "MASTOLOGIA",
-  ],
-  "UNID. NEFROLOGIA TRANSPLANTE": ["NEFROLOGIA", "HEPATOLOGISTA"],
-};
-
-const SETORES_POOL_REGULACAO = [
-  "PS DECISÃO CLINICA",
-  "PS DECISÃO CIRURGICA",
-  "CC - RECUPERAÇÃO",
-];
-
-const SETOR_EXCLUIDO = "UNID. DE AVC - INTEGRAL";
-
-const normalizarTexto = (valor) =>
-  String(valor || "")
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toUpperCase()
-    .trim();
-
-const PERFIS_NORMALIZADOS = new Map(
-  Object.entries(PERFIS_DE_SETOR_POR_ESPECIALIDADE).map(([setor, especialidades]) => [
-    normalizarTexto(setor),
-    new Set(especialidades.map((item) => normalizarTexto(item))),
-  ]),
-);
-
-const parseDataFlexivel = (valor) => {
-  if (!valor) return null;
-
-  if (valor instanceof Date) {
-    return valor;
-  }
-
-  if (typeof valor === "string") {
-    const texto = valor.trim();
-    if (!texto) return null;
-
-    if (/^\d{2}\/\d{2}\/\d{4}/.test(texto)) {
-      const [dataParte, horaParte] = texto.split(" ");
-      const [dia, mes, ano] = dataParte.split("/").map((parte) => parseInt(parte, 10));
-      if (Number.isNaN(dia) || Number.isNaN(mes) || Number.isNaN(ano)) return null;
-
-      if (horaParte && /^\d{2}:\d{2}/.test(horaParte)) {
-        const [hora, minuto] = horaParte
-          .split(":")
-          .map((parte) => parseInt(parte, 10));
-        return new Date(ano, mes - 1, dia, hora || 0, minuto || 0);
-      }
-
-      return new Date(ano, mes - 1, dia);
-    }
-
-    const data = new Date(texto);
-    return Number.isNaN(data.getTime()) ? null : data;
-  }
-
-  if (typeof valor === "object") {
-    if (typeof valor.toDate === "function") {
-      const data = valor.toDate();
-      return Number.isNaN(data?.getTime?.()) ? null : data;
-    }
-
-    if (typeof valor.seconds === "number") {
-      return new Date(valor.seconds * 1000);
-    }
-  }
-
-  return null;
-};
-
-const obterInfoTempoInternacao = (dataInternacao) => {
-  const data = parseDataFlexivel(dataInternacao);
-  if (!data) {
-    return {
-      timestamp: Number.POSITIVE_INFINITY,
-      texto: "Tempo de internação não informado",
-    };
-  }
-
-  const inicio = data.getTime();
-  const agora = Date.now();
-  const inicioNormalizado = Math.min(inicio, agora);
-  const fimNormalizado = Math.max(inicio, agora);
-
-  const duration = intervalToDuration({
-    start: new Date(inicioNormalizado),
-    end: new Date(fimNormalizado),
-  });
-
-  const totalDias = Math.floor((fimNormalizado - inicioNormalizado) / (1000 * 60 * 60 * 24));
-  const horasRestantes = duration.hours ?? 0;
-  const minutosRestantes = duration.minutes ?? 0;
-
-  const partes = [];
-
-  if (totalDias > 0) {
-    partes.push(`${totalDias}d`);
-  }
-
-  if (horasRestantes > 0 || (totalDias > 0 && minutosRestantes > 0)) {
-    partes.push(`${horasRestantes}h`);
-  }
-
-  if (minutosRestantes > 0) {
-    partes.push(`${minutosRestantes}m`);
-  }
-
-  if (!partes.length) {
-    partes.push("0m");
-  }
-
-  return {
-    timestamp: inicio,
-    texto: partes.join(" "),
-  };
-};
-
-const calcularDiasInternado = (dataInternacao) => {
-  const data = parseDataFlexivel(dataInternacao);
-  if (!data) return 0;
-  const ms = Date.now() - data.getTime();
-  if (ms <= 0) return 0;
-  return Math.floor(ms / (1000 * 60 * 60 * 24));
-};
-
-const calcularScoreRegulacao = (paciente, contexto = {}) => {
-  const motivos = [];
-  let score = 0;
-
-  if (contexto.temIsolamento) {
-    score += 30;
-    motivos.push("Possui isolamento compatível com o leito (+30)");
-  }
-
-  const idade = Number.isFinite(contexto.idade) ? contexto.idade : null;
-  if (idade !== null) {
-    if (idade >= 80) {
-      score += 20;
-      motivos.push("Paciente Superidoso >80a (+20)");
-    } else if (idade >= 60) {
-      score += 10;
-      motivos.push("Estatuto do Idoso >60a (+10)");
-    }
-  }
-
-  const origemNorm = normalizarTexto(
-    paciente?.setorNome
-      || paciente?.localizacaoAtual
-      || paciente?.setorOrigem
-      || paciente?.setorOrigemNome
-      || contexto.setorOrigemTexto
-      || "",
-  );
-  if (origemNorm.includes("CC - RECUPERACAO") || origemNorm.includes("RECUPERACAO") || origemNorm === "CC RECU") {
-    score += 30;
-    motivos.push("Retenção em RPA trava o CC (+30)");
-  } else if (origemNorm.includes("PS DECISAO") || origemNorm === "DCL" || origemNorm === "DCX") {
-    score += 20;
-    motivos.push("Retenção no Pronto Socorro (+20)");
-  }
-
-  const dias = calcularDiasInternado(paciente?.dataInternacao);
-  if (dias > 0) {
-    const ptsTempo = Math.min(20, dias * 2);
-    score += ptsTempo;
-    motivos.push(`Aguardando há ${dias} ${dias === 1 ? "dia" : "dias"} (+${ptsTempo})`);
-  }
-
-  return {
-    scoreTotal: Math.min(100, score),
-    motivos,
-  };
-};
-
-const formatarDataPrevistaAlta = (valor) => {
-  if (!valor) return null;
-  const data = parseDataFlexivel(valor);
-  if (!data) {
-    const texto = String(valor).trim();
-    return texto || null;
-  }
-  const dd = String(data.getDate()).padStart(2, "0");
-  const mm = String(data.getMonth() + 1).padStart(2, "0");
-  return `${dd}/${mm}`;
-};
-
-const obterIsolamentosAtivos = (paciente, infeccoesMap) => {
-  if (!paciente || !Array.isArray(paciente.isolamentos)) return [];
-
-  const rotulos = new Set();
-
-  paciente.isolamentos
-    .filter((iso) => iso && iso.statusConsideradoAtivo)
-    .forEach((iso) => {
-      const infeccaoId =
-        iso?.infeccaoId?.id ?? iso?.infeccaoId ?? iso?.idInfeccao ?? iso?.id ?? null;
-      const dadosInfeccao = infeccaoId ? infeccoesMap.get(infeccaoId) : null;
-      const rotulo =
-        iso?.siglaInfeccao ||
-        iso?.sigla ||
-        dadosInfeccao?.siglaInfeccao ||
-        dadosInfeccao?.sigla ||
-        dadosInfeccao?.nome ||
-        iso?.nome ||
-        iso?.descricao;
-
-      if (rotulo) {
-        rotulos.add(String(rotulo).toUpperCase());
-      }
-    });
-
-  return Array.from(rotulos);
-};
-
-const possuiIsolamentoAtivo = (paciente) =>
-  Array.isArray(paciente?.isolamentos) &&
-  paciente.isolamentos.some((iso) => iso && iso.statusConsideradoAtivo);
-
-const formatarSexo = (valor) => {
-  const texto = String(valor || "").trim();
-  if (!texto) return "Sexo não informado";
-
-  const base = texto.toLowerCase();
-  if (base.startsWith("m")) return "Masculino";
-  if (base.startsWith("f")) return "Feminino";
-  if (base.startsWith("i")) return "Intersexo";
-  if (base.startsWith("o")) return "Outro";
-
-  return texto;
-};
-
-const obterTextoValido = (valor) => {
-  const texto = String(valor ?? "").trim();
-  return texto || null;
-};
-
-const obterSetorOrigemTextoFallback = (paciente) => {
-  const candidato = [
-    paciente?.setorOrigemNome,
-    paciente?.setorOrigemSigla,
-    paciente?.setorOrigem,
-    paciente?.origemSetorNome,
-    paciente?.setorNome,
-    paciente?.localizacaoAtual,
-    paciente?.setor,
-  ].map(obterTextoValido)
-    .find(Boolean);
-
-  return candidato || "Não informado";
-};
-
-const obterLeitoOrigemTextoFallback = (paciente) => {
-  const candidato = [
-    paciente?.leitoOrigemCodigo,
-    paciente?.leitoOrigem,
-    paciente?.leitoAtualCodigo,
-    paciente?.leitoAtual,
-    paciente?.leitoNome,
-    paciente?.leito,
-  ].map(obterTextoValido)
-    .find(Boolean);
-
-  return candidato || "Não informado";
-};
-
-const normalizarCodigoLeito = (valor) => {
-  const texto = obterTextoValido(valor);
-  return texto ? texto.toUpperCase() : null;
-};
-
-const encontrarLeitoPaciente = (paciente, leitosPorId, leitosPorCodigo) => {
-  if (!paciente) return null;
-
-  const candidatosId = [
-    paciente?.leitoId,
-    paciente?.leitoOrigemId,
-    paciente?.leitoAtualId,
-    paciente?.leito?.id,
-    paciente?.leito?.leitoId,
-    paciente?.leitoAtual?.id,
-    paciente?.regulacaoAtiva?.leitoOrigemId,
-  ].filter(Boolean);
-
-  for (const id of candidatosId) {
-    const leito = leitosPorId.get(id);
-    if (leito) return leito;
-  }
-
-  const candidatosCodigo = [
-    paciente?.leitoOrigemCodigo,
-    paciente?.leitoOrigem,
-    paciente?.leitoAtualCodigo,
-    paciente?.leitoAtual,
-    paciente?.leitoNome,
-    paciente?.leito,
-    paciente?.codigoLeito,
-    paciente?.leito?.codigoLeito,
-    paciente?.leito?.codigo,
-  ]
-    .map((valor) => normalizarCodigoLeito(valor))
-    .filter(Boolean);
-
-  for (const codigo of candidatosCodigo) {
-    const leito = leitosPorCodigo.get(codigo);
-    if (leito) return leito;
-  }
-
-  return null;
-};
-
-const encontrarSetorPaciente = (
-  paciente,
-  setoresPorId,
-  leitosPorId,
-  leitosPorCodigo,
-  leitoEncontrado,
-) => {
-  if (!paciente) return null;
-
-  const candidatosId = [
-    paciente?.setorId,
-    paciente?.setorOrigemId,
-    paciente?.setor?.id,
-    paciente?.setorOrigem?.id,
-    paciente?.regulacaoAtiva?.setorOrigemId,
-  ].filter(Boolean);
-
-  for (const id of candidatosId) {
-    const setor = setoresPorId.get(id);
-    if (setor) return setor;
-  }
-
-  const leito = leitoEncontrado || encontrarLeitoPaciente(paciente, leitosPorId, leitosPorCodigo);
-  if (leito) {
-    const setorDoLeito = setoresPorId.get(leito.setorId);
-    if (setorDoLeito) return setorDoLeito;
-  }
-
-  return null;
-};
-
-const obterLocalizacaoPaciente = (paciente, setoresPorId, leitosPorId, leitosPorCodigo) => {
-  const fallbackSetor = obterSetorOrigemTextoFallback(paciente);
-  const fallbackLeito = obterLeitoOrigemTextoFallback(paciente);
-
-  const leito = encontrarLeitoPaciente(paciente, leitosPorId, leitosPorCodigo);
-  const setor = encontrarSetorPaciente(
-    paciente,
-    setoresPorId,
-    leitosPorId,
-    leitosPorCodigo,
-    leito,
-  );
-
-  const setorPreferencial =
-    obterTextoValido(setor?.siglaSetor) ||
-    obterTextoValido(setor?.nomeSetor || setor?.nome) ||
-    (fallbackSetor !== "Não informado" ? fallbackSetor : null);
-
-  const leitoPreferencial =
-    obterTextoValido(leito?.codigoLeito || leito?.codigo) ||
-    (fallbackLeito !== "Não informado" ? fallbackLeito : null);
-
-  const localizacaoTexto = setorPreferencial
-    ? leitoPreferencial
-      ? `${setorPreferencial} - ${leitoPreferencial}`
-      : setorPreferencial
-    : leitoPreferencial || "Não informado";
-
-  return {
-    setorTexto: setorPreferencial || fallbackSetor,
-    leitoTexto: leitoPreferencial || fallbackLeito,
-    localizacaoTexto,
-  };
-};
+import { RegulacaoService } from "../../domain/regulacao/RegulacaoService";
+import { SugestoesRegulacaoFormatters as Formatters } from "../../domain/regulacao/SugestoesRegulacaoFormatters";
+import { RegulacaoAuditService } from "../../domain/regulacao/RegulacaoAuditService";
 
 const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
   const {
@@ -465,193 +53,71 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
   );
 
   const setoresEnfermariaDisponiveis = useMemo(() => {
-    if (carregando) {
-      return [];
-    }
+    if (carregando) return [];
 
     const setoresComLeitos = getLeitosVagosPorSetor({
-      setores,
-      leitos,
-      quartos,
-      pacientes,
-      infeccoes,
+      setores, leitos, quartos, pacientes, infeccoes,
     });
 
-    if (!setoresComLeitos.length) {
-      return [];
-    }
+    if (!setoresComLeitos.length) return [];
 
-    const hospitalData = { estrutura };
+    const sugestoesBrutas = RegulacaoService.processarSugestoes(
+      setoresComLeitos,
+      pacientesEnriquecidos,
+      infeccoesMap,
+      { estrutura }
+    );
 
     const setoresPorId = new Map((setores || []).map((setor) => [setor.id, setor]));
     const leitosPorId = new Map((leitos || []).map((leito) => [leito.id, leito]));
     const leitosPorCodigo = new Map(
       (leitos || [])
-        .map((leito) => [normalizarCodigoLeito(leito?.codigoLeito || leito?.codigo), leito])
+        .map((leito) => [Formatters.normalizarCodigoLeito(leito?.codigoLeito || leito?.codigo), leito])
         .filter(([codigo]) => Boolean(codigo)),
     );
 
-    const setoresPorNome = new Map(
-      (setores || []).map((setor) => [
-        normalizarTexto(setor?.nomeSetor || setor?.nome || setor?.siglaSetor),
-        setor,
-      ]),
-    );
+    return sugestoesBrutas.map(setor => ({
+      ...setor,
+      leitos: setor.leitos.map((leito) => ({
+        ...leito,
+        sugestoes: leito.sugestoes.map((sugestao) => {
+          const infoTempo = Formatters.obterInfoTempoInternacao(sugestao.dataInternacao);
+          const localizacao = Formatters.obterLocalizacaoPaciente(sugestao, setoresPorId, leitosPorId, leitosPorCodigo);
+          
+          return {
+            id: sugestao.id,
+            nome: sugestao.nome,
+            especialidade: sugestao.especialidade,
+            sexo: Formatters.formatarSexo(sugestao.sexo),
+            idade: sugestao.idade,
+            tempoInternacaoTexto: infoTempo.texto,
+            tempoInternacaoTimestamp: infoTempo.timestamp,
+            isolamentos: sugestao.isolamentos,
+            temIsolamento: sugestao.temIsolamento,
+            setorOrigem: localizacao.setorTexto,
+            leitoOrigem: localizacao.leitoTexto,
+            localizacao: localizacao.localizacaoTexto,
+            scoreTotal: sugestao.scoreTotal,
+            scoreMotivos: sugestao.scoreMotivos,
+            dataPrevistaAlta: Formatters.formatarDataPrevistaAlta(sugestao.dataPrevistaAlta),
+          };
+        })
+      }))
+    }));
 
-    const setoresPoolIds = new Set(
-      SETORES_POOL_REGULACAO.map((nome) => setoresPorNome.get(normalizarTexto(nome))?.id)
-        .filter(Boolean),
-    );
+  }, [carregando, setores, leitos, quartos, pacientes, infeccoes, estrutura, pacientesEnriquecidos, infeccoesMap]);
 
-    const setoresPoolNormalizados = new Set(
-      SETORES_POOL_REGULACAO.map((nome) => normalizarTexto(nome)),
-    );
-
-    const pacientesElegiveis = (pacientesEnriquecidos || [])
-      .filter((paciente) => !paciente?.regulacaoAtiva)
-      .filter((paciente) => !paciente?.altaAposRPA)
-      .filter((paciente) => {
-        if (paciente?.setorId && setoresPoolIds.has(paciente.setorId)) {
-          return true;
-        }
-
-        const setorPacienteNorm = normalizarTexto(
-          paciente?.setorNome || paciente?.localizacaoAtual || paciente?.setorOrigem || "",
-        );
-
-        return setorPacienteNorm && setoresPoolNormalizados.has(setorPacienteNorm);
-      });
-
-    const setorExcluidoNorm = normalizarTexto(SETOR_EXCLUIDO);
-
-    if (!pacientesElegiveis.length) {
-      return setoresComLeitos
-        .filter((setor) => (setor?.tipoSetor || "").toLowerCase() === "enfermaria")
-        .filter((setor) => normalizarTexto(setor?.nomeSetor) !== setorExcluidoNorm)
-        .map((setor) => ({
-          id: setor.id,
-          nome: setor.nomeSetor,
-          leitos: setor.leitosVagos.map((leito) => ({
-            ...leito,
-            codigo: leito.codigoLeito,
-            sugestoes: [],
-          })),
-        }));
-    }
-
-    const leitosCompativeisPorPaciente = new Map();
-
-    pacientesElegiveis.forEach((paciente) => {
-      const leitosCompat = encontrarLeitosCompativeis(paciente, hospitalData, "enfermaria");
-      leitosCompativeisPorPaciente.set(
-        paciente.id,
-        new Set((leitosCompat || []).map((leitoCompat) => leitoCompat.id)),
-      );
+  const registrarAuditoria = (sugestao, leito) => {
+    RegulacaoAuditService.logSugestao({
+      pacienteId: sugestao.id,
+      pacienteNome: sugestao.nome,
+      leitoId: leito.id,
+      leitoCodigo: leito.codigo,
+      score: sugestao.scoreTotal,
+      motivos: sugestao.scoreMotivos,
+      usuarioId: 'regulacao-user'
     });
-
-    return setoresComLeitos
-      .filter((setor) => (setor?.tipoSetor || "").toLowerCase() === "enfermaria")
-      .filter((setor) => normalizarTexto(setor?.nomeSetor) !== setorExcluidoNorm)
-      .map((setor) => {
-        const setorNomeNorm = normalizarTexto(setor?.nomeSetor);
-        const especialidadesPermitidas = PERFIS_NORMALIZADOS.get(setorNomeNorm) || new Set();
-
-        const leitosComSugestoes = setor.leitosVagos
-          .map((leito) => {
-            const pacientesCompativeis = pacientesElegiveis
-              .filter((paciente) => {
-                if (!especialidadesPermitidas.size) {
-                  return false;
-                }
-
-                const especialidadePaciente = normalizarTexto(paciente?.especialidade);
-                if (!especialidadePaciente || !especialidadesPermitidas.has(especialidadePaciente)) {
-                  return false;
-                }
-
-                const leitosPaciente = leitosCompativeisPorPaciente.get(paciente.id);
-                return leitosPaciente ? leitosPaciente.has(leito.id) : false;
-              })
-              .map((paciente) => {
-                const idade = calcularIdade(paciente.dataNascimento);
-                const infoTempo = obterInfoTempoInternacao(paciente.dataInternacao);
-                const isolamentos = obterIsolamentosAtivos(paciente, infeccoesMap);
-                const sexoFormatado = formatarSexo(paciente.sexo);
-                const localizacao = obterLocalizacaoPaciente(
-                  paciente,
-                  setoresPorId,
-                  leitosPorId,
-                  leitosPorCodigo,
-                );
-                const temIsolamento = possuiIsolamentoAtivo(paciente);
-                const { scoreTotal, motivos } = calcularScoreRegulacao(paciente, {
-                  idade,
-                  temIsolamento,
-                  setorOrigemTexto: localizacao.setorTexto,
-                });
-                const dataPrevistaAltaFmt = formatarDataPrevistaAlta(paciente.dataPrevistaAlta);
-
-                return {
-                  id: paciente.id,
-                  nome: paciente.nomePaciente,
-                  especialidade: paciente.especialidade || "Não informado",
-                  sexo: sexoFormatado,
-                  idade,
-                  tempoInternacaoTexto: infoTempo.texto,
-                  tempoInternacaoTimestamp: infoTempo.timestamp,
-                  isolamentos,
-                  temIsolamento,
-                  setorOrigem: localizacao.setorTexto,
-                  leitoOrigem: localizacao.leitoTexto,
-                  localizacao: localizacao.localizacaoTexto,
-                  scoreTotal,
-                  scoreMotivos: motivos,
-                  dataPrevistaAlta: dataPrevistaAltaFmt,
-                };
-              })
-              .sort((a, b) => {
-                if (b.scoreTotal !== a.scoreTotal) {
-                  return b.scoreTotal - a.scoreTotal;
-                }
-                if (a.tempoInternacaoTimestamp !== b.tempoInternacaoTimestamp) {
-                  return a.tempoInternacaoTimestamp - b.tempoInternacaoTimestamp;
-                }
-                if (b.idade !== a.idade) {
-                  return (b.idade || 0) - (a.idade || 0);
-                }
-                return (a.nome || "").localeCompare(b.nome || "");
-              });
-
-            return {
-              ...leito,
-              codigo: leito.codigoLeito,
-              sugestoes: pacientesCompativeis,
-            };
-          })
-          .filter((leito) => leito.sugestoes.length > 0);
-
-        if (!leitosComSugestoes.length) {
-          return null;
-        }
-
-        return {
-          id: setor.id,
-          nome: setor.nomeSetor,
-          leitos: leitosComSugestoes,
-        };
-      })
-      .filter(Boolean);
-  }, [
-    carregando,
-    setores,
-    leitos,
-    quartos,
-    pacientes,
-    infeccoes,
-    estrutura,
-    pacientesEnriquecidos,
-    infeccoesMap,
-  ]);
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -721,7 +187,9 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                               key={leito.id}
                               value={`${setor.id}-${leito.id}`}
                             >
-                              <AccordionTrigger>
+                              <AccordionTrigger onClick={() => {
+                                // Auditoria do leito apenas para debug no clique do trigger se precisar
+                              }}>
                                 <div className="flex w-full items-center justify-between text-left" title={leito.compatibilidade}>
                                   <div className="flex items-center gap-2">
                                     <span className="font-medium">{leito.codigo}</span>
@@ -791,6 +259,7 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                                         <div
                                           key={`${leito.id}-paciente-${sugestao.id}`}
                                           className="rounded-md border bg-muted/30 p-3 flex justify-between items-start"
+                                          onClick={() => registrarAuditoria(sugestao, leito)}
                                         >
                                           {/* Coluna Esquerda: Dados Descritivos */}
                                           <div className="space-y-2 flex-1 pr-4">
@@ -891,4 +360,10 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
   );
 };
 
-export default SugestoesRegulacaoModal;
+export default function SugestoesRegulacaoModalWrapped(props) {
+  return (
+    <ErrorBoundary>
+      <SugestoesRegulacaoModal {...props} />
+    </ErrorBoundary>
+  );
+}

@@ -1,0 +1,143 @@
+import { FhirMapper } from '../../adapters/fhirMapper';
+import { ScoreRegulacaoService } from './ScoreRegulacaoService';
+import { CompatibilidadeLeitoService } from './CompatibilidadeLeitoService';
+import { encontrarLeitosCompativeis } from '../../lib/compatibilidadeUtils';
+import { validateHospitalData } from './types';
+
+const SETORES_POOL_REGULACAO = [
+  "PS DECISÃO CLINICA",
+  "PS DECISÃO CIRURGICA",
+  "CC - RECUPERAÇÃO",
+];
+
+const SETOR_EXCLUIDO = "UNID. DE AVC - INTEGRAL";
+
+export class RegulacaoService {
+  static normalizarTexto(valor: string) {
+    return ScoreRegulacaoService.normalizarTexto(valor);
+  }
+
+  static isPacienteElegivelParaRegulacao(paciente: any, setoresPoolIds: Set<string>, setoresPoolNormalizados: Set<string>): boolean {
+    if (paciente?.regulacaoAtiva || paciente?.altaAposRPA) {
+      return false;
+    }
+
+    if (paciente?.setorId && setoresPoolIds.has(paciente.setorId)) {
+      return true;
+    }
+
+    const setorPacienteNorm = this.normalizarTexto(
+      paciente?.setorNome || paciente?.localizacaoAtual || paciente?.setorOrigem || "",
+    );
+
+    return !!setorPacienteNorm && setoresPoolNormalizados.has(setorPacienteNorm);
+  }
+
+  static processarSugestoes(
+    setoresDisponiveis: any[],
+    pacientesEnriquecidos: any[],
+    infeccoesMap: Map<string, any>,
+    hospitalData: any
+  ) {
+    const estruturaArray = validateHospitalData(hospitalData);
+
+    const setoresPorNome = new Map(estruturaArray.map((s: any) => [
+      this.normalizarTexto(s?.nomeSetor || s?.nome || s?.siglaSetor),
+      s
+    ]));
+
+    const setoresPoolIds = new Set(
+      SETORES_POOL_REGULACAO.map(nome => setoresPorNome.get(this.normalizarTexto(nome))?.id).filter(Boolean)
+    );
+    const setoresPoolNormalizados = new Set(SETORES_POOL_REGULACAO.map(nome => this.normalizarTexto(nome)));
+
+    const pacientesElegiveis = (pacientesEnriquecidos || []).filter(p => 
+      this.isPacienteElegivelParaRegulacao(p, setoresPoolIds, setoresPoolNormalizados)
+    );
+
+    const leitosCompativeisPorPaciente = new Map();
+    pacientesElegiveis.forEach(paciente => {
+      const leitosCompat = encontrarLeitosCompativeis(paciente, hospitalData, "enfermaria");
+      leitosCompativeisPorPaciente.set(
+        paciente.id,
+        new Set((leitosCompat || []).map((l: any) => l.id))
+      );
+    });
+
+    const setorExcluidoNorm = this.normalizarTexto(SETOR_EXCLUIDO);
+
+    const resultado = setoresDisponiveis
+      .filter((setor) => (setor?.tipoSetor || "").toLowerCase() === "enfermaria")
+      .filter((setor) => this.normalizarTexto(setor?.nomeSetor) !== setorExcluidoNorm)
+      .map((setor) => {
+        const leitosComSugestoes = setor.leitosVagos
+          .map((leito: any) => {
+            const fhirLocation = FhirMapper.toLocation(leito, setor);
+            
+            const pacientesCompativeis = pacientesElegiveis
+              .filter(pacienteLegado => {
+                const leitosPaciente = leitosCompativeisPorPaciente.get(pacienteLegado.id);
+                if (!leitosPaciente || !leitosPaciente.has(leito.id)) return false;
+
+                const fhirPatient = FhirMapper.toPatient(pacienteLegado);
+                return CompatibilidadeLeitoService.isLeitoCompativel(
+                  fhirPatient,
+                  fhirLocation,
+                  setor.nomeSetor,
+                  encontrarLeitosCompativeis,
+                  pacienteLegado,
+                  hospitalData
+                );
+              })
+              .map(pacienteLegado => {
+                const fhirPatient = FhirMapper.toPatient(pacienteLegado);
+                const fhirEncounter = FhirMapper.toEncounter(pacienteLegado);
+                const fhirFlags = FhirMapper.toFlags(pacienteLegado, infeccoesMap);
+
+                const scoreResult = ScoreRegulacaoService.calcularScore(fhirPatient, fhirEncounter, fhirFlags);
+                const isolamentos = fhirFlags.map(f => f.code.text);
+
+                return {
+                  ...pacienteLegado,
+                  nome: fhirPatient.name,
+                  sexo: fhirPatient.gender,
+                  especialidade: pacienteLegado.especialidade || "Não informado",
+                  scoreTotal: scoreResult.scoreTotal,
+                  scoreMotivos: scoreResult.motivos,
+                  isolamentos,
+                  temIsolamento: fhirFlags.length > 0,
+                  idade: ScoreRegulacaoService.calcularIdade(fhirPatient.birthDate)
+                };
+              })
+              .sort((a, b) => {
+                if (b.scoreTotal !== a.scoreTotal) return b.scoreTotal - a.scoreTotal;
+                
+                const timeA = a.dataInternacao ? new Date(a.dataInternacao).getTime() : 0;
+                const timeB = b.dataInternacao ? new Date(b.dataInternacao).getTime() : 0;
+                if (timeA !== timeB) return timeA - timeB;
+                
+                if (b.idade !== a.idade) return (b.idade || 0) - (a.idade || 0);
+                return (a.nome || "").localeCompare(b.nome || "");
+              });
+
+            return {
+              ...leito,
+              codigo: leito.codigoLeito || leito.codigo,
+              sugestoes: pacientesCompativeis,
+            };
+          })
+          .filter((leito: any) => leito.sugestoes.length > 0);
+
+        if (!leitosComSugestoes.length) return null;
+
+        return {
+          id: setor.id,
+          nome: setor.nomeSetor,
+          leitos: leitosComSugestoes,
+        };
+      })
+      .filter(Boolean);
+
+    return resultado;
+  }
+}

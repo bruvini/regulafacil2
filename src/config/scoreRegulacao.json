@@ -1,0 +1,14 @@
+{
+  "criterios": {
+    "isolamento": 30,
+    "idade_60": 10,
+    "idade_80": 20,
+    "rpa": 30,
+    "ps_decisao": 20,
+    "tempo_por_dia": 2
+  },
+  "limites": {
+    "max_score": 100,
+    "max_tempo": 20
+  }
+}
