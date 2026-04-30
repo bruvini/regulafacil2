@@ -126,7 +126,11 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
             dataInternacao: (row[3] || '').toString(),
             nomeSetor: (row[4] || '').toString().trim().toUpperCase(),
             codigoLeito: (row[6] || '').toString().trim().toUpperCase(),
-            especialidade: (row[7] || '').toString().toUpperCase().trim()
+            especialidade: (row[7] || '').toString().toUpperCase().trim(),
+            cns: (row[8] || '').toString().trim(),
+            cidade: (row[9] || '').toString().trim().toUpperCase(),
+            dataPrevistaAlta: (row[10] || '').toString().trim(),
+            prestadorResponsavel: (row[11] || '').toString().trim().toUpperCase()
           })).filter(p => p.nomePaciente && p.codigoLeito);
           
           resolve(pacientesData);
