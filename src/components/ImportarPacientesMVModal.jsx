@@ -603,6 +603,23 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
           especialidade: dadosNovos.especialidade
         };
 
+        // Sempre atualizar CNS, dataPrevistaAlta e prestadorResponsavel (refletem o estado atual da MV)
+        if (typeof dadosNovos.cns !== 'undefined') {
+          updates.cns = dadosNovos.cns || '';
+        }
+        if (typeof dadosNovos.dataPrevistaAlta !== 'undefined') {
+          updates.dataPrevistaAlta = dadosNovos.dataPrevistaAlta || '';
+        }
+        if (typeof dadosNovos.prestadorResponsavel !== 'undefined') {
+          updates.prestadorResponsavel = dadosNovos.prestadorResponsavel || '';
+        }
+        // Cidade só é gravada se o paciente ainda não tiver uma cidade no Firestore
+        const cidadeAtual = (paciente?.cidade || '').toString().trim();
+        const cidadeNova = (dadosNovos.cidade || '').toString().trim();
+        if (!cidadeAtual && cidadeNova) {
+          updates.cidade = cidadeNova;
+        }
+
         if (setorDestino?.tipoSetor === 'UTI') {
           updates.pedidoUTI = deleteField();
         }
@@ -610,6 +627,25 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
         batch.update(pacienteRef, updates);
         leitosParaAtualizar.add(paciente.leitoId); // Leito antigo
         leitosParaAtualizar.add(dadosNovos.leitoId); // Leito novo
+      });
+
+      // Executar internações
+      internacoesValidas.forEach(paciente => {
+        const pacienteRef = doc(getPacientesCollection());
+        batch.set(pacienteRef, {
+          nomePaciente: paciente.nomePaciente,
+          dataNascimento: paciente.dataNascimento,
+          sexo: paciente.sexo,
+          dataInternacao: parseDataHoraMV(paciente.dataInternacao) || serverTimestamp(),
+          especialidade: paciente.especialidade,
+          leitoId: paciente.leitoId,
+          setorId: paciente.setorId,
+          cns: paciente.cns || '',
+          cidade: paciente.cidade || '',
+          dataPrevistaAlta: paciente.dataPrevistaAlta || '',
+          prestadorResponsavel: paciente.prestadorResponsavel || ''
+        });
+        leitosParaAtualizar.add(paciente.leitoId);
       });
 
       // Executar internações
