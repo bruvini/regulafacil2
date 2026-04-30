@@ -187,6 +187,75 @@ const obterInfoTempoInternacao = (dataInternacao) => {
   };
 };
 
+const calcularDiasInternado = (dataInternacao) => {
+  const data = parseDataFlexivel(dataInternacao);
+  if (!data) return 0;
+  const ms = Date.now() - data.getTime();
+  if (ms <= 0) return 0;
+  return Math.floor(ms / (1000 * 60 * 60 * 24));
+};
+
+const calcularScoreRegulacao = (paciente, contexto = {}) => {
+  const motivos = [];
+  let score = 0;
+
+  if (contexto.temIsolamento) {
+    score += 30;
+    motivos.push("Possui isolamento compatível com o leito (+30)");
+  }
+
+  const idade = Number.isFinite(contexto.idade) ? contexto.idade : null;
+  if (idade !== null) {
+    if (idade >= 80) {
+      score += 20;
+      motivos.push("Paciente Superidoso >80a (+20)");
+    } else if (idade >= 60) {
+      score += 10;
+      motivos.push("Estatuto do Idoso >60a (+10)");
+    }
+  }
+
+  const origemNorm = normalizarTexto(
+    paciente?.setorNome
+      || paciente?.localizacaoAtual
+      || paciente?.setorOrigem
+      || paciente?.setorOrigemNome
+      || contexto.setorOrigemTexto
+      || "",
+  );
+  if (origemNorm.includes("CC - RECUPERACAO") || origemNorm.includes("RECUPERACAO")) {
+    score += 30;
+    motivos.push("Retenção em RPA trava o CC (+30)");
+  } else if (origemNorm.includes("PS DECISAO")) {
+    score += 20;
+    motivos.push("Retenção no Pronto Socorro (+20)");
+  }
+
+  const dias = calcularDiasInternado(paciente?.dataInternacao);
+  if (dias > 0) {
+    const ptsTempo = Math.min(20, dias * 2);
+    score += ptsTempo;
+    motivos.push(`Aguardando há ${dias} ${dias === 1 ? "dia" : "dias"} (+${ptsTempo})`);
+  }
+
+  return {
+    scoreTotal: Math.min(100, score),
+    motivos,
+  };
+};
+
+const formatarDataPrevistaAlta = (valor) => {
+  if (!valor) return null;
+  const data = parseDataFlexivel(valor);
+  if (!data) {
+    const texto = String(valor).trim();
+    return texto || null;
+  }
+  const dd = String(data.getDate()).padStart(2, "0");
+  const mm = String(data.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}`;
+};
+
 const obterIsolamentosAtivos = (paciente, infeccoesMap) => {
   if (!paciente || !Array.isArray(paciente.isolamentos)) return [];
 
