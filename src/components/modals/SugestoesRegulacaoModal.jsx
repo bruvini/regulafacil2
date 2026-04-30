@@ -709,7 +709,7 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                 Carregando leitos disponíveis...
               </div>
             ) : setoresEnfermariaDisponiveis.length ? (
-              <ScrollArea className="flex-1 pr-2">
+              <div className="flex-1 overflow-y-auto pr-4 min-h-0">
                 <Accordion type="single" collapsible className="space-y-4">
                   {setoresEnfermariaDisponiveis.map((setor) => (
                     <AccordionItem key={setor.id} value={String(setor.id)}>
@@ -769,10 +769,11 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                                       let badgeAltaPrevistaClasses = "border-transparent bg-yellow-400 text-yellow-950 hover:bg-yellow-400 text-xs";
                                       if (sugestao.dataPrevistaAlta) {
                                         const altaParts = sugestao.dataPrevistaAlta.split('/');
-                                        if (altaParts.length === 3) {
+                                        if (altaParts.length >= 2) {
                                           const dia = parseInt(altaParts[0], 10);
                                           const mes = parseInt(altaParts[1], 10) - 1;
-                                          const ano = parseInt(altaParts[2].split(' ')[0], 10);
+                                          const ano = altaParts.length === 3 ? parseInt(altaParts[2].split(' ')[0], 10) : new Date().getFullYear();
+
                                           const altaDate = new Date(ano, mes, dia);
                                           altaDate.setHours(0, 0, 0, 0);
                                           const hoje = new Date();
@@ -877,7 +878,7 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                     </AccordionItem>
                   ))}
                 </Accordion>
-              </ScrollArea>
+              </div>
             ) : (
               <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
                 Nenhum leito de enfermaria disponível no momento.
