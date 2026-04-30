@@ -71,4 +71,28 @@ describe('CompatibilidadeLeitoService', () => {
   it('leito com status ocupado não é filtrado incorretamente como disponível', () => {
     expect(CompatibilidadeLeitoService.normalizeStatus('ocupado')).toBe('occupied');
   });
+
+  it('deve aceitar paciente sem especialidade no modo legado ou se o leito permitir', () => {
+    const patient: FhirPatient = {
+      id: 'p-no-spec', name: 'No Spec', gender: 'M'
+    };
+    const location: FhirLocation = { id: 'l1', name: 'L1', status: 'available', type: 'enfermaria' };
+    
+    // Legacy mode should definitely allow it
+    expect(CompatibilidadeLeitoService.isLeitoCompativel(
+      patient, location, 'UNID. CLINICA MEDICA', () => [{ id: 'l1' }], {}, {}, true
+    )).toBe(true);
+  });
+
+  it('deve aceitar qualquer paciente se o leito não tiver especialidade restrita', () => {
+    const patient: FhirPatient = {
+      id: 'p1', name: 'P1', gender: 'M', extension: [{ url: 'especialidade', valueString: 'PSIQUIATRIA' }]
+    };
+    const location: FhirLocation = { id: 'l1', name: 'L1', status: 'available', type: 'enfermaria' };
+    
+    // Bed with no specialties defined in the map should accept
+    expect(CompatibilidadeLeitoService.isLeitoCompativel(
+      patient, location, 'SETOR DESCONHECIDO', () => [{ id: 'l1' }], {}, {}, false
+    )).toBe(true);
+  });
 });

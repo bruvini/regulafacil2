@@ -39,7 +39,9 @@ export class CompatibilidadeLeitoService {
     return 'enfermaria'; // Fallback to enfermaria if unknown
   }
 
-  static verificarEspecialidade(patient: FhirPatient, location: FhirLocation, setorNome: string): boolean {
+  static verificarEspecialidade(patient: FhirPatient, location: FhirLocation, setorNome: string, legacyMode = false): boolean {
+    if (legacyMode) return true;
+
     const especialidadePaciente = patient.extension?.find(e => e.url === 'especialidade')?.valueString;
     const especialidadeNorm = ScoreRegulacaoService.normalizarTexto(especialidadePaciente || '');
     
@@ -47,8 +49,9 @@ export class CompatibilidadeLeitoService {
     const perfis = this.getPerfisNormalizados();
     const permitidas = perfis.get(setorNorm);
     
-    if (!permitidas || permitidas.size === 0) return false;
-    if (!especialidadeNorm || !permitidas.has(especialidadeNorm)) return false;
+    if (!permitidas || permitidas.size === 0) return true; // Accept any patient if bed has no specific restrictions
+    if (!especialidadeNorm) return true; // Accept patient if they have no specialty defined
+    if (!permitidas.has(especialidadeNorm)) return false;
 
     return true;
   }
@@ -59,19 +62,20 @@ export class CompatibilidadeLeitoService {
     setorNome: string,
     legacyCompatibilidadeFn: (paciente: any, data: any, modo: string) => any[],
     pacienteLegado: any,
-    hospitalDataLegado: any
+    hospitalDataLegado: any,
+    legacyMode = false
   ): boolean {
-    if (location.status !== 'available') {
+    if (!legacyMode && location.status !== 'available') {
       console.debug(`[CompatibilidadeLeitoService] leito ${location.id} descartado: motivo=STATUS_INVALIDO (${location.status})`);
       return false;
     }
 
-    if (location.type !== 'enfermaria') {
+    if (!legacyMode && location.type !== 'enfermaria') {
       console.debug(`[CompatibilidadeLeitoService] leito ${location.id} descartado: motivo=TIPO_INVALIDO (${location.type})`);
       return false;
     }
 
-    if (!this.verificarEspecialidade(patient, location, setorNome)) {
+    if (!this.verificarEspecialidade(patient, location, setorNome, legacyMode)) {
       console.debug(`[CompatibilidadeLeitoService] leito ${location.id} descartado: motivo=ESPECIALIDADE_INCOMPATIVEL`);
       return false;
     }
@@ -80,10 +84,10 @@ export class CompatibilidadeLeitoService {
     const leitosSet = new Set((leitosCompat || []).map((l: any) => String(l.id)));
 
     const legacyCompat = leitosSet.has(String(location.id));
-    if (!legacyCompat) {
+    if (!legacyCompat && !legacyMode) {
       console.debug(`[CompatibilidadeLeitoService] leito ${location.id} descartado: motivo=REGRAS_COMPLEXAS_LEGADO`);
     }
 
-    return legacyCompat;
+    return legacyMode ? true : legacyCompat;
   }
 }

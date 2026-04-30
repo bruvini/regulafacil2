@@ -55,6 +55,9 @@ export class RegulacaoService {
       this.isPacienteElegivelParaRegulacao(p, setoresPoolIds, setoresPoolNormalizados)
     );
 
+    console.debug(`[RegulacaoService] total pacientes recebidos: ${pacientesEnriquecidos?.length || 0}`);
+    console.debug(`[RegulacaoService] total pacientes após filtro elegibilidade: ${pacientesElegiveis.length}`);
+
     const leitosCompativeisPorPaciente = new Map();
     pacientesElegiveis.forEach(paciente => {
       const leitosCompat = encontrarLeitosCompativeis(paciente, hospitalData, "enfermaria");
@@ -80,21 +83,48 @@ export class RegulacaoService {
           .map((leito: any) => {
             const fhirLocation = FhirMapper.toLocation(leito, setor);
             
-            const pacientesCompativeis = pacientesElegiveis
-              .filter(pacienteLegado => {
+            const filterPatients = (legacyMode: boolean) => {
+              return pacientesElegiveis.filter(pacienteLegado => {
+                if (!pacienteLegado || !pacienteLegado.id) {
+                  console.debug(`[RegulacaoService] paciente ${pacienteLegado?.id} eliminado: motivo=SEM_DADOS`);
+                  return false;
+                }
+
                 const leitosPaciente = leitosCompativeisPorPaciente.get(pacienteLegado.id);
-                if (!leitosPaciente || !leitosPaciente.has(String(leito.id))) return false;
+                if (!leitosPaciente || !leitosPaciente.has(String(leito.id))) {
+                  console.debug(`[RegulacaoService] paciente ${pacienteLegado.id} eliminado: motivo=LEITO_NAO_COMPATIVEL_REGRAS`);
+                  return false;
+                }
 
                 const fhirPatient = FhirMapper.toPatient(pacienteLegado);
-                return CompatibilidadeLeitoService.isLeitoCompativel(
+                const isCompativel = CompatibilidadeLeitoService.isLeitoCompativel(
                   fhirPatient,
                   fhirLocation,
                   setor.nomeSetor,
                   encontrarLeitosCompativeis,
                   pacienteLegado,
-                  hospitalData
+                  hospitalData,
+                  legacyMode
                 );
-              })
+
+                if (!isCompativel) {
+                  console.debug(`[RegulacaoService] paciente ${pacienteLegado.id} eliminado: motivo=ESPECIALIDADE_INCOMPATIVEL_OU_STATUS`);
+                  return false;
+                }
+
+                console.debug(`[RegulacaoService] paciente ${pacienteLegado.id} aprovado (legacyMode=${legacyMode})`);
+                return true;
+              });
+            };
+
+            let pacientesCompativeis = filterPatients(false);
+            
+            if (pacientesCompativeis.length === 0) {
+              console.debug(`[RegulacaoService] leito ${leito.id} sem sugestões estritas. Ativando LEGACY MODE.`);
+              pacientesCompativeis = filterPatients(true);
+            }
+
+            const sugestoes = pacientesCompativeis
               .map(pacienteLegado => {
                 const fhirPatient = FhirMapper.toPatient(pacienteLegado);
                 const fhirEncounter = FhirMapper.toEncounter(pacienteLegado);
@@ -129,7 +159,7 @@ export class RegulacaoService {
             return {
               ...leito,
               codigo: leito.codigoLeito || leito.codigo,
-              sugestoes: pacientesCompativeis,
+              sugestoes,
             };
           })
           .filter((leito: any) => leito.sugestoes.length > 0);
@@ -143,6 +173,10 @@ export class RegulacaoService {
         };
       })
       .filter(Boolean);
+
+    let totalSugestoes = 0;
+    resultado.forEach(s => s.leitos.forEach(l => totalSugestoes += l.sugestoes.length));
+    console.debug(`[RegulacaoService] total sugestões geradas: ${totalSugestoes}`);
 
     return resultado;
   }

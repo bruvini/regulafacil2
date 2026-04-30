@@ -4,13 +4,13 @@ import { CompatibilidadeLeitoService } from '../domain/regulacao/Compatibilidade
 export class FhirMapper {
   static toPatient(paciente: any): FhirPatient {
     return {
-      id: paciente?.id || 'unknown',
+      id: String(paciente?.id || 'unknown'),
       name: paciente?.nomePaciente || paciente?.nome || 'Nome não informado',
       birthDate: paciente?.dataNascimento || null,
       gender: paciente?.sexo || 'unknown',
       extension: [
-        { url: 'especialidade', valueString: paciente?.especialidade },
-        { url: 'origem', valueString: paciente?.setorNome || paciente?.localizacaoAtual || paciente?.setorOrigem || paciente?.setorOrigemNome }
+        { url: 'especialidade', valueString: paciente?.especialidade || '' },
+        { url: 'origem', valueString: paciente?.setorNome || paciente?.localizacaoAtual || paciente?.setorOrigem || paciente?.setorOrigemNome || '' }
       ]
     };
   }
@@ -22,11 +22,11 @@ export class FhirMapper {
 
   static toEncounter(paciente: any): FhirEncounter {
     return {
-      id: `enc-${paciente?.id || 'unknown'}`,
-      subject: { reference: `Patient/${paciente?.id || 'unknown'}` },
+      id: `enc-${String(paciente?.id || 'unknown')}`,
+      subject: { reference: `Patient/${String(paciente?.id || 'unknown')}` },
       period: { start: paciente?.dataInternacao || new Date() },
       location: [
-        { location: { reference: `Location/${paciente?.leitoId || paciente?.leitoOrigemId || 'unknown'}` } }
+        { location: { reference: `Location/${String(paciente?.leitoId || paciente?.leitoOrigemId || 'unknown')}` } }
       ],
       status: 'in-progress',
       class: 'IMP'
@@ -45,12 +45,12 @@ export class FhirMapper {
     }
     const tipoNorm = CompatibilidadeLeitoService.normalizeTipoLeito(setor?.tipoSetor || leito?.tipoLeito);
     return {
-      id: leito?.id || 'unknown',
-      name: leito?.codigoLeito || leito?.codigo || leito?.id || 'unknown',
+      id: String(leito?.id || 'unknown'),
+      name: String(leito?.codigoLeito || leito?.codigo || leito?.id || 'unknown'),
       status: statusNorm,
       type: tipoNorm,
-      identifier: leito?.codigoLeito || leito?.codigo,
-      partOf: setor?.id || leito?.setorId
+      identifier: String(leito?.codigoLeito || leito?.codigo),
+      partOf: String(setor?.id || leito?.setorId || 'unknown')
     };
   }
 
