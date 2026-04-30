@@ -60,7 +60,7 @@ export class RegulacaoService {
       const leitosCompat = encontrarLeitosCompativeis(paciente, hospitalData, "enfermaria");
       leitosCompativeisPorPaciente.set(
         paciente.id,
-        new Set((leitosCompat || []).map((l: any) => l.id))
+        new Set((leitosCompat || []).map((l: any) => String(l.id)))
       );
     });
 
@@ -83,7 +83,7 @@ export class RegulacaoService {
             const pacientesCompativeis = pacientesElegiveis
               .filter(pacienteLegado => {
                 const leitosPaciente = leitosCompativeisPorPaciente.get(pacienteLegado.id);
-                if (!leitosPaciente || !leitosPaciente.has(leito.id)) return false;
+                if (!leitosPaciente || !leitosPaciente.has(String(leito.id))) return false;
 
                 const fhirPatient = FhirMapper.toPatient(pacienteLegado);
                 return CompatibilidadeLeitoService.isLeitoCompativel(

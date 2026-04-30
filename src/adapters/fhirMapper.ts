@@ -39,7 +39,10 @@ export class FhirMapper {
   }
 
   static toLocation(leito: any, setor?: any): FhirLocation {
-    const statusNorm = CompatibilidadeLeitoService.normalizeStatus(leito?.status);
+    let statusNorm = CompatibilidadeLeitoService.normalizeStatus(leito?.status);
+    if (statusNorm !== 'available' && leito?.compatibilidade) {
+      statusNorm = CompatibilidadeLeitoService.normalizeStatus(leito.compatibilidade);
+    }
     const tipoNorm = CompatibilidadeLeitoService.normalizeTipoLeito(setor?.tipoSetor || leito?.tipoLeito);
     return {
       id: leito?.id || 'unknown',

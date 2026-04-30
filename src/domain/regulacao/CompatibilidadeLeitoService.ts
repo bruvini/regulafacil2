@@ -31,12 +31,12 @@ export class CompatibilidadeLeitoService {
   }
 
   static normalizeTipoLeito(tipo: string | null | undefined): 'enfermaria' | 'uti' | 'isolamento' | 'outro' {
-    if (!tipo) return 'outro';
+    if (!tipo) return 'enfermaria'; // Default legacy assumption
     const t = ScoreRegulacaoService.normalizarTexto(tipo);
     if (t === 'ENFERMARIA' || t === 'ENF') return 'enfermaria';
     if (t === 'UTI') return 'uti';
     if (t === 'ISOLAMENTO' || t === 'ISO') return 'isolamento';
-    return 'outro';
+    return 'enfermaria'; // Fallback to enfermaria if unknown
   }
 
   static verificarEspecialidade(patient: FhirPatient, location: FhirLocation, setorNome: string): boolean {
