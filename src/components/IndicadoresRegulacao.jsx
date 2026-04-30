@@ -403,6 +403,13 @@ const IndicadoresRegulacao = ({ dateRange }) => {
       .slice(0, 10);
   }, [regulacoesFiltradas, setoresMap]);
 
+  const dadosFluxoComInsights = useMemo(() => {
+    return dadosFluxo.map((fluxo) => {
+      const insights = gerarInsightsFluxo(fluxo, dadosFluxo, null);
+      return { ...fluxo, insights, resumo: resumoIcone(insights) };
+    });
+  }, [dadosFluxo]);
+
   const dadosComparativoSetores = useMemo(() => {
     if (!regulacoesFiltradas.length) return [];
 
