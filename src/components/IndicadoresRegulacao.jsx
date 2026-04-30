@@ -739,10 +739,26 @@ const IndicadoresRegulacao = ({ dateRange }) => {
                           <th className="pb-2">Destino</th>
                           <th className="pb-2 text-right">Regulações</th>
                           <th className="pb-2 text-right">Tempo Médio</th>
+                          <th className="pb-2 text-right w-12">Insights</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {dadosFluxo.map((fluxo) => (
+                        {dadosFluxoComInsights.map((fluxo) => {
+                          const Icone =
+                            fluxo.resumo === 'alerta'
+                              ? AlertTriangle
+                              : fluxo.resumo === 'positivo'
+                              ? CheckCircle2
+                              : fluxo.resumo === 'info'
+                              ? Lightbulb
+                              : null;
+                          const corIcone =
+                            fluxo.resumo === 'alerta'
+                              ? 'text-amber-500'
+                              : fluxo.resumo === 'positivo'
+                              ? 'text-emerald-500'
+                              : 'text-blue-500';
+                          return (
                           <tr key={`${fluxo.origem}-${fluxo.destino}`} className="border-t">
                             <td className="py-2 pr-3 font-medium text-foreground">{fluxo.origem}</td>
                             <td className="py-2 pr-3 text-foreground">{fluxo.destino}</td>
@@ -750,11 +766,26 @@ const IndicadoresRegulacao = ({ dateRange }) => {
                             <td className="py-2 text-right text-foreground">
                               {formatMinutes(fluxo.tempoMedio)}
                             </td>
+                            <td className="py-2 text-right">
+                              {Icone && (
+                                <button
+                                  type="button"
+                                  aria-label="Ver insights do fluxo"
+                                  className="inline-flex items-center justify-center rounded hover:bg-muted/60 p-1 transition-colors"
+                                  onClick={() =>
+                                    setFluxoModal({ open: true, fluxo, insights: fluxo.insights })
+                                  }
+                                >
+                                  <Icone className={`h-4 w-4 ${corIcone}`} />
+                                </button>
+                              )}
+                            </td>
                           </tr>
-                        ))}
-                        {!dadosFluxo.length && (
+                          );
+                        })}
+                        {!dadosFluxoComInsights.length && (
                           <tr>
-                            <td colSpan={4} className="py-6 text-center text-muted-foreground">
+                            <td colSpan={5} className="py-6 text-center text-muted-foreground">
                               Nenhum fluxo relevante identificado.
                             </td>
                           </tr>
