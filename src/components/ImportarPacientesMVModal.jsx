@@ -648,20 +648,6 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
         leitosParaAtualizar.add(paciente.leitoId);
       });
 
-      // Executar internações
-      internacoesValidas.forEach(paciente => {
-        const pacienteRef = doc(getPacientesCollection());
-        batch.set(pacienteRef, {
-          nomePaciente: paciente.nomePaciente,
-          dataNascimento: paciente.dataNascimento,
-          sexo: paciente.sexo,
-          dataInternacao: parseDataHoraMV(paciente.dataInternacao) || serverTimestamp(),
-          especialidade: paciente.especialidade,
-          leitoId: paciente.leitoId,
-          setorId: paciente.setorId
-        });
-        leitosParaAtualizar.add(paciente.leitoId);
-      });
 
       // EXECUTAR CONCLUSÕES AUTOMÁTICAS DE REGULAÇÕES
       if (processedData.regulacoesProcessadas && processedData.regulacoesProcessadas.concluidas) {
