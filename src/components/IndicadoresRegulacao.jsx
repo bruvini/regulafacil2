@@ -922,6 +922,13 @@ const IndicadoresRegulacao = ({ dateRange }) => {
         onClose={fecharModalIndicador}
         indicadorId={modalIndicador.indicadorId}
       />
+      <FluxoInsightsModal
+        isOpen={fluxoModal.open}
+        onClose={() => setFluxoModal({ open: false, fluxo: null, insights: [] })}
+        fluxo={fluxoModal.fluxo}
+        insights={fluxoModal.insights}
+      />
+
     </div>
   );
 };
