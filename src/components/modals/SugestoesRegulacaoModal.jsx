@@ -19,6 +19,13 @@ import {
 } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Sparkles, CalendarClock } from "lucide-react";
 import { useDadosHospitalares } from "@/hooks/useDadosHospitalares";
 import { useQuartos } from "@/hooks/useCollections";
 import { getLeitosVagosPorSetor } from "@/lib/leitosDisponiveisUtils";
