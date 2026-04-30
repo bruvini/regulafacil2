@@ -223,10 +223,10 @@ const calcularScoreRegulacao = (paciente, contexto = {}) => {
       || contexto.setorOrigemTexto
       || "",
   );
-  if (origemNorm.includes("CC - RECUPERACAO") || origemNorm.includes("RECUPERACAO")) {
+  if (origemNorm.includes("CC - RECUPERACAO") || origemNorm.includes("RECUPERACAO") || origemNorm === "CC RECU") {
     score += 30;
     motivos.push("Retenção em RPA trava o CC (+30)");
-  } else if (origemNorm.includes("PS DECISAO")) {
+  } else if (origemNorm.includes("PS DECISAO") || origemNorm === "DCL" || origemNorm === "DCX") {
     score += 20;
     motivos.push("Retenção no Pronto Socorro (+20)");
   }
@@ -616,6 +616,9 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                 if (a.tempoInternacaoTimestamp !== b.tempoInternacaoTimestamp) {
                   return a.tempoInternacaoTimestamp - b.tempoInternacaoTimestamp;
                 }
+                if (b.idade !== a.idade) {
+                  return (b.idade || 0) - (a.idade || 0);
+                }
                 return (a.nome || "").localeCompare(b.nome || "");
               });
 
@@ -652,7 +655,7 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl">
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
@@ -706,7 +709,7 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                 Carregando leitos disponíveis...
               </div>
             ) : setoresEnfermariaDisponiveis.length ? (
-              <ScrollArea className="h-[60vh] pr-2">
+              <ScrollArea className="flex-1 pr-2">
                 <Accordion type="single" collapsible className="space-y-4">
                   {setoresEnfermariaDisponiveis.map((setor) => (
                     <AccordionItem key={setor.id} value={String(setor.id)}>
@@ -754,64 +757,63 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                                         : 'Idade não informada';
 
                                       const score = sugestao.scoreTotal ?? 0;
-                                      const scoreClasses = score >= 70
-                                        ? 'bg-red-600 text-white hover:bg-red-600 border-transparent'
-                                        : score >= 40
-                                          ? 'bg-amber-500 text-white hover:bg-amber-500 border-transparent'
-                                          : 'bg-slate-500 text-white hover:bg-slate-500 border-transparent';
+                                      let scoreClasses = 'bg-slate-500 text-white hover:bg-slate-500 border-transparent';
+                                      if (score === 100) {
+                                        scoreClasses = 'bg-emerald-600 text-white hover:bg-emerald-600 border-transparent';
+                                      } else if (score >= 50) {
+                                        scoreClasses = 'bg-amber-500 text-white hover:bg-amber-500 border-transparent';
+                                      } else {
+                                        scoreClasses = 'bg-red-600 text-white hover:bg-red-600 border-transparent';
+                                      }
+
+                                      let badgeAltaPrevistaClasses = "border-transparent bg-yellow-400 text-yellow-950 hover:bg-yellow-400 text-xs";
+                                      if (sugestao.dataPrevistaAlta) {
+                                        const altaParts = sugestao.dataPrevistaAlta.split('/');
+                                        if (altaParts.length === 3) {
+                                          const dia = parseInt(altaParts[0], 10);
+                                          const mes = parseInt(altaParts[1], 10) - 1;
+                                          const ano = parseInt(altaParts[2].split(' ')[0], 10);
+                                          const altaDate = new Date(ano, mes, dia);
+                                          altaDate.setHours(0, 0, 0, 0);
+                                          const hoje = new Date();
+                                          hoje.setHours(0, 0, 0, 0);
+
+                                          if (altaDate <= hoje) {
+                                            badgeAltaPrevistaClasses = "border-transparent bg-red-500 text-white hover:bg-red-500 text-xs";
+                                          } else {
+                                            badgeAltaPrevistaClasses = "border-transparent bg-amber-400 text-amber-950 hover:bg-amber-400 text-xs";
+                                          }
+                                        }
+                                      }
 
                                       return (
                                         <div
                                           key={`${leito.id}-paciente-${sugestao.id}`}
-                                          className="rounded-md border bg-muted/30 p-3"
+                                          className="rounded-md border bg-muted/30 p-3 flex justify-between items-start"
                                         >
-                                          <div className="space-y-2">
-                                            <div className="flex flex-wrap items-start justify-between gap-2">
-                                              <div className="flex items-center gap-2">
-                                                <Tooltip>
-                                                  <TooltipTrigger asChild>
-                                                    <Badge className={`cursor-help text-xs font-bold ${scoreClasses}`}>
-                                                      <Sparkles className="mr-1 h-3 w-3" />
-                                                      Score {score}
-                                                    </Badge>
-                                                  </TooltipTrigger>
-                                                  <TooltipContent side="right" className="max-w-xs">
-                                                    <p className="mb-1 font-semibold">Composição do Score</p>
-                                                    {sugestao.scoreMotivos?.length ? (
-                                                      <ul className="space-y-0.5 text-xs">
-                                                        {sugestao.scoreMotivos.map((m, i) => (
-                                                          <li key={i}>• {m}</li>
-                                                        ))}
-                                                      </ul>
-                                                    ) : (
-                                                      <p className="text-xs">Nenhum critério de prioridade aplicado.</p>
-                                                    )}
-                                                  </TooltipContent>
-                                                </Tooltip>
-                                                <p className="font-semibold text-sm text-foreground">
-                                                  {sugestao.nome || 'Nome não informado'}
-                                                </p>
-                                              </div>
-                                              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                                <span>{idadeTexto}</span>
-                                                <span>•</span>
-                                                <span>{sugestao.sexo}</span>
-                                              </div>
-                                            </div>
+                                          {/* Coluna Esquerda: Dados Descritivos */}
+                                          <div className="space-y-2 flex-1 pr-4">
+                                            <p className="font-semibold text-sm text-foreground">
+                                              {sugestao.nome || 'Nome não informado'} <span className="font-normal text-muted-foreground">({idadeTexto} - {sugestao.sexo})</span>
+                                            </p>
+
                                             <div className="text-xs text-muted-foreground">
                                               <span className="font-medium text-foreground">Especialidade:</span>{' '}
                                               {sugestao.especialidade}
                                             </div>
+
                                             <div className="text-xs text-muted-foreground">
                                               <span className="font-medium text-foreground">Localização:</span>{' '}
                                               {sugestao.localizacao}
                                             </div>
+
                                             {sugestao.tempoInternacaoTexto && (
                                               <div className="text-xs text-muted-foreground">
                                                 <span className="font-medium text-foreground">Tempo de Internação:</span>{' '}
                                                 {sugestao.tempoInternacaoTexto}
                                               </div>
                                             )}
+
                                             <div className="mt-1 flex flex-wrap gap-1">
                                               {sugestao.isolamentos.map((rotulo) => (
                                                 <Badge
@@ -824,13 +826,39 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                                               ))}
                                               {sugestao.dataPrevistaAlta && (
                                                 <Badge
-                                                  className="border-transparent bg-yellow-400 text-yellow-950 hover:bg-yellow-400 text-xs"
+                                                  className={badgeAltaPrevistaClasses}
                                                 >
                                                   <CalendarClock className="mr-1 h-3 w-3" />
                                                   ⚠️ Alta Prevista: {sugestao.dataPrevistaAlta}
                                                 </Badge>
                                               )}
                                             </div>
+                                          </div>
+
+                                          {/* Coluna Direita: Score e Tooltip */}
+                                          <div className="flex-shrink-0">
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <span tabIndex={0} className="cursor-help inline-block">
+                                                  <Badge className={`text-lg px-3 py-1 font-bold ${scoreClasses}`}>
+                                                    <Sparkles className="mr-1 h-4 w-4" />
+                                                    Score {score}
+                                                  </Badge>
+                                                </span>
+                                              </TooltipTrigger>
+                                              <TooltipContent side="left" className="max-w-xs z-50">
+                                                <p className="mb-1 font-semibold">Composição do Score</p>
+                                                {sugestao.scoreMotivos?.length ? (
+                                                  <ul className="space-y-0.5 text-xs">
+                                                    {sugestao.scoreMotivos.map((m, i) => (
+                                                      <li key={i}>• {m}</li>
+                                                    ))}
+                                                  </ul>
+                                                ) : (
+                                                  <p className="text-xs">Nenhum critério de prioridade aplicado.</p>
+                                                )}
+                                              </TooltipContent>
+                                            </Tooltip>
                                           </div>
                                         </div>
                                       );
