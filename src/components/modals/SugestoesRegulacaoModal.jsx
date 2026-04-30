@@ -583,6 +583,13 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                   leitosPorId,
                   leitosPorCodigo,
                 );
+                const temIsolamento = possuiIsolamentoAtivo(paciente);
+                const { scoreTotal, motivos } = calcularScoreRegulacao(paciente, {
+                  idade,
+                  temIsolamento,
+                  setorOrigemTexto: localizacao.setorTexto,
+                });
+                const dataPrevistaAltaFmt = formatarDataPrevistaAlta(paciente.dataPrevistaAlta);
 
                 return {
                   id: paciente.id,
@@ -593,27 +600,22 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                   tempoInternacaoTexto: infoTempo.texto,
                   tempoInternacaoTimestamp: infoTempo.timestamp,
                   isolamentos,
-                  temIsolamento: possuiIsolamentoAtivo(paciente),
+                  temIsolamento,
                   setorOrigem: localizacao.setorTexto,
                   leitoOrigem: localizacao.leitoTexto,
                   localizacao: localizacao.localizacaoTexto,
+                  scoreTotal,
+                  scoreMotivos: motivos,
+                  dataPrevistaAlta: dataPrevistaAltaFmt,
                 };
               })
               .sort((a, b) => {
-                if (a.temIsolamento !== b.temIsolamento) {
-                  return a.temIsolamento ? -1 : 1;
-              }
-
-              const idadeA = Number.isFinite(a.idade) ? a.idade : -Infinity;
-              const idadeB = Number.isFinite(b.idade) ? b.idade : -Infinity;
-              if (idadeA !== idadeB) {
-                return idadeB - idadeA;
-              }
-
-              if (a.tempoInternacaoTimestamp !== b.tempoInternacaoTimestamp) {
-                return a.tempoInternacaoTimestamp - b.tempoInternacaoTimestamp;
-              }
-
+                if (b.scoreTotal !== a.scoreTotal) {
+                  return b.scoreTotal - a.scoreTotal;
+                }
+                if (a.tempoInternacaoTimestamp !== b.tempoInternacaoTimestamp) {
+                  return a.tempoInternacaoTimestamp - b.tempoInternacaoTimestamp;
+                }
                 return (a.nome || "").localeCompare(b.nome || "");
               });
 
