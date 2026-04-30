@@ -251,7 +251,7 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
       unidadeTempo = 'dias'
     } = filtros || {};
 
-    const termoBuscaNormalizado = normalizarTexto(searchTerm);
+    const termoBuscaNormalizado = normalizarTexto(String(searchTerm).trim());
     const especialidadeFiltro = normalizarTexto(especialidade);
     const sexoFiltro = sexo || 'todos';
     const idadeMinNumero = idadeMin !== '' ? Number(idadeMin) : null;
@@ -509,7 +509,7 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
           )}
 
           {isolamentosAtivos.length > 0 && (
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1 mt-2">
               {isolamentosAtivos.map((iso, index) => {
                 const infeccao =
                   typeof iso === 'object' && iso?.infeccaoId
@@ -533,9 +533,9 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
                       typeof badgeTexto === 'string' ? badgeTexto : 'iso'
                     }-${index}`}
                     variant="destructive"
-                    className="text-xs flex items-center gap-1"
+                    className="text-[10px] h-4 px-1.5 py-0 flex items-center gap-1"
                   >
-                    <Shield className="h-3 w-3" />
+                    <Shield className="h-2.5 w-2.5" />
                     {badgeTexto}
                   </Badge>
                 );
@@ -595,15 +595,30 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {setoresRegulacao.map((nomeSetor) => (
+          {setoresRegulacao.map((nomeSetor) => {
+            const pacientesDoGrupo = pacientesPorSetor[nomeSetor] || [];
+            const total = pacientesDoGrupo.length;
+            const nomeUpper = nomeSetor.toUpperCase();
+            const isDecisao = nomeUpper.includes('DECISÃO CLINICA') || nomeUpper.includes('DECISÃO CIRURGICA');
+            const isRecuperacao = nomeUpper.includes('CC - RECUPERAÇÃO') || nomeUpper.includes('CC RECU');
+            const aguardando = pacientesDoGrupo.filter((p) => !p.altaAposRPA).length;
+            const headerBg = isDecisao
+              ? 'bg-emerald-50 dark:bg-emerald-950/20'
+              : isRecuperacao
+              ? 'bg-blue-50 dark:bg-blue-950/20'
+              : 'bg-muted/50';
+
+            return (
             <div key={nomeSetor} className="space-y-4">
               {/* Título da Coluna */}
-              <div className="border-b pb-2">
-                <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+              <div className={cn("border-b pb-2 px-3 py-2 rounded-t-md", headerBg)}>
+                <h3 className="font-semibold text-sm text-foreground uppercase tracking-wide">
                   {nomeSetor}
                 </h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {pacientesPorSetor[nomeSetor]?.length || 0} paciente(s)
+                  {isRecuperacao
+                    ? `${total} INTERNADOS / ${aguardando} AGUARDANDO`
+                    : `${total} paciente(s)`}
                 </p>
               </div>
 
@@ -625,7 +640,8 @@ const AguardandoRegulacaoPanel = ({ filtros, sortConfig }) => {
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </CardContent>
 

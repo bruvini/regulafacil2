@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import {
   TrendingUp,
   Wrench,
-  Stethoscope,
   DatabaseIcon,
   BookUser,
   Sparkles,
@@ -210,23 +209,6 @@ const RegulacaoLeitosPage = () => {
           {/* Painel de Regulações em Andamento */}
           <RegulacoesEmAndamentoPanel filtros={filtros} sortConfig={sortConfig} />
 
-          {/* Outros Cards em Grid - ÚLTIMO ITEM */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {/* Card: Marcação Cirúrgica */}
-            <Card className="shadow-card card-interactive">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Stethoscope className="h-5 w-5 text-purple-600" />
-                  Marcações Cirúrgicas Pendentes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  Os dados serão carregados e exibidos aqui.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
         </div>
       </section>
 
