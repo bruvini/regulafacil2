@@ -22,7 +22,7 @@ export class RegulacaoService {
       return false;
     }
 
-    if (paciente?.setorId && setoresPoolIds.has(paciente.setorId)) {
+    if (paciente?.setorId && setoresPoolIds.has(String(paciente.setorId))) {
       return true;
     }
 
@@ -47,16 +47,26 @@ export class RegulacaoService {
     ]));
 
     const setoresPoolIds = new Set(
-      SETORES_POOL_REGULACAO.map(nome => setoresPorNome.get(this.normalizarTexto(nome))?.id).filter(Boolean)
+      SETORES_POOL_REGULACAO.map(nome => {
+        const id = setoresPorNome.get(this.normalizarTexto(nome))?.id;
+        return id ? String(id) : null;
+      }).filter(Boolean) as string[]
     );
     const setoresPoolNormalizados = new Set(SETORES_POOL_REGULACAO.map(nome => this.normalizarTexto(nome)));
 
-    const pacientesElegiveis = (pacientesEnriquecidos || []).filter(p => 
-      this.isPacienteElegivelParaRegulacao(p, setoresPoolIds, setoresPoolNormalizados)
-    );
+    let pacientesElegiveis = (pacientesEnriquecidos || []).filter(p => {
+      if (p?.regulacaoAtiva || p?.altaAposRPA) return false;
+      return this.isPacienteElegivelParaRegulacao(p, setoresPoolIds, setoresPoolNormalizados);
+    });
 
     console.debug(`[RegulacaoService] total pacientes recebidos: ${pacientesEnriquecidos?.length || 0}`);
-    console.debug(`[RegulacaoService] total pacientes após filtro elegibilidade: ${pacientesElegiveis.length}`);
+    console.debug(`[RegulacaoService] total pacientes após filtro elegibilidade estrito: ${pacientesElegiveis.length}`);
+
+    if (pacientesElegiveis.length === 0 && (pacientesEnriquecidos || []).length > 0) {
+      console.debug(`[RegulacaoService] Ativando LEGACY MODE Global: usando todos os pacientes não regulados.`);
+      pacientesElegiveis = (pacientesEnriquecidos || []).filter(p => !(p?.regulacaoAtiva || p?.altaAposRPA));
+      console.debug(`[RegulacaoService] total pacientes após LEGACY MODE: ${pacientesElegiveis.length}`);
+    }
 
     const leitosCompativeisPorPaciente = new Map();
     pacientesElegiveis.forEach(paciente => {
