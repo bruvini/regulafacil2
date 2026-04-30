@@ -8,7 +8,9 @@ import {
 } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { Info } from 'lucide-react';
+import { Info, Lightbulb, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { gerarInsightsFluxo, resumoIcone } from '@/lib/geradorInsightsFluxo';
+import FluxoInsightsModal from '@/components/modals/FluxoInsightsModal';
 import {
   ResponsiveContainer,
   PieChart,
@@ -140,6 +142,7 @@ const IndicadoresRegulacao = ({ dateRange }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [modalIndicador, setModalIndicador] = useState({ open: false, indicadorId: null });
+  const [fluxoModal, setFluxoModal] = useState({ open: false, fluxo: null, insights: [] });
   const abrirModalIndicador = (indicadorId) => setModalIndicador({ open: true, indicadorId });
   const fecharModalIndicador = () => setModalIndicador({ open: false, indicadorId: null });
 
@@ -399,6 +402,13 @@ const IndicadoresRegulacao = ({ dateRange }) => {
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
   }, [regulacoesFiltradas, setoresMap]);
+
+  const dadosFluxoComInsights = useMemo(() => {
+    return dadosFluxo.map((fluxo) => {
+      const insights = gerarInsightsFluxo(fluxo, dadosFluxo, null);
+      return { ...fluxo, insights, resumo: resumoIcone(insights) };
+    });
+  }, [dadosFluxo]);
 
   const dadosComparativoSetores = useMemo(() => {
     if (!regulacoesFiltradas.length) return [];
@@ -729,10 +739,26 @@ const IndicadoresRegulacao = ({ dateRange }) => {
                           <th className="pb-2">Destino</th>
                           <th className="pb-2 text-right">Regulações</th>
                           <th className="pb-2 text-right">Tempo Médio</th>
+                          <th className="pb-2 text-right w-12">Insights</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {dadosFluxo.map((fluxo) => (
+                        {dadosFluxoComInsights.map((fluxo) => {
+                          const Icone =
+                            fluxo.resumo === 'alerta'
+                              ? AlertTriangle
+                              : fluxo.resumo === 'positivo'
+                              ? CheckCircle2
+                              : fluxo.resumo === 'info'
+                              ? Lightbulb
+                              : null;
+                          const corIcone =
+                            fluxo.resumo === 'alerta'
+                              ? 'text-amber-500'
+                              : fluxo.resumo === 'positivo'
+                              ? 'text-emerald-500'
+                              : 'text-blue-500';
+                          return (
                           <tr key={`${fluxo.origem}-${fluxo.destino}`} className="border-t">
                             <td className="py-2 pr-3 font-medium text-foreground">{fluxo.origem}</td>
                             <td className="py-2 pr-3 text-foreground">{fluxo.destino}</td>
@@ -740,11 +766,26 @@ const IndicadoresRegulacao = ({ dateRange }) => {
                             <td className="py-2 text-right text-foreground">
                               {formatMinutes(fluxo.tempoMedio)}
                             </td>
+                            <td className="py-2 text-right">
+                              {Icone && (
+                                <button
+                                  type="button"
+                                  aria-label="Ver insights do fluxo"
+                                  className="inline-flex items-center justify-center rounded hover:bg-muted/60 p-1 transition-colors"
+                                  onClick={() =>
+                                    setFluxoModal({ open: true, fluxo, insights: fluxo.insights })
+                                  }
+                                >
+                                  <Icone className={`h-4 w-4 ${corIcone}`} />
+                                </button>
+                              )}
+                            </td>
                           </tr>
-                        ))}
-                        {!dadosFluxo.length && (
+                          );
+                        })}
+                        {!dadosFluxoComInsights.length && (
                           <tr>
-                            <td colSpan={4} className="py-6 text-center text-muted-foreground">
+                            <td colSpan={5} className="py-6 text-center text-muted-foreground">
                               Nenhum fluxo relevante identificado.
                             </td>
                           </tr>
@@ -881,6 +922,13 @@ const IndicadoresRegulacao = ({ dateRange }) => {
         onClose={fecharModalIndicador}
         indicadorId={modalIndicador.indicadorId}
       />
+      <FluxoInsightsModal
+        isOpen={fluxoModal.open}
+        onClose={() => setFluxoModal({ open: false, fluxo: null, insights: [] })}
+        fluxo={fluxoModal.fluxo}
+        insights={fluxoModal.insights}
+      />
+
     </div>
   );
 };
