@@ -142,6 +142,7 @@ const IndicadoresRegulacao = ({ dateRange }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [modalIndicador, setModalIndicador] = useState({ open: false, indicadorId: null });
+  const [fluxoModal, setFluxoModal] = useState({ open: false, fluxo: null, insights: [] });
   const abrirModalIndicador = (indicadorId) => setModalIndicador({ open: true, indicadorId });
   const fecharModalIndicador = () => setModalIndicador({ open: false, indicadorId: null });
 
