@@ -30,7 +30,12 @@ export class RegulacaoService {
       paciente?.setorNome || paciente?.localizacaoAtual || paciente?.setorOrigem || "",
     );
 
-    return !!setorPacienteNorm && setoresPoolNormalizados.has(setorPacienteNorm);
+    const isElegivel = !!setorPacienteNorm && setoresPoolNormalizados.has(setorPacienteNorm);
+    if (!isElegivel) {
+      console.debug(`[RegulacaoService] paciente ${paciente.id || 'unknown'} descartado: setor inválido (${setorPacienteNorm})`);
+    }
+
+    return isElegivel;
   }
 
   static processarSugestoes(
@@ -62,11 +67,7 @@ export class RegulacaoService {
     console.debug(`[RegulacaoService] total pacientes recebidos: ${pacientesEnriquecidos?.length || 0}`);
     console.debug(`[RegulacaoService] total pacientes após filtro elegibilidade estrito: ${pacientesElegiveis.length}`);
 
-    if (pacientesElegiveis.length === 0 && (pacientesEnriquecidos || []).length > 0) {
-      console.debug(`[RegulacaoService] Ativando LEGACY MODE Global: usando todos os pacientes não regulados.`);
-      pacientesElegiveis = (pacientesEnriquecidos || []).filter(p => !(p?.regulacaoAtiva || p?.altaAposRPA));
-      console.debug(`[RegulacaoService] total pacientes após LEGACY MODE: ${pacientesElegiveis.length}`);
-    }
+
 
     const leitosCompativeisPorPaciente = new Map();
     pacientesElegiveis.forEach(paciente => {

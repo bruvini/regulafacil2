@@ -39,9 +39,7 @@ export class CompatibilidadeLeitoService {
     return 'enfermaria'; // Fallback to enfermaria if unknown
   }
 
-  static verificarEspecialidade(patient: FhirPatient, location: FhirLocation, setorNome: string, legacyMode = false): boolean {
-    if (legacyMode) return true;
-
+  static verificarEspecialidade(patient: FhirPatient, location: FhirLocation, setorNome: string): boolean {
     const especialidadePaciente = patient.extension?.find(e => e.url === 'especialidade')?.valueString;
     const especialidadeNorm = ScoreRegulacaoService.normalizarTexto(especialidadePaciente || '');
     
@@ -65,6 +63,20 @@ export class CompatibilidadeLeitoService {
     hospitalDataLegado: any,
     legacyMode = false
   ): boolean {
+    if (location.isPCP) {
+      const origemNorm = ScoreRegulacaoService.normalizarTexto(
+        patient.extension?.find(e => e.url === 'origem')?.valueString || ''
+      );
+      if (origemNorm.includes('CC -') || origemNorm === 'CC') {
+        console.debug(`[CompatibilidadeLeitoService] paciente ${patient.id} bloqueado: regra PCP (origem CC)`);
+        return false;
+      }
+      if (Array.isArray(pacienteLegado.isolamentos) && pacienteLegado.isolamentos.some((iso: any) => iso?.statusConsideradoAtivo)) {
+        console.debug(`[CompatibilidadeLeitoService] paciente ${patient.id} bloqueado: regra PCP (isolamento ativo)`);
+        return false;
+      }
+    }
+
     if (!legacyMode && location.status !== 'available') {
       console.debug(`[CompatibilidadeLeitoService] leito ${location.id} descartado: motivo=STATUS_INVALIDO (${location.status})`);
       return false;
@@ -75,8 +87,8 @@ export class CompatibilidadeLeitoService {
       return false;
     }
 
-    if (!this.verificarEspecialidade(patient, location, setorNome, legacyMode)) {
-      console.debug(`[CompatibilidadeLeitoService] leito ${location.id} descartado: motivo=ESPECIALIDADE_INCOMPATIVEL`);
+    if (!this.verificarEspecialidade(patient, location, setorNome)) {
+      console.debug(`[CompatibilidadeLeitoService] paciente ${patient.id} incompatível: especialidade`);
       return false;
     }
 

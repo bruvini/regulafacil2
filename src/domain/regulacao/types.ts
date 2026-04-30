@@ -13,6 +13,7 @@ export interface FhirLocation {
   type?: string; 
   identifier?: string; 
   partOf?: string; 
+  isPCP?: boolean;
 }
 
 export interface FhirEncounter {

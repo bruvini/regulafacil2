@@ -72,15 +72,14 @@ describe('CompatibilidadeLeitoService', () => {
     expect(CompatibilidadeLeitoService.normalizeStatus('ocupado')).toBe('occupied');
   });
 
-  it('deve aceitar paciente sem especialidade no modo legado ou se o leito permitir', () => {
+  it('deve aceitar paciente sem especialidade (modo flexivel) mesmo se o leito tiver especialidade restrita', () => {
     const patient: FhirPatient = {
       id: 'p-no-spec', name: 'No Spec', gender: 'M'
     };
     const location: FhirLocation = { id: 'l1', name: 'L1', status: 'available', type: 'enfermaria' };
     
-    // Legacy mode should definitely allow it
     expect(CompatibilidadeLeitoService.isLeitoCompativel(
-      patient, location, 'UNID. CLINICA MEDICA', () => [{ id: 'l1' }], {}, {}, true
+      patient, location, 'UNID. CLINICA MEDICA', () => [{ id: 'l1' }], {}, {}, false
     )).toBe(true);
   });
 
@@ -94,5 +93,24 @@ describe('CompatibilidadeLeitoService', () => {
     expect(CompatibilidadeLeitoService.isLeitoCompativel(
       patient, location, 'SETOR DESCONHECIDO', () => [{ id: 'l1' }], {}, {}, false
     )).toBe(true);
+  });
+
+  it('deve rejeitar paciente com origem CC para leito PCP', () => {
+    const patient: FhirPatient = {
+      id: 'p2', name: 'P2', extension: [{ url: 'origem', valueString: 'CC - SALA 1' }]
+    };
+    const location: FhirLocation = { id: 'l2', name: 'L2', status: 'available', type: 'enfermaria', isPCP: true };
+    expect(CompatibilidadeLeitoService.isLeitoCompativel(
+      patient, location, 'SETOR', () => [{ id: 'l2' }], {}, {}, false
+    )).toBe(false);
+  });
+
+  it('deve rejeitar paciente com isolamento ativo para leito PCP', () => {
+    const patient: FhirPatient = { id: 'p3', name: 'P3' };
+    const location: FhirLocation = { id: 'l3', name: 'L3', status: 'available', type: 'enfermaria', isPCP: true };
+    const pacienteLegado = { isolamentos: [{ statusConsideradoAtivo: true }] };
+    expect(CompatibilidadeLeitoService.isLeitoCompativel(
+      patient, location, 'SETOR', () => [{ id: 'l3' }], pacienteLegado, {}, false
+    )).toBe(false);
   });
 });

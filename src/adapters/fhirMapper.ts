@@ -50,7 +50,8 @@ export class FhirMapper {
       status: statusNorm,
       type: tipoNorm,
       identifier: String(leito?.codigoLeito || leito?.codigo),
-      partOf: String(setor?.id || leito?.setorId || 'unknown')
+      partOf: String(setor?.id || leito?.setorId || 'unknown'),
+      isPCP: !!leito?.isPCP
     };
   }
 
