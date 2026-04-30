@@ -66,8 +66,14 @@ export class RegulacaoService {
 
     const setorExcluidoNorm = this.normalizarTexto(SETOR_EXCLUIDO);
 
+    const totalLeitos = setoresDisponiveis.reduce((acc, setor) => acc + (setor?.leitosVagos?.length || 0), 0);
+    console.debug(`[RegulacaoService] total leitos recebidos: ${totalLeitos}`);
+    if (totalLeitos > 0 && setoresDisponiveis[0]?.leitosVagos?.[0]) {
+      console.debug(`[RegulacaoService] exemplo leito:`, JSON.stringify(setoresDisponiveis[0].leitosVagos[0], null, 2));
+    }
+
     const resultado = setoresDisponiveis
-      .filter((setor) => (setor?.tipoSetor || "").toLowerCase() === "enfermaria")
+      .filter((setor) => CompatibilidadeLeitoService.normalizeTipoLeito(setor?.tipoSetor) === "enfermaria")
       .filter((setor) => this.normalizarTexto(setor?.nomeSetor) !== setorExcluidoNorm)
       .map((setor) => {
         const leitosComSugestoes = setor.leitosVagos

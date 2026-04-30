@@ -22,6 +22,23 @@ export class CompatibilidadeLeitoService {
     return map;
   }
 
+  static normalizeStatus(status: string | null | undefined): 'available' | 'occupied' | 'maintenance' {
+    if (!status) return 'occupied';
+    const s = ScoreRegulacaoService.normalizarTexto(status);
+    if (s === 'LIVRE' || s === 'VAGO' || s === 'DISPONIVEL' || s === 'HIGIENIZACAO') return 'available';
+    if (s === 'MANUTENCAO' || s === 'INTERDITADO') return 'maintenance';
+    return 'occupied';
+  }
+
+  static normalizeTipoLeito(tipo: string | null | undefined): 'enfermaria' | 'uti' | 'isolamento' | 'outro' {
+    if (!tipo) return 'outro';
+    const t = ScoreRegulacaoService.normalizarTexto(tipo);
+    if (t === 'ENFERMARIA' || t === 'ENF') return 'enfermaria';
+    if (t === 'UTI') return 'uti';
+    if (t === 'ISOLAMENTO' || t === 'ISO') return 'isolamento';
+    return 'outro';
+  }
+
   static verificarEspecialidade(patient: FhirPatient, location: FhirLocation, setorNome: string): boolean {
     const especialidadePaciente = patient.extension?.find(e => e.url === 'especialidade')?.valueString;
     const especialidadeNorm = ScoreRegulacaoService.normalizarTexto(especialidadePaciente || '');
@@ -44,13 +61,29 @@ export class CompatibilidadeLeitoService {
     pacienteLegado: any,
     hospitalDataLegado: any
   ): boolean {
+    if (location.status !== 'available') {
+      console.debug(`[CompatibilidadeLeitoService] leito ${location.id} descartado: motivo=STATUS_INVALIDO (${location.status})`);
+      return false;
+    }
+
+    if (location.type !== 'enfermaria') {
+      console.debug(`[CompatibilidadeLeitoService] leito ${location.id} descartado: motivo=TIPO_INVALIDO (${location.type})`);
+      return false;
+    }
+
     if (!this.verificarEspecialidade(patient, location, setorNome)) {
+      console.debug(`[CompatibilidadeLeitoService] leito ${location.id} descartado: motivo=ESPECIALIDADE_INCOMPATIVEL`);
       return false;
     }
 
     const leitosCompat = legacyCompatibilidadeFn(pacienteLegado, hospitalDataLegado, 'enfermaria');
     const leitosSet = new Set((leitosCompat || []).map((l: any) => String(l.id)));
 
-    return leitosSet.has(String(location.id));
+    const legacyCompat = leitosSet.has(String(location.id));
+    if (!legacyCompat) {
+      console.debug(`[CompatibilidadeLeitoService] leito ${location.id} descartado: motivo=REGRAS_COMPLEXAS_LEGADO`);
+    }
+
+    return legacyCompat;
   }
 }

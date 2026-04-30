@@ -1,4 +1,5 @@
 import { FhirPatient, FhirLocation, FhirEncounter, FhirFlag } from './types';
+import { CompatibilidadeLeitoService } from '../domain/regulacao/CompatibilidadeLeitoService';
 
 export class FhirMapper {
   static toPatient(paciente: any): FhirPatient {
@@ -38,11 +39,13 @@ export class FhirMapper {
   }
 
   static toLocation(leito: any, setor?: any): FhirLocation {
+    const statusNorm = CompatibilidadeLeitoService.normalizeStatus(leito?.status);
+    const tipoNorm = CompatibilidadeLeitoService.normalizeTipoLeito(setor?.tipoSetor || leito?.tipoLeito);
     return {
       id: leito?.id || 'unknown',
       name: leito?.codigoLeito || leito?.codigo || leito?.id || 'unknown',
-      status: leito?.status?.toLowerCase() === 'livre' ? 'active' : 'suspended',
-      type: setor?.tipoSetor || 'enfermaria',
+      status: statusNorm,
+      type: tipoNorm,
       identifier: leito?.codigoLeito || leito?.codigo,
       partOf: setor?.id || leito?.setorId
     };

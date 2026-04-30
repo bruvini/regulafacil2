@@ -46,7 +46,7 @@ describe('CompatibilidadeLeitoService', () => {
       gender: 'M',
       extension: [{ url: 'especialidade', valueString: 'CLINICA GERAL' }]
     };
-    const location: FhirLocation = { id: 'l1', name: 'Leito 1', status: 'active' };
+    const location: FhirLocation = { id: 'l1', name: 'Leito 1', status: 'available', type: 'enfermaria' };
 
     const mockLegacyFn = vi.fn().mockReturnValue([{ id: 'l1' }]);
 
@@ -56,5 +56,19 @@ describe('CompatibilidadeLeitoService', () => {
 
     expect(result).toBe(true);
     expect(mockLegacyFn).toHaveBeenCalled();
+  });
+
+  it('leito com status livre deve ser reconhecido como disponível', () => {
+    expect(CompatibilidadeLeitoService.normalizeStatus('livre')).toBe('available');
+    expect(CompatibilidadeLeitoService.normalizeStatus('Vago')).toBe('available');
+  });
+
+  it('leito com ENF deve ser reconhecido como enfermaria', () => {
+    expect(CompatibilidadeLeitoService.normalizeTipoLeito('ENF')).toBe('enfermaria');
+    expect(CompatibilidadeLeitoService.normalizeTipoLeito('enfermaria')).toBe('enfermaria');
+  });
+
+  it('leito com status ocupado não é filtrado incorretamente como disponível', () => {
+    expect(CompatibilidadeLeitoService.normalizeStatus('ocupado')).toBe('occupied');
   });
 });
