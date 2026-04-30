@@ -19,6 +19,13 @@ import {
 } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Sparkles, CalendarClock } from "lucide-react";
 import { useDadosHospitalares } from "@/hooks/useDadosHospitalares";
 import { useQuartos } from "@/hooks/useCollections";
 import { getLeitosVagosPorSetor } from "@/lib/leitosDisponiveisUtils";
@@ -178,6 +185,75 @@ const obterInfoTempoInternacao = (dataInternacao) => {
     timestamp: inicio,
     texto: partes.join(" "),
   };
+};
+
+const calcularDiasInternado = (dataInternacao) => {
+  const data = parseDataFlexivel(dataInternacao);
+  if (!data) return 0;
+  const ms = Date.now() - data.getTime();
+  if (ms <= 0) return 0;
+  return Math.floor(ms / (1000 * 60 * 60 * 24));
+};
+
+const calcularScoreRegulacao = (paciente, contexto = {}) => {
+  const motivos = [];
+  let score = 0;
+
+  if (contexto.temIsolamento) {
+    score += 30;
+    motivos.push("Possui isolamento compatível com o leito (+30)");
+  }
+
+  const idade = Number.isFinite(contexto.idade) ? contexto.idade : null;
+  if (idade !== null) {
+    if (idade >= 80) {
+      score += 20;
+      motivos.push("Paciente Superidoso >80a (+20)");
+    } else if (idade >= 60) {
+      score += 10;
+      motivos.push("Estatuto do Idoso >60a (+10)");
+    }
+  }
+
+  const origemNorm = normalizarTexto(
+    paciente?.setorNome
+      || paciente?.localizacaoAtual
+      || paciente?.setorOrigem
+      || paciente?.setorOrigemNome
+      || contexto.setorOrigemTexto
+      || "",
+  );
+  if (origemNorm.includes("CC - RECUPERACAO") || origemNorm.includes("RECUPERACAO")) {
+    score += 30;
+    motivos.push("Retenção em RPA trava o CC (+30)");
+  } else if (origemNorm.includes("PS DECISAO")) {
+    score += 20;
+    motivos.push("Retenção no Pronto Socorro (+20)");
+  }
+
+  const dias = calcularDiasInternado(paciente?.dataInternacao);
+  if (dias > 0) {
+    const ptsTempo = Math.min(20, dias * 2);
+    score += ptsTempo;
+    motivos.push(`Aguardando há ${dias} ${dias === 1 ? "dia" : "dias"} (+${ptsTempo})`);
+  }
+
+  return {
+    scoreTotal: Math.min(100, score),
+    motivos,
+  };
+};
+
+const formatarDataPrevistaAlta = (valor) => {
+  if (!valor) return null;
+  const data = parseDataFlexivel(valor);
+  if (!data) {
+    const texto = String(valor).trim();
+    return texto || null;
+  }
+  const dd = String(data.getDate()).padStart(2, "0");
+  const mm = String(data.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}`;
 };
 
 const obterIsolamentosAtivos = (paciente, infeccoesMap) => {
@@ -507,6 +583,13 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                   leitosPorId,
                   leitosPorCodigo,
                 );
+                const temIsolamento = possuiIsolamentoAtivo(paciente);
+                const { scoreTotal, motivos } = calcularScoreRegulacao(paciente, {
+                  idade,
+                  temIsolamento,
+                  setorOrigemTexto: localizacao.setorTexto,
+                });
+                const dataPrevistaAltaFmt = formatarDataPrevistaAlta(paciente.dataPrevistaAlta);
 
                 return {
                   id: paciente.id,
@@ -517,27 +600,22 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                   tempoInternacaoTexto: infoTempo.texto,
                   tempoInternacaoTimestamp: infoTempo.timestamp,
                   isolamentos,
-                  temIsolamento: possuiIsolamentoAtivo(paciente),
+                  temIsolamento,
                   setorOrigem: localizacao.setorTexto,
                   leitoOrigem: localizacao.leitoTexto,
                   localizacao: localizacao.localizacaoTexto,
+                  scoreTotal,
+                  scoreMotivos: motivos,
+                  dataPrevistaAlta: dataPrevistaAltaFmt,
                 };
               })
               .sort((a, b) => {
-                if (a.temIsolamento !== b.temIsolamento) {
-                  return a.temIsolamento ? -1 : 1;
-              }
-
-              const idadeA = Number.isFinite(a.idade) ? a.idade : -Infinity;
-              const idadeB = Number.isFinite(b.idade) ? b.idade : -Infinity;
-              if (idadeA !== idadeB) {
-                return idadeB - idadeA;
-              }
-
-              if (a.tempoInternacaoTimestamp !== b.tempoInternacaoTimestamp) {
-                return a.tempoInternacaoTimestamp - b.tempoInternacaoTimestamp;
-              }
-
+                if (b.scoreTotal !== a.scoreTotal) {
+                  return b.scoreTotal - a.scoreTotal;
+                }
+                if (a.tempoInternacaoTimestamp !== b.tempoInternacaoTimestamp) {
+                  return a.tempoInternacaoTimestamp - b.tempoInternacaoTimestamp;
+                }
                 return (a.nome || "").localeCompare(b.nome || "");
               });
 
@@ -576,136 +654,164 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-5xl">
         <DialogHeader>
-          <DialogTitle>Sugestões de Regulação</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            Sugestões Inteligentes de Regulação
+          </DialogTitle>
           <DialogDescription>
-            Conheça as regras abaixo para entender como as sugestões são apresentadas.
+            Pacientes priorizados por Score Clínico (0–100) para cada leito vago compatível.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-6">
-          <Alert>
-            <AlertTitle>Como as Sugestões Funcionam</AlertTitle>
-            <AlertDescription>
-              <div className="space-y-4">
-                <p>
-                  As sugestões de regulação servem como uma referência, indicando pacientes
-                  que foram internados para uma determinada especialidade e mostrando os
-                  leitos compatíveis com o sexo e isolamento desses pacientes que estão
-                  aguardando um leito. A ordenação segue uma prioridade pré-definida, mas não
-                  substitui a avaliação técnica e clínica do enfermeiro regulador.
-                </p>
-                <div>
-                  <h4 className="font-semibold">Ordem de Prioridade</h4>
-                  <ol className="mt-2 list-decimal space-y-2 pl-5">
-                    <li>
-                      Isolamento: O sistema sempre priorizará pacientes com algum tipo de
-                      isolamento.
+        <TooltipProvider delayDuration={150}>
+          <div className="space-y-6">
+            <Alert className="border-primary/30 bg-primary/5">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <AlertTitle className="text-primary">Como o Score Clínico funciona</AlertTitle>
+              <AlertDescription>
+                <div className="space-y-3 text-sm">
+                  <p>
+                    Cada paciente sugerido recebe um <strong>Score de 0 a 100</strong> calculado automaticamente
+                    a partir de critérios clínicos e operacionais. A lista é ordenada do maior para o menor score,
+                    ajudando a priorizar quem mais precisa do leito agora.
+                  </p>
+                  <ul className="grid gap-1.5 sm:grid-cols-2">
+                    <li className="flex items-start gap-2">
+                      <span className="mt-0.5 inline-block h-2 w-2 rounded-full bg-red-500" />
+                      <span><strong>Isolamento ativo</strong> compatível com o leito (+30)</span>
                     </li>
-                    <li>
-                      Idade: A seguir, a prioridade é para os pacientes mais idosos.
+                    <li className="flex items-start gap-2">
+                      <span className="mt-0.5 inline-block h-2 w-2 rounded-full bg-amber-500" />
+                      <span><strong>Idade / vulnerabilidade</strong> — &gt;80a (+20) ou &gt;60a (+10)</span>
                     </li>
-                    <li>
-                      Tempo de Internação: O critério de desempate é o paciente internado há
-                      mais tempo.
+                    <li className="flex items-start gap-2">
+                      <span className="mt-0.5 inline-block h-2 w-2 rounded-full bg-blue-500" />
+                      <span><strong>Gargalo de origem</strong> — RPA (+30) ou PS Decisão (+20)</span>
                     </li>
-                  </ol>
-                </div>
-                <div>
-                  <h4 className="font-semibold">Dica de Uso e Verificação Manual</h4>
-                  <p className="mt-2 text-sm leading-relaxed">
-                    Antes de regular, verifique no Kanban ou no prontuário se a especialidade do paciente
-                    corresponde à da internação, se não há isolamentos não registrados e se ele está clinicamente
-                    apto para a transferência. Leitos PCP possuem critérios clínicos específicos que não são
-                    avaliados aqui. Se um paciente ou leito esperado não aparece, verifique os critérios do sistema
-                    (especialidade, sexo, isolamento exato, idade para PCP, etc.). Após a decisão, utilize o painel
-                    &quot;Pacientes Aguardando Regulação&quot; para efetivar a transferência.
+                    <li className="flex items-start gap-2">
+                      <span className="mt-0.5 inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                      <span><strong>Tempo de espera</strong> — +2 pts/dia internado (máx. +20)</span>
+                    </li>
+                  </ul>
+                  <p className="text-xs text-muted-foreground">
+                    Passe o mouse sobre o badge de Score em cada paciente para ver exatamente quais critérios
+                    contribuíram. Restrições clínicas (especialidade, sexo, isolamento, PCP) são aplicadas como
+                    regras rígidas — pacientes incompatíveis nunca aparecem na lista. O Score é uma orientação;
+                    a decisão final é sempre do enfermeiro regulador.
                   </p>
                 </div>
+              </AlertDescription>
+            </Alert>
+            {carregando ? (
+              <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
+                Carregando leitos disponíveis...
               </div>
-            </AlertDescription>
-          </Alert>
-          {carregando ? (
-            <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
-              Carregando leitos disponíveis...
-            </div>
-          ) : setoresEnfermariaDisponiveis.length ? (
-            <ScrollArea className="h-[60vh] pr-2">
-              <Accordion type="single" collapsible className="space-y-4">
-                {setoresEnfermariaDisponiveis.map((setor) => (
-                  <AccordionItem key={setor.id} value={String(setor.id)}>
-                    <AccordionTrigger>{setor.nome}</AccordionTrigger>
-                    <AccordionContent>
-                      <Accordion type="single" collapsible className="space-y-2">
-                        {setor.leitos.map((leito) => (
-                          <AccordionItem
-                            key={leito.id}
-                            value={`${setor.id}-${leito.id}`}
-                          >
-                            <AccordionTrigger>
-                              <div className="flex w-full items-center justify-between text-left" title={leito.compatibilidade}>
-                                <div className="flex items-center gap-2">
-                                  <span className="font-medium">{leito.codigo}</span>
-                                  {(leito.compatibilidadeBadges || []).length ? (
-                                    <div className="flex flex-wrap gap-1">
-                                      {(leito.compatibilidadeBadges || []).map((badge, index) => (
-                                        <Badge
-                                          key={`${leito.id}-${badge.text}-${index}`}
-                                          variant={badge.variant}
-                                          className="text-xs capitalize"
-                                        >
-                                          {badge.text}
-                                        </Badge>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <Badge variant="outline" className="text-xs text-muted-foreground">
-                                      Livre
-                                    </Badge>
-                                  )}
+            ) : setoresEnfermariaDisponiveis.length ? (
+              <ScrollArea className="h-[60vh] pr-2">
+                <Accordion type="single" collapsible className="space-y-4">
+                  {setoresEnfermariaDisponiveis.map((setor) => (
+                    <AccordionItem key={setor.id} value={String(setor.id)}>
+                      <AccordionTrigger>{setor.nome}</AccordionTrigger>
+                      <AccordionContent>
+                        <Accordion type="single" collapsible className="space-y-2">
+                          {setor.leitos.map((leito) => (
+                            <AccordionItem
+                              key={leito.id}
+                              value={`${setor.id}-${leito.id}`}
+                            >
+                              <AccordionTrigger>
+                                <div className="flex w-full items-center justify-between text-left" title={leito.compatibilidade}>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">{leito.codigo}</span>
+                                    {(leito.compatibilidadeBadges || []).length ? (
+                                      <div className="flex flex-wrap gap-1">
+                                        {(leito.compatibilidadeBadges || []).map((badge, index) => (
+                                          <Badge
+                                            key={`${leito.id}-${badge.text}-${index}`}
+                                            variant={badge.variant}
+                                            className="text-xs capitalize"
+                                          >
+                                            {badge.text}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <Badge variant="outline" className="text-xs text-muted-foreground">
+                                        Livre
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <span className="text-xs font-medium text-muted-foreground">
+                                    {leito.status}
+                                  </span>
                                 </div>
-                                <span className="text-xs font-medium text-muted-foreground">
-                                  {leito.status}
-                                </span>
-                              </div>
-                            </AccordionTrigger>
-                            <AccordionContent>
-                              {leito.sugestoes.length ? (
-                                <div className="space-y-3">
-                                  {leito.sugestoes.map((sugestao) => {
-                                    const idadeTexto = Number.isFinite(sugestao.idade)
-                                      ? `${sugestao.idade} ${sugestao.idade === 1 ? 'ano' : 'anos'}`
-                                      : 'Idade não informada';
+                              </AccordionTrigger>
+                              <AccordionContent>
+                                {leito.sugestoes.length ? (
+                                  <div className="space-y-3">
+                                    {leito.sugestoes.map((sugestao) => {
+                                      const idadeTexto = Number.isFinite(sugestao.idade)
+                                        ? `${sugestao.idade} ${sugestao.idade === 1 ? 'ano' : 'anos'}`
+                                        : 'Idade não informada';
 
-                                    return (
-                                      <div
-                                        key={`${leito.id}-paciente-${sugestao.id}`}
+                                      const score = sugestao.scoreTotal ?? 0;
+                                      const scoreClasses = score >= 70
+                                        ? 'bg-red-600 text-white hover:bg-red-600 border-transparent'
+                                        : score >= 40
+                                          ? 'bg-amber-500 text-white hover:bg-amber-500 border-transparent'
+                                          : 'bg-slate-500 text-white hover:bg-slate-500 border-transparent';
+
+                                      return (
+                                        <div
+                                          key={`${leito.id}-paciente-${sugestao.id}`}
                                           className="rounded-md border bg-muted/30 p-3"
-                                      >
-                                        <div className="space-y-2">
-                                          <div className="flex flex-wrap items-start justify-between gap-2">
-                                            <p className="font-semibold text-sm text-foreground">
-                                              {sugestao.nome || 'Nome não informado'}
-                                            </p>
-                                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                              <span>{idadeTexto}</span>
-                                              <span>•</span>
-                                              <span>{sugestao.sexo}</span>
+                                        >
+                                          <div className="space-y-2">
+                                            <div className="flex flex-wrap items-start justify-between gap-2">
+                                              <div className="flex items-center gap-2">
+                                                <Tooltip>
+                                                  <TooltipTrigger asChild>
+                                                    <Badge className={`cursor-help text-xs font-bold ${scoreClasses}`}>
+                                                      <Sparkles className="mr-1 h-3 w-3" />
+                                                      Score {score}
+                                                    </Badge>
+                                                  </TooltipTrigger>
+                                                  <TooltipContent side="right" className="max-w-xs">
+                                                    <p className="mb-1 font-semibold">Composição do Score</p>
+                                                    {sugestao.scoreMotivos?.length ? (
+                                                      <ul className="space-y-0.5 text-xs">
+                                                        {sugestao.scoreMotivos.map((m, i) => (
+                                                          <li key={i}>• {m}</li>
+                                                        ))}
+                                                      </ul>
+                                                    ) : (
+                                                      <p className="text-xs">Nenhum critério de prioridade aplicado.</p>
+                                                    )}
+                                                  </TooltipContent>
+                                                </Tooltip>
+                                                <p className="font-semibold text-sm text-foreground">
+                                                  {sugestao.nome || 'Nome não informado'}
+                                                </p>
+                                              </div>
+                                              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                <span>{idadeTexto}</span>
+                                                <span>•</span>
+                                                <span>{sugestao.sexo}</span>
+                                              </div>
                                             </div>
-                                          </div>
-                                          <div className="text-xs text-muted-foreground">
-                                            <span className="font-medium text-foreground">Especialidade:</span>{' '}
-                                            {sugestao.especialidade}
-                                          </div>
-                                          <div className="text-xs text-muted-foreground">
-                                            <span className="font-medium text-foreground">Localização:</span>{' '}
-                                            {sugestao.localizacao}
-                                          </div>
-                                          {sugestao.tempoInternacaoTexto && (
                                             <div className="text-xs text-muted-foreground">
-                                              <span className="font-medium text-foreground">Tempo de Internação:</span>{' '}
-                                              {sugestao.tempoInternacaoTexto}
+                                              <span className="font-medium text-foreground">Especialidade:</span>{' '}
+                                              {sugestao.especialidade}
                                             </div>
-                                          )}
-                                          {sugestao.isolamentos.length > 0 && (
+                                            <div className="text-xs text-muted-foreground">
+                                              <span className="font-medium text-foreground">Localização:</span>{' '}
+                                              {sugestao.localizacao}
+                                            </div>
+                                            {sugestao.tempoInternacaoTexto && (
+                                              <div className="text-xs text-muted-foreground">
+                                                <span className="font-medium text-foreground">Tempo de Internação:</span>{' '}
+                                                {sugestao.tempoInternacaoTexto}
+                                              </div>
+                                            )}
                                             <div className="mt-1 flex flex-wrap gap-1">
                                               {sugestao.isolamentos.map((rotulo) => (
                                                 <Badge
@@ -716,33 +822,41 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                                                   {rotulo}
                                                 </Badge>
                                               ))}
+                                              {sugestao.dataPrevistaAlta && (
+                                                <Badge
+                                                  className="border-transparent bg-yellow-400 text-yellow-950 hover:bg-yellow-400 text-xs"
+                                                >
+                                                  <CalendarClock className="mr-1 h-3 w-3" />
+                                                  ⚠️ Alta Prevista: {sugestao.dataPrevistaAlta}
+                                                </Badge>
+                                              )}
                                             </div>
-                                          )}
+                                          </div>
                                         </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                                  Nenhum paciente compatível encontrado.
-                                </div>
-                              )}
-                            </AccordionContent>
-                          </AccordionItem>
-                        ))}
-                      </Accordion>
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-            </ScrollArea>
-          ) : (
-            <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
-              Nenhum leito de enfermaria disponível no momento.
-            </div>
-          )}
-        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                                    Nenhum paciente compatível encontrado.
+                                  </div>
+                                )}
+                              </AccordionContent>
+                            </AccordionItem>
+                          ))}
+                        </Accordion>
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
+              </ScrollArea>
+            ) : (
+              <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
+                Nenhum leito de enfermaria disponível no momento.
+              </div>
+            )}
+          </div>
+        </TooltipProvider>
       </DialogContent>
     </Dialog>
   );

@@ -126,7 +126,11 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
             dataInternacao: (row[3] || '').toString(),
             nomeSetor: (row[4] || '').toString().trim().toUpperCase(),
             codigoLeito: (row[6] || '').toString().trim().toUpperCase(),
-            especialidade: (row[7] || '').toString().toUpperCase().trim()
+            especialidade: (row[7] || '').toString().toUpperCase().trim(),
+            cns: (row[8] || '').toString().trim(),
+            cidade: (row[9] || '').toString().trim().toUpperCase(),
+            dataPrevistaAlta: (row[10] || '').toString().trim(),
+            prestadorResponsavel: (row[11] || '').toString().trim().toUpperCase()
           })).filter(p => p.nomePaciente && p.codigoLeito);
           
           resolve(pacientesData);
@@ -599,6 +603,23 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
           especialidade: dadosNovos.especialidade
         };
 
+        // Sempre atualizar CNS, dataPrevistaAlta e prestadorResponsavel (refletem o estado atual da MV)
+        if (typeof dadosNovos.cns !== 'undefined') {
+          updates.cns = dadosNovos.cns || '';
+        }
+        if (typeof dadosNovos.dataPrevistaAlta !== 'undefined') {
+          updates.dataPrevistaAlta = dadosNovos.dataPrevistaAlta || '';
+        }
+        if (typeof dadosNovos.prestadorResponsavel !== 'undefined') {
+          updates.prestadorResponsavel = dadosNovos.prestadorResponsavel || '';
+        }
+        // Cidade só é gravada se o paciente ainda não tiver uma cidade no Firestore
+        const cidadeAtual = (paciente?.cidade || '').toString().trim();
+        const cidadeNova = (dadosNovos.cidade || '').toString().trim();
+        if (!cidadeAtual && cidadeNova) {
+          updates.cidade = cidadeNova;
+        }
+
         if (setorDestino?.tipoSetor === 'UTI') {
           updates.pedidoUTI = deleteField();
         }
@@ -618,10 +639,15 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
           dataInternacao: parseDataHoraMV(paciente.dataInternacao) || serverTimestamp(),
           especialidade: paciente.especialidade,
           leitoId: paciente.leitoId,
-          setorId: paciente.setorId
+          setorId: paciente.setorId,
+          cns: paciente.cns || '',
+          cidade: paciente.cidade || '',
+          dataPrevistaAlta: paciente.dataPrevistaAlta || '',
+          prestadorResponsavel: paciente.prestadorResponsavel || ''
         });
         leitosParaAtualizar.add(paciente.leitoId);
       });
+
 
       // EXECUTAR CONCLUSÕES AUTOMÁTICAS DE REGULAÇÕES
       if (processedData.regulacoesProcessadas && processedData.regulacoesProcessadas.concluidas) {
