@@ -392,6 +392,11 @@ export const encontrarLeitosCompativeis = (
 
     // Regra PCP (Hard Rule reforçada)
     if (leito.isPCP) {
+      const hasIsolation = chavesPaciente.size > 0;
+      if (hasIsolation) {
+         return; // REJEITA imediatamente: pacientes com isolamento não vão para PCP
+      }
+
       // Verificações estritas
       const isAgeOk = idade !== null && idade >= 18 && idade <= 60;
       const hasNoIsolation = chavesPaciente.size === 0;
