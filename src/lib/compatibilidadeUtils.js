@@ -392,26 +392,17 @@ export const encontrarLeitosCompativeis = (
 
     // Regra PCP (Hard Rule reforçada)
     if (leito.isPCP) {
-      const hasIsolation = chavesPaciente.size > 0;
+      const hasIsolation = Array.isArray(pacienteAlvo.isolamentos) && pacienteAlvo.isolamentos.some(iso => iso && (iso.statusConsideradoAtivo || ['confirmado', 'suspeito'].includes((iso.status || '').toLowerCase())));
       
-      // TODO: Refatorar futura validação via SNOMED CT: 406414002/406415001/406419007
+      // TODO: Migrar validação PCP para terminologia SNOMED CT e estrutura HL7/FHIR na refatoração v2.0
       if (hasIsolation) {
          return; // REJEITA imediatamente: pacientes com isolamento não vão para PCP
       }
 
       // Verificações estritas
       const isAgeOk = idade !== null && idade >= 18 && idade <= 60;
-      const hasNoIsolation = chavesPaciente.size === 0;
-      const origemNormalizada = [
-        pacienteAlvo.setorOrigemNome,
-        pacienteAlvo.setorOrigem,
-        pacienteAlvo.origemSetorNome,
-        pacienteAlvo.origem,
-        pacienteAlvo.setorNome,
-        pacienteAlvo.localizacaoAtual,
-      ]
-        .map((valor) => removerAcentos(textoUpper(valor)))
-        .find((texto) => texto) || '';
+      const hasNoIsolation = !hasIsolation;
+      const origemNormalizada = [pacienteAlvo.setorNome, pacienteAlvo.localizacaoAtual, pacienteAlvo.setorOrigem, pacienteAlvo.setorOrigemNome].map(v => removerAcentos(textoUpper(v))).find(Boolean) || '';
 
       // HARD RULE: Pacientes vindos de CC - RECUPERAÇÃO (RPA) NUNCA podem ir para leito PCP.
       // RPA não tem perfil clínico para Cuidados Prolongados/Paliativos diretos do bloco cirúrgico.

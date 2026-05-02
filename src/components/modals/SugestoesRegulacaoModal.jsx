@@ -750,7 +750,7 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                               </AccordionTrigger>
                               <AccordionContent>
                                 {leito.sugestoes.length ? (
-                                  <div className="space-y-3 pr-2 pb-4">
+                                  <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2 pb-2 scrollbar-thin">
                                     {leito.sugestoes.map((sugestao) => {
                                       const idadeTexto = Number.isFinite(sugestao.idade)
                                         ? `${sugestao.idade} ${sugestao.idade === 1 ? 'ano' : 'anos'}`
