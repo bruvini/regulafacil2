@@ -391,35 +391,24 @@ export const encontrarLeitosCompativeis = (
     }
 
     // Regra PCP (Hard Rule reforçada)
-    if (leito.isPCP) {
-      const hasIsolation = Array.isArray(pacienteAlvo.isolamentos) && pacienteAlvo.isolamentos.some(iso => iso && (iso.statusConsideradoAtivo || ['confirmado', 'suspeito'].includes((iso.status || '').toLowerCase())));
+    const isPCPBed = leito.isPCP === true || String(leito?.codigoLeito || leito?.codigo || leito?.nomeLeito || leito?.nome || '').toUpperCase().includes('PCP');
+    if (isPCPBed) {
+      const numIdade = Number(idade);
+      if (Number.isNaN(numIdade) || numIdade < 18 || numIdade > 60) {
+        return;
+      }
+
+      // TODO: Mapear códigos de isolamento para SNOMED CT (ex: 406419007) na migração FHIR
+      const hasInfection = chavesPaciente.size > 0 || (Array.isArray(pacienteAlvo.isolamentos) && pacienteAlvo.isolamentos.length > 0);
+      if (hasInfection) {
+        return;
+      }
+
+      const origemExtensa = Object.values(pacienteAlvo).join(' ').toUpperCase();
       
-      // TODO: Migrar validação PCP para terminologia SNOMED CT e estrutura HL7/FHIR na refatoração v2.0
-      if (hasIsolation) {
-         return; // REJEITA imediatamente: pacientes com isolamento não vão para PCP
-      }
-
-      // Verificações estritas
-      const isAgeOk = idade !== null && idade >= 18 && idade <= 60;
-      const hasNoIsolation = !hasIsolation;
-      const origemNormalizada = [pacienteAlvo.setorNome, pacienteAlvo.localizacaoAtual, pacienteAlvo.setorOrigem, pacienteAlvo.setorOrigemNome].map(v => removerAcentos(textoUpper(v))).find(Boolean) || '';
-
-      // HARD RULE: Pacientes vindos de CC - RECUPERAÇÃO (RPA) NUNCA podem ir para leito PCP.
-      // RPA não tem perfil clínico para Cuidados Prolongados/Paliativos diretos do bloco cirúrgico.
-      const isFromRPA =
-        origemNormalizada === 'CC - RECUPERACAO'
-        || origemNormalizada.includes('RECUPERACAO')
-        || origemNormalizada.includes('RPA')
-        || origemNormalizada === 'CC RECU';
-
+      // TODO: Padronizar Origem/Destino via protocolo HL7 na v2.0
+      const isFromRPA = origemExtensa.includes('RECUPERACAO') || origemExtensa.includes('RPA') || origemExtensa.includes(' RECU');
       if (isFromRPA) {
-        return; // Rejeita imediatamente — regra inviolável
-      }
-
-      const isOriginOk = !isFromRPA;
-      const isPcpEligible = isAgeOk && hasNoIsolation && isOriginOk;
-
-      if (!isPcpEligible) {
         return;
       }
     }
