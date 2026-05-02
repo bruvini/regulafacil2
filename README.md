@@ -1,73 +1,44 @@
-# Welcome to your Lovable project
+# RegulaFacil
 
-## Project info
+**Versão:** ee02381  
+**Licença:** GPLv3
 
-**URL**: https://lovable.dev/projects/9e30a1e6-b5ff-4442-a598-1b38e0696cc5
+## Autoria
+Desenvolvido pelo **Enfermeiro e Data Scientist Bruno Vinicius da Silva**, no **Núcleo Interno de Regulação (NIR)** do Hospital Municipal São José, Joinville/SC.
 
-## How can I edit this code?
+## Premiação
+O **RegulaFacil** foi o grande vencedor da 1ª edição do **Prêmio InovACIJ 2025** (o "Oscar da Inovação" em Joinville), sendo reconhecido por sua excelência em otimizar a regulação de leitos, ampliar a segurança clínica e elevar a eficiência no atendimento hospitalar.
 
-There are several ways of editing your application.
+![Prêmio InovACIJ](public/premiacao_inovacij.jpg)
 
-**Use Lovable**
+---
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/9e30a1e6-b5ff-4442-a598-1b38e0696cc5) and start prompting.
+## Sobre o Projeto
+O RegulaFacil é uma solução institucional autoral desenvolvida para a gestão inteligente do fluxo de leitos, regulação de pacientes e otimização da jornada do cuidado no Hospital Municipal São José (HMSJ).
 
-Changes made via Lovable will be committed automatically to this repo.
+A arquitetura do sistema foi projetada com foco em interoperabilidade, prevendo integração futura com o padrão **FHIR (Fast Healthcare Interoperability Resources)** e suporte à mensageria **HL7**, bem como mapeamento clínico via **SNOMED CT**.
 
-**Use your preferred IDE**
+---
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## Tecnologias Utilizadas
+- **Vite** — Bundler e servidor de desenvolvimento
+- **React 18** — Interface reativa e componentizada
+- **TypeScript** — Tipagem estática para maior segurança
+- **shadcn/ui** — Componentes acessíveis e personalizáveis
+- **Tailwind CSS** — Estilização utilitária
+- **Firebase / Firestore** — Backend em tempo real e autenticação
+- **React Query** — Gerenciamento de estado assíncrono
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+---
 
-Follow these steps:
+## Governança e Conformidade
+- **LGPD:** O tratamento de dados pessoais sensíveis é realizado sob o amparo do legítimo interesse, consentimento clínico e obrigação legal, em total conformidade com a Lei nº 13.709/2018.
+- **FHIR R4:** Estrutura de dados preparada para interoperabilidade via padrão HL7 FHIR R4.
+- **SNOMED CT:** Planejamento para uso de terminologia clínica padronizada no mapeamento de diagnósticos e isolamentos.
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+---
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/9e30a1e6-b5ff-4442-a598-1b38e0696cc5) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+## Contato Institucional
+**Hospital Municipal São José — Núcleo Interno de Regulação (NIR)**  
+Joinville — SC  
+Email: bruvini.silva12@gmail.com

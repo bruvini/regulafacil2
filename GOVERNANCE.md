@@ -1,8 +1,13 @@
-# Governança do Projeto
+# Governança do Projeto — RegulaFacil
 
-## CI/CD
-Rollback Executado: Retorno à versão 268db88360896763dc729d962757702a824c0788 devido a conflitos de tipagem estrita na camada FHIR/SNOMED CT. Regra estabelecida: Futuras migrações de interoperabilidade devem ser desenvolvidas e homologadas em branches isoladas antes de atingirem o fluxo de Regulação.
+**Autoria:** Núcleo Interno de Regulação (NIR) — Hospital Municipal São José, Joinville/SC  
+**Responsável:** Enf. Bruno Vinicius da Silva  
+**Licença:** GPLv3
+
+## Diretrizes de Gestão
+Este projeto é uma ferramenta institucional desenvolvida para otimizar a regulação hospitalar. A governança é exercida pelo NIR/HMSJ, garantindo a soberania dos dados e a conformidade com as políticas de saúde pública.
 
 ## Padrões de Desenvolvimento
-- Padrão de Commits: Todos os commits devem seguir o formato Conventional Commits e ser escritos EXCLUSIVAMENTE em Português do Brasil. Obrigatório o uso de numeração sequencial nos commits a partir deste ponto. Formato: "[Número Sequencial] - [tipo]: [mensagem em PT-BR]". Exemplo: "1 - fix: corrige scroll".
-- Padrão Clínico: Lógicas de isolamento e bloqueio de leitos devem prever a futura adoção de Terminologia SNOMED CT e estrutura HL7/FHIR.
+- **Código Aberto:** O sistema é licenciado sob GPLv3, incentivando a colaboração e melhoria contínua dentro da rede pública de saúde.
+- **Commits:** Devem seguir o padrão Conventional Commits com numeração sequencial: `[Número] - [tipo]: [mensagem em PT-BR]`.
+- **Interoperabilidade:** Todo novo módulo deve prever compatibilidade com HL7/FHIR e SNOMED CT.
