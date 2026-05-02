@@ -750,21 +750,13 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                               </AccordionTrigger>
                               <AccordionContent>
                                 {leito.sugestoes.length ? (
-                                  <div className="space-y-3">
+                                  <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
                                     {leito.sugestoes.map((sugestao) => {
                                       const idadeTexto = Number.isFinite(sugestao.idade)
                                         ? `${sugestao.idade} ${sugestao.idade === 1 ? 'ano' : 'anos'}`
                                         : 'Idade não informada';
 
                                       const score = sugestao.scoreTotal ?? 0;
-                                      let scoreClasses = 'bg-slate-500 text-white hover:bg-slate-500 border-transparent';
-                                      if (score === 100) {
-                                        scoreClasses = 'bg-emerald-600 text-white hover:bg-emerald-600 border-transparent';
-                                      } else if (score >= 50) {
-                                        scoreClasses = 'bg-amber-500 text-white hover:bg-amber-500 border-transparent';
-                                      } else {
-                                        scoreClasses = 'bg-red-600 text-white hover:bg-red-600 border-transparent';
-                                      }
 
                                       let badgeAltaPrevistaClasses = "border-transparent bg-yellow-400 text-yellow-950 hover:bg-yellow-400 text-xs";
                                       if (sugestao.dataPrevistaAlta) {
@@ -841,7 +833,10 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
                                             <Tooltip>
                                               <TooltipTrigger asChild>
                                                 <span tabIndex={0} className="cursor-help inline-block">
-                                                  <Badge className={`text-lg px-3 py-1 font-bold ${scoreClasses}`}>
+                                                  <Badge 
+                                                    className="text-lg px-3 py-1 font-bold border-transparent text-white hover:opacity-90"
+                                                    style={{ backgroundColor: `hsl(calc(${score} * 1.2), 80%, 45%)` }}
+                                                  >
                                                     <Sparkles className="mr-1 h-4 w-4" />
                                                     Score {score}
                                                   </Badge>

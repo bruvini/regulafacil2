@@ -393,6 +393,8 @@ export const encontrarLeitosCompativeis = (
     // Regra PCP (Hard Rule reforçada)
     if (leito.isPCP) {
       const hasIsolation = chavesPaciente.size > 0;
+      
+      // TODO: Refatorar futura validação via SNOMED CT: 406414002/406415001/406419007
       if (hasIsolation) {
          return; // REJEITA imediatamente: pacientes com isolamento não vão para PCP
       }
