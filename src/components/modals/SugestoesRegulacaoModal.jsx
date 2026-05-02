@@ -415,7 +415,7 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
   } = useDadosHospitalares();
   const { data: quartos = [], loading: loadingQuartos } = useQuartos();
   const { regras: regrasConfig, loading: loadingRegras } = useRegrasConfig();
-  const carregando = loadingDados || loadingQuartos;
+  const carregando = loadingDados || loadingQuartos || loadingRegras;
 
   // Gera os perfis de setor normalizados a partir do Firebase (dinâmico)
   const perfisNormalizados = useMemo(() => {
@@ -627,6 +627,7 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
     estrutura,
     pacientesEnriquecidos,
     infeccoesMap,
+    regrasConfig,
   ]);
 
   return (
