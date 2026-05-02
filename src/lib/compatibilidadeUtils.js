@@ -418,7 +418,8 @@ export const encontrarLeitosCompativeis = (
       const isFromRPA =
         origemNormalizada === 'CC - RECUPERACAO'
         || origemNormalizada.includes('RECUPERACAO')
-        || origemNormalizada.includes('RPA');
+        || origemNormalizada.includes('RPA')
+        || origemNormalizada === 'CC RECU';
 
       if (isFromRPA) {
         return; // Rejeita imediatamente — regra inviolável
