@@ -285,6 +285,11 @@ export const AuthProvider = ({ children }) => {
       return true;
     }
 
+    // Rota de configurações: exclusiva para administradores
+    if (route === '/configuracoes') {
+      return currentUser.tipoUsuario === 'Administrador';
+    }
+
     // Administradores têm acesso a tudo
     if (currentUser.tipoUsuario === 'Administrador') {
       return true;

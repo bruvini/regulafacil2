@@ -11,3 +11,4 @@ Este projeto é uma ferramenta institucional desenvolvida para otimizar a regula
 - **Código Aberto:** O sistema é licenciado sob GPLv3, incentivando a colaboração e melhoria contínua dentro da rede pública de saúde.
 - **Commits:** Devem seguir o padrão Conventional Commits com numeração sequencial: `[Número] - [tipo]: [mensagem em PT-BR]`.
 - **Interoperabilidade:** Todo novo módulo deve prever compatibilidade com HL7/FHIR e SNOMED CT.
+- **Motor de Regras:** Toda lógica de negócio restritiva (idades, compatibilidade de setores, bloqueios de isolamento) deve ser parametrizada via Módulo de Configurações (Firestore), evitando hardcode, facilitando a auditoria e a futura padronização HL7/SNOMED CT.

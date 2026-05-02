@@ -318,9 +318,18 @@ export const encontrarLeitosCompativeis = (
   hospitalData,
   modo = 'enfermaria',
   opcoesEspeciais = {},
+  regrasConfig = null,
 ) => {
   const { estrutura } = hospitalData;
   if (!pacienteAlvo || !estrutura) return [];
+
+  // Extrai parâmetros PCP do regrasConfig ou usa defaults seguros (espelham o hardcode original).
+  // TODO (HL7 v3.0): Parâmetro origensBloqueadas será mapeado para segmentos ADT/EVN.
+  const idadeMinimaPCP = regrasConfig?.pcp?.idadeMinima ?? 18;
+  const idadeMaximaPCP = regrasConfig?.pcp?.idadeMaxima ?? 60;
+  const origensBloqueadasPCP = Array.isArray(regrasConfig?.pcp?.origensBloqueadas)
+    ? regrasConfig.pcp.origensBloqueadas
+    : ['RECUPERACAO', 'RPA', ' RECU'];
 
   const { filtroSetoresEspecial } = opcoesEspeciais || {};
 
@@ -382,7 +391,8 @@ export const encontrarLeitosCompativeis = (
     const isPCPBed = leito.isPCP === true || String(leito?.codigoLeito || leito?.codigo || leito?.nomeLeito || leito?.nome || '').toUpperCase().includes('PCP');
     if (isPCPBed) {
       const numIdade = Number(idade);
-      if (Number.isNaN(numIdade) || numIdade < 18 || numIdade > 60) {
+      // Faixa etária PCP: parametrizada via regrasConfig (antes hardcoded 18–60)
+      if (Number.isNaN(numIdade) || numIdade < idadeMinimaPCP || numIdade > idadeMaximaPCP) {
         return;
       }
 
@@ -414,8 +424,13 @@ export const encontrarLeitosCompativeis = (
 
       const origemExtensa = removerAcentosLocal(Object.values(pacienteAlvo).join(' ')) + ' ' + camposOrigem;
 
+      // Origens bloqueadas PCP: parametrizadas via regrasConfig (antes hardcoded)
       // TODO: Padronizar Origem/Destino via protocolo HL7 na v2.0
-      const isFromRPA = origemExtensa.includes('RECUPERACAO') || origemExtensa.includes('RPA') || origemExtensa.includes(' RECU');
+      const removerAcentosOrigem = (s) =>
+        String(s || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toUpperCase();
+      const isFromRPA = origensBloqueadasPCP.some((origem) =>
+        origemExtensa.includes(removerAcentosOrigem(origem)),
+      );
       if (isFromRPA) {
         return;
       }

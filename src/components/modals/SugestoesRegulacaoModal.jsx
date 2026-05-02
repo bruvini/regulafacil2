@@ -31,48 +31,11 @@ import { useQuartos } from "@/hooks/useCollections";
 import { getLeitosVagosPorSetor } from "@/lib/leitosDisponiveisUtils";
 import { encontrarLeitosCompativeis, calcularIdade } from "@/lib/compatibilidadeUtils";
 import { intervalToDuration } from "date-fns";
+import { useRegrasConfig } from "@/hooks/useRegrasConfig";
 
-const PERFIS_DE_SETOR_POR_ESPECIALIDADE = {
-  "UNID. JS ORTOPEDIA": [
-    "NEUROCIRURGIA",
-    "ODONTOLOGIA C.TRAUM.B.M.F.",
-    "ORTOPEDIA/TRAUMATOLOGIA",
-    "BUCOMAXILO",
-  ],
-  "UNID. INT. GERAL - UIG": [
-    "CLINICA GERAL",
-    "INTENSIVISTA",
-    "NEUROLOGIA",
-    "PROCTOLOGIA",
-    "UROLOGIA",
-    "MASTOLOGIA",
-  ],
-  "UNID. CLINICA MEDICA": [
-    "CLINICA GERAL",
-    "INTENSIVISTA",
-    "NEUROLOGIA",
-    "PROCTOLOGIA",
-    "UROLOGIA",
-    "MASTOLOGIA",
-  ],
-  "UNID. ONCOLOGIA": [
-    "HEMATOLOGIA",
-    "ONCOLOGIA CIRURGICA",
-    "ONCOLOGIA CLINICA/CANCEROLOGIA",
-  ],
-  "UNID. CIRURGICA": [
-    "CIRURGIA CABECA E PESCOCO",
-    "CIRURGIA GERAL",
-    "CIRURGIA TORACICA",
-    "CIRURGIA VASCULAR",
-    "NEUROCIRURGIA",
-    "PROCTOLOGIA",
-    "UROLOGIA",
-    "ONCOLOGIA CIRURGICA",
-    "MASTOLOGIA",
-  ],
-  "UNID. NEFROLOGIA TRANSPLANTE": ["NEFROLOGIA", "HEPATOLOGISTA"],
-};
+// PERFIS_DE_SETOR_POR_ESPECIALIDADE foram migrados para o Firestore via useRegrasConfig.
+// A constante abaixo é mantida como referência histórica e para outros consumidores do arquivo.
+// O componente agora usa regrasConfig.perfisSetor (dinâmico).
 
 const SETORES_POOL_REGULACAO = [
   "PS DECISÃO CLINICA",
@@ -89,12 +52,6 @@ const normalizarTexto = (valor) =>
     .toUpperCase()
     .trim();
 
-const PERFIS_NORMALIZADOS = new Map(
-  Object.entries(PERFIS_DE_SETOR_POR_ESPECIALIDADE).map(([setor, especialidades]) => [
-    normalizarTexto(setor),
-    new Set(especialidades.map((item) => normalizarTexto(item))),
-  ]),
-);
 
 const parseDataFlexivel = (valor) => {
   if (!valor) return null;
@@ -457,7 +414,19 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
     loading: loadingDados,
   } = useDadosHospitalares();
   const { data: quartos = [], loading: loadingQuartos } = useQuartos();
+  const { regras: regrasConfig, loading: loadingRegras } = useRegrasConfig();
   const carregando = loadingDados || loadingQuartos;
+
+  // Gera os perfis de setor normalizados a partir do Firebase (dinâmico)
+  const perfisNormalizados = useMemo(() => {
+    const perfis = regrasConfig?.perfisSetor ?? {};
+    return new Map(
+      Object.entries(perfis).map(([setor, especialidades]) => [
+        normalizarTexto(setor),
+        new Set((especialidades || []).map((item) => normalizarTexto(item))),
+      ]),
+    );
+  }, [regrasConfig]);
 
   const infeccoesMap = useMemo(
     () => new Map((infeccoes || []).map((item) => [item.id, item])),
@@ -549,7 +518,7 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
         ? { ...paciente, setorNome: setorResolvido.nomeSetor || setorResolvido.nome || setorResolvido.siglaSetor || paciente.setorNome }
         : paciente;
 
-      const leitosCompat = encontrarLeitosCompativeis(pacienteComSetor, hospitalData, "enfermaria");
+      const leitosCompat = encontrarLeitosCompativeis(pacienteComSetor, hospitalData, "enfermaria", {}, regrasConfig);
       leitosCompativeisPorPaciente.set(
         paciente.id,
         new Set((leitosCompat || []).map((leitoCompat) => leitoCompat.id)),
@@ -561,7 +530,7 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
       .filter((setor) => normalizarTexto(setor?.nomeSetor) !== setorExcluidoNorm)
       .map((setor) => {
         const setorNomeNorm = normalizarTexto(setor?.nomeSetor);
-        const especialidadesPermitidas = PERFIS_NORMALIZADOS.get(setorNomeNorm) || new Set();
+        const especialidadesPermitidas = perfisNormalizados.get(setorNomeNorm) || new Set();
 
         const leitosComSugestoes = setor.leitosVagos
           .map((leito) => {

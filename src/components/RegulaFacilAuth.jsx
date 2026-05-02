@@ -58,6 +58,7 @@ import {
   ArrowRightLeft,
   Info,
   X,
+  Settings,
 } from 'lucide-react';
 import {
   getSetoresCollection,
@@ -91,6 +92,7 @@ import GestaoEstrategicaPage from '../pages/GestaoEstrategicaPage';
 import AuditoriaPage from '../pages/AuditoriaPage';
 import GestaoPacientesPage from './GestaoPacientesPage';
 import InformacoesPage from '../pages/InformacoesPage';
+import ConfiguracoesPage from '../pages/ConfiguracoesPage';
 
 // Dados de navegação
 const navigationItems = [
@@ -106,6 +108,7 @@ const navigationItems = [
   { id: "gestao-usuarios", label: "Gestão de Usuários", icon: UserCog, route: "/gestao-usuarios" },
   { id: "gestao-pacientes", label: "Gestão de Pacientes", icon: UserCheck, route: "/gestao-pacientes" },
   { id: "informacoes", label: "Informações", icon: Info, route: "/informacoes" },
+  { id: "configuracoes", label: "Configurações", icon: Settings, route: "/configuracoes", adminOnly: true },
 ];
 
 // Dados dos módulos para a página inicial
@@ -189,6 +192,15 @@ const moduleCards = [
     icon: UserCheck,
     color: "bg-yellow-50 border-yellow-200 hover:bg-yellow-100",
     iconColor: "text-yellow-600",
+  },
+  {
+    id: "configuracoes",
+    title: "Configurações",
+    description: "Motor de Regras dinâmico de Regulação",
+    icon: Settings,
+    color: "bg-slate-50 border-slate-200 hover:bg-slate-100",
+    iconColor: "text-slate-600",
+    adminOnly: true,
   },
 ];
 
@@ -304,6 +316,7 @@ const getPageTitle = (pageId) => {
     "gestao-usuarios": "Gestão de Usuários",
     "gestao-pacientes": "Gestão de Pacientes",
     informacoes: "Informações",
+    configuracoes: "Configurações",
   };
   return titles[pageId] || "RegulaFacil";
 };
@@ -1606,6 +1619,8 @@ const RegulaFacilApp = () => {
               return <GestaoPacientesPage />;
             case "informacoes":
               return <InformacoesPage />;
+            case "configuracoes":
+              return <ConfiguracoesPage />;
             default:
               return <HomePage onNavigate={handleNavigate} currentUser={currentUser} />;
           }
