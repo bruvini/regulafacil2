@@ -3,9 +3,15 @@
 // Acesso restrito a Administradores (tipoUsuario === 'Administrador')
 // Regras são persistidas em: Firestore > configuracoes/regras_regulacao
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRegrasConfig, REGRAS_DEFAULT } from "@/hooks/useRegrasConfig";
+import { useSetores } from "@/hooks/useCollections";
+import {
+  ESPECIALIDADES_MEDICAS,
+  ESPECIALIDADES_CIRURGICAS,
+  ESPECIALIDADES_CLINICAS,
+} from "@/lib/constants";
 import {
   Card,
   CardContent,
@@ -18,10 +24,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Settings,
   ShieldAlert,
-  Plus,
   X,
   Save,
   RotateCcw,
@@ -29,61 +36,235 @@ import {
   Hospital,
   Stethoscope,
   Clock,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 
 // ============================================================
-// COMPONENTE DE TAGS EDITÁVEIS
+// LISTA MESTRE DE ESPECIALIDADES — Deduplicated + Sorted
+// Combina ESPECIALIDADES_MEDICAS + CIRURGICAS + CLINICAS sem duplicatas
 // ============================================================
-const TagsEditaveis = ({ tags = [], onChange, placeholder = "Adicionar...", corBadge = "secondary" }) => {
-  const [novoItem, setNovoItem] = useState("");
+const TODAS_ESPECIALIDADES = [
+  ...new Set([
+    ...ESPECIALIDADES_MEDICAS,
+    ...ESPECIALIDADES_CIRURGICAS,
+    ...ESPECIALIDADES_CLINICAS,
+  ]),
+].sort((a, b) => a.localeCompare(b, "pt-BR"));
 
-  const adicionar = () => {
-    const valor = novoItem.trim().toUpperCase();
-    if (!valor || tags.includes(valor)) return;
-    onChange([...tags, valor]);
-    setNovoItem("");
+// ============================================================
+// COMPONENTE: Seletor de Especialidades por Checkboxes
+// ============================================================
+const SeletorEspecialidades = ({ selecionadas = [], onChange }) => {
+  const [expandido, setExpandido] = useState(false);
+
+  const toggle = (esp) => {
+    if (selecionadas.includes(esp)) {
+      onChange(selecionadas.filter((e) => e !== esp));
+    } else {
+      onChange([...selecionadas, esp]);
+    }
   };
 
-  const remover = (item) => {
-    onChange(tags.filter((t) => t !== item));
-  };
+  const limpar = () => onChange([]);
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-1.5 min-h-[32px]">
-        {tags.map((tag) => (
-          <Badge
-            key={tag}
-            variant={corBadge}
-            className="gap-1 pr-1 text-xs font-medium cursor-default"
-          >
-            {tag}
-            <button
-              type="button"
-              onClick={() => remover(tag)}
-              className="ml-0.5 rounded-full hover:bg-destructive/20 p-0.5 transition-colors"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </Badge>
-        ))}
-        {tags.length === 0 && (
-          <span className="text-xs text-muted-foreground italic">Nenhum item cadastrado</span>
+      {/* Badges das selecionadas */}
+      <div className="flex flex-wrap gap-1.5 min-h-[28px]">
+        {selecionadas.length === 0 ? (
+          <span className="text-xs text-muted-foreground italic">
+            Nenhuma especialidade selecionada
+          </span>
+        ) : (
+          selecionadas.map((esp) => (
+            <Badge key={esp} variant="secondary" className="gap-1 pr-1 text-xs">
+              {esp}
+              <button
+                type="button"
+                onClick={() => toggle(esp)}
+                className="ml-0.5 rounded-full hover:bg-destructive/20 p-0.5 transition-colors"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </Badge>
+          ))
         )}
       </div>
-      <div className="flex gap-2">
-        <Input
-          value={novoItem}
-          onChange={(e) => setNovoItem(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), adicionar())}
-          placeholder={placeholder}
-          className="h-8 text-xs"
-        />
-        <Button type="button" size="sm" variant="outline" onClick={adicionar} className="h-8 px-3">
-          <Plus className="h-3.5 w-3.5 mr-1" /> Add
-        </Button>
+
+      {/* Botão para abrir/fechar lista */}
+      <button
+        type="button"
+        onClick={() => setExpandido((v) => !v)}
+        className="flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
+      >
+        {expandido ? (
+          <ChevronUp className="h-3.5 w-3.5" />
+        ) : (
+          <ChevronDown className="h-3.5 w-3.5" />
+        )}
+        {expandido ? "Ocultar lista" : "Selecionar especialidades"}
+      </button>
+
+      {expandido && (
+        <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-muted-foreground">
+              {selecionadas.length} de {TODAS_ESPECIALIDADES.length} selecionadas
+            </span>
+            {selecionadas.length > 0 && (
+              <button
+                type="button"
+                onClick={limpar}
+                className="text-xs text-destructive hover:underline"
+              >
+                Limpar
+              </button>
+            )}
+          </div>
+          <ScrollArea className="h-48">
+            <div className="space-y-1.5 pr-3">
+              {TODAS_ESPECIALIDADES.map((esp) => (
+                <div key={esp} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`esp-${esp}`}
+                    checked={selecionadas.includes(esp)}
+                    onCheckedChange={() => toggle(esp)}
+                    className="h-3.5 w-3.5"
+                  />
+                  <label
+                    htmlFor={`esp-${esp}`}
+                    className="text-xs cursor-pointer text-foreground leading-none"
+                  >
+                    {esp}
+                  </label>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================
+// COMPONENTE: Seletor de Origens Bloqueadas (por setores)
+// ============================================================
+const SeletorOrigensBloqueadas = ({ selecionadas = [], onChange, setoresDisponiveis = [], loadingSetores }) => {
+  const [expandido, setExpandido] = useState(false);
+
+  // Opções fixas essenciais que podem não vir do cadastro
+  const OPCOES_FIXAS = ["RPA", "CC - RECUPERAÇÃO", "RECUPERACAO"];
+
+  // Combina setores do banco + opções fixas, sem duplicatas, normalizado
+  const todasOpcoes = useMemo(() => {
+    const nomesSetores = setoresDisponiveis
+      .map((s) => s.nomeSetor || s.nome || s.siglaSetor || "")
+      .filter(Boolean);
+    return [...new Set([...nomesSetores, ...OPCOES_FIXAS])].sort((a, b) =>
+      a.localeCompare(b, "pt-BR"),
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setoresDisponiveis]);
+
+  const toggle = (origem) => {
+    if (selecionadas.includes(origem)) {
+      onChange(selecionadas.filter((o) => o !== origem));
+    } else {
+      onChange([...selecionadas, origem]);
+    }
+  };
+
+  const limpar = () => onChange([]);
+
+  return (
+    <div className="space-y-2">
+      {/* Badges das selecionadas */}
+      <div className="flex flex-wrap gap-1.5 min-h-[28px]">
+        {selecionadas.length === 0 ? (
+          <span className="text-xs text-muted-foreground italic">
+            Nenhuma origem bloqueada
+          </span>
+        ) : (
+          selecionadas.map((orig) => (
+            <Badge key={orig} variant="destructive" className="gap-1 pr-1 text-xs">
+              {orig}
+              <button
+                type="button"
+                onClick={() => toggle(orig)}
+                className="ml-0.5 rounded-full hover:bg-destructive-foreground/20 p-0.5 transition-colors"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </Badge>
+          ))
+        )}
       </div>
+
+      {/* Botão para abrir/fechar lista */}
+      <button
+        type="button"
+        onClick={() => setExpandido((v) => !v)}
+        className="flex items-center gap-1.5 text-xs text-destructive hover:underline font-medium"
+      >
+        {expandido ? (
+          <ChevronUp className="h-3.5 w-3.5" />
+        ) : (
+          <ChevronDown className="h-3.5 w-3.5" />
+        )}
+        {expandido ? "Ocultar lista" : "Selecionar origens a bloquear"}
+      </button>
+
+      {expandido && (
+        <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 space-y-2">
+          {loadingSetores ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Carregando setores do banco...
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {selecionadas.length} de {todasOpcoes.length} bloqueadas
+                </span>
+                {selecionadas.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={limpar}
+                    className="text-xs text-destructive hover:underline"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+              <ScrollArea className="h-52">
+                <div className="space-y-1.5 pr-3">
+                  {todasOpcoes.map((orig) => (
+                    <div key={orig} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`orig-${orig}`}
+                        checked={selecionadas.includes(orig)}
+                        onCheckedChange={() => toggle(orig)}
+                        className="h-3.5 w-3.5 border-destructive data-[state=checked]:bg-destructive data-[state=checked]:border-destructive"
+                      />
+                      <label
+                        htmlFor={`orig-${orig}`}
+                        className="text-xs cursor-pointer text-foreground leading-none"
+                      >
+                        {orig}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -94,11 +275,12 @@ const TagsEditaveis = ({ tags = [], onChange, placeholder = "Adicionar...", corB
 const ConfiguracoesPage = () => {
   const { currentUser } = useAuth();
   const { regras, loading, salvando, salvarRegras } = useRegrasConfig();
+  const { data: setoresDB = [], loading: loadingSetores } = useSetores();
 
   // Estado local das configurações (editável antes de salvar)
   const [pcpLocal, setPcpLocal] = useState(REGRAS_DEFAULT.pcp);
   const [perfisLocal, setPerfisLocal] = useState(REGRAS_DEFAULT.perfisSetor);
-  const [novoSetor, setNovoSetor] = useState("");
+  const [setorSelecionado, setSetorSelecionado] = useState("");
   const [alterado, setAlterado] = useState(false);
 
   // Sincroniza com os dados do Firebase ao carregar
@@ -142,10 +324,10 @@ const ConfiguracoesPage = () => {
 
   // ── Handlers Perfis de Setor ───────────────────────────────
   const adicionarSetor = () => {
-    const nome = novoSetor.trim().toUpperCase();
+    const nome = setorSelecionado.trim().toUpperCase();
     if (!nome || perfisLocal[nome]) return;
     setPerfisLocal((prev) => ({ ...prev, [nome]: [] }));
-    setNovoSetor("");
+    setSetorSelecionado("");
     setAlterado(true);
   };
 
@@ -161,6 +343,16 @@ const ConfiguracoesPage = () => {
     setAlterado(true);
   };
 
+  // Setores disponíveis para adicionar (que ainda não estão configurados)
+  const nomesSetoresDB = setoresDB
+    .map((s) => (s.nomeSetor || s.nome || s.siglaSetor || "").toUpperCase())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+  const setoresDisponiveisParaAdicionar = nomesSetoresDB.filter(
+    (nome) => !perfisLocal[nome],
+  );
+
   // ── Salvar ─────────────────────────────────────────────────
   const handleSalvar = async () => {
     const novasRegras = {
@@ -174,10 +366,17 @@ const ConfiguracoesPage = () => {
 
     const resultado = await salvarRegras(novasRegras);
     if (resultado.sucesso) {
-      toast({ title: "✅ Configurações salvas", description: "As regras foram atualizadas no Firestore com sucesso." });
+      toast({
+        title: "✅ Configurações salvas",
+        description: "As regras foram atualizadas no Firestore com sucesso.",
+      });
       setAlterado(false);
     } else {
-      toast({ title: "❌ Erro ao salvar", description: resultado.erro, variant: "destructive" });
+      toast({
+        title: "❌ Erro ao salvar",
+        description: resultado.erro,
+        variant: "destructive",
+      });
     }
   };
 
@@ -219,7 +418,11 @@ const ConfiguracoesPage = () => {
             disabled={salvando || !alterado}
             className="gap-1.5"
           >
-            <Save className="h-3.5 w-3.5" />
+            {salvando ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Save className="h-3.5 w-3.5" />
+            )}
             {salvando ? "Salvando..." : "Salvar Configurações"}
           </Button>
         </div>
@@ -228,12 +431,15 @@ const ConfiguracoesPage = () => {
       {alterado && (
         <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
           <Info className="h-4 w-4 flex-shrink-0" />
-          <span>Você tem alterações não salvas. Clique em <strong>Salvar Configurações</strong> para persistir no Firestore.</span>
+          <span>
+            Você tem alterações não salvas. Clique em{" "}
+            <strong>Salvar Configurações</strong> para persistir no Firestore.
+          </span>
         </div>
       )}
 
       {/* ────────────────────────────────────────────────────── */}
-      {/* BLOCO 1 — Regras de Cuidados Prolongados (PCP)        */}
+      {/* BLOCO 1 — Regras do Plano de Capacidade Plena (PCP)   */}
       {/* ────────────────────────────────────────────────────── */}
       <Card className="border-blue-500/20">
         <CardHeader className="pb-3">
@@ -242,7 +448,9 @@ const ConfiguracoesPage = () => {
               <Clock className="h-5 w-5 text-blue-500" />
             </div>
             <div>
-              <CardTitle className="text-base">Regras de Cuidados Prolongados (PCP)</CardTitle>
+              <CardTitle className="text-base">
+                Regras do Plano de Capacidade Plena (PCP)
+              </CardTitle>
               <CardDescription className="text-xs">
                 Hard Rules aplicadas a todos os leitos identificados com o código PCP.
                 Erros aqui têm impacto clínico direto — altere com responsabilidade.
@@ -251,6 +459,7 @@ const ConfiguracoesPage = () => {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
+
           {/* Faixa Etária */}
           <div className="space-y-3">
             <Label className="text-sm font-medium">Faixa Etária Permitida</Label>
@@ -291,20 +500,21 @@ const ConfiguracoesPage = () => {
 
           <Separator />
 
-          {/* Origens Bloqueadas */}
+          {/* Origens Bloqueadas — Seleção Estruturada por Setores */}
           <div className="space-y-3">
             <div>
               <Label className="text-sm font-medium">Origens Bloqueadas</Label>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Pacientes procedentes de setores com estes termos no nome são bloqueados.
-                {/* TODO (HL7 v3.0): Estes termos serão mapeados para segmentos ADT/EVN do padrão HL7 */}
+                Pacientes procedentes dos setores selecionados abaixo são
+                automaticamente bloqueados para leitos PCP.
+                {/* TODO (HL7 v3.0): Mapeamento para segmentos ADT/EVN do padrão HL7 */}
               </p>
             </div>
-            <TagsEditaveis
-              tags={pcpLocal.origensBloqueadas ?? []}
+            <SeletorOrigensBloqueadas
+              selecionadas={pcpLocal.origensBloqueadas ?? []}
               onChange={(novas) => handlePcpChange("origensBloqueadas", novas)}
-              placeholder="Ex: RPA, RECUPERACAO, UTI..."
-              corBadge="destructive"
+              setoresDisponiveis={setoresDB}
+              loadingSetores={loadingSetores}
             />
           </div>
         </CardContent>
@@ -320,7 +530,9 @@ const ConfiguracoesPage = () => {
               <Hospital className="h-5 w-5 text-emerald-500" />
             </div>
             <div>
-              <CardTitle className="text-base">Mapeamento de Especialidades por Setor</CardTitle>
+              <CardTitle className="text-base">
+                Mapeamento de Especialidades por Setor
+              </CardTitle>
               <CardDescription className="text-xs">
                 Define quais especialidades clínicas são elegíveis para cada setor de internação.
               </CardDescription>
@@ -330,34 +542,66 @@ const ConfiguracoesPage = () => {
           <div className="flex items-start gap-2 mt-2 text-xs text-blue-600 bg-blue-500/5 border border-blue-500/15 rounded-md px-3 py-2">
             <Stethoscope className="h-3.5 w-3.5 mt-0.5 flex-shrink-0 text-blue-500" />
             <span>
-              <strong>Alinhamento FHIR (v3.0):</strong> Estas especialidades serão cruzadas futuramente com o campo{" "}
-              <code className="bg-muted px-1 rounded">Patient.generalPractitioner</code> e o recurso{" "}
-              <code className="bg-muted px-1 rounded">Organization.type</code> do padrão HL7 FHIR R4,
-              garantindo interoperabilidade semântica com sistemas externos.
+              <strong>Alinhamento FHIR (v3.0):</strong> Estas especialidades serão
+              cruzadas futuramente com o campo{" "}
+              <code className="bg-muted px-1 rounded">Patient.generalPractitioner</code>{" "}
+              e o recurso{" "}
+              <code className="bg-muted px-1 rounded">Organization.type</code> do padrão
+              HL7 FHIR R4, garantindo interoperabilidade semântica com sistemas externos.
             </span>
           </div>
         </CardHeader>
+
         <CardContent className="space-y-4">
-          {/* Adicionar novo setor */}
-          <div className="flex gap-2">
-            <Input
-              value={novoSetor}
-              onChange={(e) => setNovoSetor(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), adicionarSetor())}
-              placeholder="Nome do novo setor (ex: UNID. NEUROLOGIA)..."
-              className="h-9 text-xs"
-            />
-            <Button type="button" size="sm" variant="outline" onClick={adicionarSetor} className="h-9 shrink-0">
-              <Plus className="h-3.5 w-3.5 mr-1" /> Setor
-            </Button>
+
+          {/* Adicionar novo setor — via select dos setores do banco */}
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground font-medium">
+              Adicionar setor ao mapeamento
+            </Label>
+            <div className="flex gap-2">
+              {loadingSetores ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground h-9">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Carregando setores...
+                </div>
+              ) : (
+                <>
+                  <select
+                    value={setorSelecionado}
+                    onChange={(e) => setSetorSelecionado(e.target.value)}
+                    className="flex-1 h-9 text-xs rounded-md border border-input bg-background px-3 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="">Selecione um setor...</option>
+                    {setoresDisponiveisParaAdicionar.map((nome) => (
+                      <option key={nome} value={nome}>
+                        {nome}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={adicionarSetor}
+                    disabled={!setorSelecionado}
+                    className="h-9 shrink-0"
+                  >
+                    + Adicionar
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
 
-          {/* Setores existentes */}
+          {/* Setores configurados */}
           <div className="space-y-4">
             {Object.entries(perfisLocal).map(([setor, especialidades]) => (
               <div key={setor} className="rounded-lg border bg-card/50 p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-foreground">{setor}</span>
+                  <span className="text-sm font-semibold text-foreground">
+                    {setor}
+                  </span>
                   <Button
                     type="button"
                     variant="ghost"
@@ -368,11 +612,11 @@ const ConfiguracoesPage = () => {
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
-                <TagsEditaveis
-                  tags={especialidades}
-                  onChange={(novas) => atualizarEspecialidades(setor, novas)}
-                  placeholder="Adicionar especialidade..."
-                  corBadge="secondary"
+                <SeletorEspecialidades
+                  selecionadas={especialidades}
+                  onChange={(novas) => {
+                    atualizarEspecialidades(setor, novas);
+                  }}
                 />
               </div>
             ))}
@@ -402,7 +646,11 @@ const ConfiguracoesPage = () => {
           disabled={salvando || !alterado}
           className="gap-1.5"
         >
-          <Save className="h-4 w-4" />
+          {salvando ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4" />
+          )}
           {salvando ? "Salvando..." : "Salvar no Firestore"}
         </Button>
       </div>
