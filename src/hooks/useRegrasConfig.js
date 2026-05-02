@@ -63,6 +63,12 @@ export const REGRAS_DEFAULT = {
     // TODO (FHIR v3.0): Mapear origens para códigos HL7 ADT/EVN
     origensBloqueadas: ["RECUPERACAO", "RPA", " RECU"],
   },
+  importacaoMV: {
+    linkPainel: "http://1495prd.cloudmv.com.br/Painel/",
+    login: "nir",
+    senha: "nir",
+    nomePainel: "NIR - Ocupação Setores",
+  },
 };
 
 // ============================================================
@@ -90,6 +96,10 @@ export const useRegrasConfig = () => {
             pcp: {
               ...REGRAS_DEFAULT.pcp,
               ...(dados.pcp ?? {}),
+            },
+            importacaoMV: {
+              ...REGRAS_DEFAULT.importacaoMV,
+              ...(dados.importacaoMV ?? {}),
             },
           });
         } else {

@@ -44,6 +44,7 @@ import {
 import { writeBatch } from 'firebase/firestore';
 import { logAction } from '@/lib/auditoria';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRegrasConfig } from '@/hooks/useRegrasConfig';
 import { toast } from 'sonner';
 import { adicionarConclusaoRegulacaoAoBatch } from '@/lib/regulacao';
 
@@ -61,6 +62,13 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
   });
 
   const { currentUser } = useAuth();
+  const { regras, loading: loadingRegras } = useRegrasConfig();
+
+  // Extrai configurações dinâmicas do Soul MV com optional chaining seguro
+  const mvLink = regras?.importacaoMV?.linkPainel ?? "http://1495prd.cloudmv.com.br/Painel/";
+  const mvLogin = regras?.importacaoMV?.login ?? "nir";
+  const mvSenha = regras?.importacaoMV?.senha ?? "nir";
+  const mvNomePainel = regras?.importacaoMV?.nomePainel ?? "NIR - Ocupação Setores";
 
   // Novos estados para validação
   const [setoresFaltantes, setSetoresFaltantes] = useState([]);
@@ -1069,27 +1077,34 @@ const ImportarPacientesMVModal = ({ isOpen, onClose }) => {
       <Alert>
         <FileSpreadsheet className="h-4 w-4" />
         <AlertDescription>
-          <div className="space-y-3">
-            <p className="font-semibold">Orientações: Como Obter o Arquivo</p>
-            <ol className="list-decimal list-inside space-y-2 text-sm">
-              <li>
-                Acesse o painel do Soul MV:{' '}
-                <a 
-                  href="http://1495prd.cloudmv.com.br/Painel/" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline inline-flex items-center gap-1"
-                >
-                  Acessar Painel <ExternalLink className="h-3 w-3" />
-                </a>
-              </li>
-              <li><strong>Login:</strong> <code>nir</code>, <strong>Senha:</strong> <code>nir</code></li>
-              <li>Em "Indicadores", localize o painel <strong>"NIR - Ocupação Setores"</strong></li>
-              <li>Clique no ícone de banco de dados, depois em <strong>"Exportar"</strong></li>
-              <li>Selecione o formato <strong>"XLS"</strong> e clique no ícone de disquete para salvar</li>
-              <li>Volte para esta tela e selecione o arquivo salvo abaixo</li>
-            </ol>
-          </div>
+          {loadingRegras ? (
+            <div className="flex items-center gap-2 py-2">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              <span className="text-sm text-muted-foreground">Carregando configurações...</span>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="font-semibold">Orientações: Como Obter o Arquivo</p>
+              <ol className="list-decimal list-inside space-y-2 text-sm">
+                <li>
+                  Acesse o painel do Soul MV:{' '}
+                  <a 
+                    href={mvLink} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline inline-flex items-center gap-1"
+                  >
+                    Acessar Painel <ExternalLink className="h-3 w-3" />
+                  </a>
+                </li>
+                <li><strong>Login:</strong> <code>{mvLogin}</code>, <strong>Senha:</strong> <code>{mvSenha}</code></li>
+                <li>Em "Indicadores", localize o painel <strong>"{mvNomePainel}"</strong></li>
+                <li>Clique no ícone de banco de dados, depois em <strong>"Exportar"</strong></li>
+                <li>Selecione o formato <strong>"XLS"</strong> e clique no ícone de disquete para salvar</li>
+                <li>Volte para esta tela e selecione o arquivo salvo abaixo</li>
+              </ol>
+            </div>
+          )}
         </AlertDescription>
       </Alert>
 

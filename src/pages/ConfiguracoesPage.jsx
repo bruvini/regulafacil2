@@ -39,6 +39,8 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
+  Link,
+  Database,
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 
@@ -280,6 +282,7 @@ const ConfiguracoesPage = () => {
   // Estado local das configurações (editável antes de salvar)
   const [pcpLocal, setPcpLocal] = useState(REGRAS_DEFAULT.pcp);
   const [perfisLocal, setPerfisLocal] = useState(REGRAS_DEFAULT.perfisSetor);
+  const [importacaoMVLocal, setImportacaoMVLocal] = useState(REGRAS_DEFAULT.importacaoMV);
   const [setorSelecionado, setSetorSelecionado] = useState("");
   const [alterado, setAlterado] = useState(false);
 
@@ -288,6 +291,7 @@ const ConfiguracoesPage = () => {
     if (!loading && regras) {
       setPcpLocal(regras.pcp ?? REGRAS_DEFAULT.pcp);
       setPerfisLocal(regras.perfisSetor ?? REGRAS_DEFAULT.perfisSetor);
+      setImportacaoMVLocal(regras.importacaoMV ?? REGRAS_DEFAULT.importacaoMV);
     }
   }, [loading, regras]);
 
@@ -319,6 +323,12 @@ const ConfiguracoesPage = () => {
   // ── Handlers PCP ──────────────────────────────────────────
   const handlePcpChange = (campo, valor) => {
     setPcpLocal((prev) => ({ ...prev, [campo]: valor }));
+    setAlterado(true);
+  };
+
+  // ── Handlers Importação MV ─────────────────────────────────
+  const handleImportacaoMVChange = (campo, valor) => {
+    setImportacaoMVLocal((prev) => ({ ...prev, [campo]: valor }));
     setAlterado(true);
   };
 
@@ -362,6 +372,12 @@ const ConfiguracoesPage = () => {
         origensBloqueadas: pcpLocal.origensBloqueadas,
       },
       perfisSetor: perfisLocal,
+      importacaoMV: {
+        linkPainel: importacaoMVLocal.linkPainel?.trim() || REGRAS_DEFAULT.importacaoMV.linkPainel,
+        login: importacaoMVLocal.login?.trim() || REGRAS_DEFAULT.importacaoMV.login,
+        senha: importacaoMVLocal.senha?.trim() || REGRAS_DEFAULT.importacaoMV.senha,
+        nomePainel: importacaoMVLocal.nomePainel?.trim() || REGRAS_DEFAULT.importacaoMV.nomePainel,
+      },
     };
 
     const resultado = await salvarRegras(novasRegras);
@@ -384,6 +400,7 @@ const ConfiguracoesPage = () => {
   const handleReset = () => {
     setPcpLocal(REGRAS_DEFAULT.pcp);
     setPerfisLocal(REGRAS_DEFAULT.perfisSetor);
+    setImportacaoMVLocal(REGRAS_DEFAULT.importacaoMV);
     setAlterado(true);
   };
 
@@ -626,6 +643,99 @@ const ConfiguracoesPage = () => {
               </p>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* ──────────────────────────────────────────────── */}
+      {/* BLOCO 3 — Configurações de Importação (Soul MV)     */}
+      {/* ──────────────────────────────────────────────── */}
+      <Card className="border-violet-500/20">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-violet-500/10">
+              <Database className="h-5 w-5 text-violet-500" />
+            </div>
+            <div>
+              <CardTitle className="text-base">
+                Configurações de Importação (Soul MV)
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Parâmetros utilizados nas instruções do modal de importação de pacientes via planilha XLS.
+                Altere aqui caso as credenciais ou o painel do Soul MV sejam atualizados.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Link do Painel */}
+            <div className="md:col-span-2 space-y-1">
+              <Label htmlFor="mv-link" className="text-xs text-muted-foreground font-medium">
+                Link do Painel (URL)
+              </Label>
+              <div className="flex items-center gap-2">
+                <Link className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <Input
+                  id="mv-link"
+                  type="url"
+                  value={importacaoMVLocal.linkPainel ?? ""}
+                  onChange={(e) => handleImportacaoMVChange("linkPainel", e.target.value)}
+                  placeholder="http://..."
+                  className="h-9 text-xs font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Login */}
+            <div className="space-y-1">
+              <Label htmlFor="mv-login" className="text-xs text-muted-foreground font-medium">
+                Login de Acesso
+              </Label>
+              <Input
+                id="mv-login"
+                type="text"
+                value={importacaoMVLocal.login ?? ""}
+                onChange={(e) => handleImportacaoMVChange("login", e.target.value)}
+                placeholder="Ex: nir"
+                className="h-9 text-xs"
+              />
+            </div>
+
+            {/* Senha */}
+            <div className="space-y-1">
+              <Label htmlFor="mv-senha" className="text-xs text-muted-foreground font-medium">
+                Senha de Acesso
+              </Label>
+              <Input
+                id="mv-senha"
+                type="text"
+                value={importacaoMVLocal.senha ?? ""}
+                onChange={(e) => handleImportacaoMVChange("senha", e.target.value)}
+                placeholder="Ex: nir"
+                className="h-9 text-xs"
+              />
+            </div>
+
+            {/* Nome do Painel */}
+            <div className="md:col-span-2 space-y-1">
+              <Label htmlFor="mv-painel" className="text-xs text-muted-foreground font-medium">
+                Nome do Painel de Indicadores
+              </Label>
+              <Input
+                id="mv-painel"
+                type="text"
+                value={importacaoMVLocal.nomePainel ?? ""}
+                onChange={(e) => handleImportacaoMVChange("nomePainel", e.target.value)}
+                placeholder="Ex: NIR - Ocupação Setores"
+                className="h-9 text-xs"
+              />
+            </div>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Estas configurações são exibidas nas instruções do modal “Importar e Sincronizar
+            Pacientes do Soul MV” para orientar os usuários no processo de exportação da planilha.
+          </p>
         </CardContent>
       </Card>
 
