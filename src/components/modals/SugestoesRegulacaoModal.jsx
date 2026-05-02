@@ -542,7 +542,14 @@ const SugestoesRegulacaoModal = ({ isOpen, onClose }) => {
     const leitosCompativeisPorPaciente = new Map();
 
     pacientesElegiveis.forEach((paciente) => {
-      const leitosCompat = encontrarLeitosCompativeis(paciente, hospitalData, "enfermaria");
+      // Enriquece com setorNome resolvido para que a Hard Rule de origem RPA
+      // no compatibilidadeUtils possa detectar "CC - RECUPERAÇÃO" pelo nome textual.
+      const setorResolvido = paciente.setorId ? setoresPorId.get(paciente.setorId) : null;
+      const pacienteComSetor = setorResolvido
+        ? { ...paciente, setorNome: setorResolvido.nomeSetor || setorResolvido.nome || setorResolvido.siglaSetor || paciente.setorNome }
+        : paciente;
+
+      const leitosCompat = encontrarLeitosCompativeis(pacienteComSetor, hospitalData, "enfermaria");
       leitosCompativeisPorPaciente.set(
         paciente.id,
         new Set((leitosCompat || []).map((leitoCompat) => leitoCompat.id)),

@@ -376,21 +376,9 @@ export const encontrarLeitosCompativeis = (
     const quartoIdentificador = normalizarTexto(quartoNomeBruto.replace(/^quarto\s+/i, ''));
     const quartoIdentificadorUpper = textoUpper(quartoIdentificador);
 
-    const isQuarto504Especial =
-      setorNomeUpper === 'UNID. CLINICA MEDICA'
-      && quartoIdentificadorUpper === '504';
-
-    if (isQuarto504Especial) {
-      leitosCompativeis.push(leito);
-      return;
-    }
-
-    if (modo === 'uti') {
-      leitosCompativeis.push(leito);
-      return;
-    }
-
-    // Regra PCP (Hard Rule reforçada)
+    // Hard Rule PCP — deve ser verificada ANTES de qualquer atalho de quarto especial.
+    // Leitos com código PCP ou flag isPCP=true são sujeitos a tolerância zero:
+    // faixa etária 18-60, sem isolamento ativo, sem origem cirúrgica (RPA/CC RECU).
     const isPCPBed = leito.isPCP === true || String(leito?.codigoLeito || leito?.codigo || leito?.nomeLeito || leito?.nome || '').toUpperCase().includes('PCP');
     if (isPCPBed) {
       const numIdade = Number(idade);
@@ -404,13 +392,50 @@ export const encontrarLeitosCompativeis = (
         return;
       }
 
-      const origemExtensa = Object.values(pacienteAlvo).join(' ').toUpperCase();
-      
+      // Extrai campos textuais de origem/localização de forma explícita (evita perder
+      // nomes acentuados ou aninhados que Object.values puro pode não capturar).
+      const removerAcentosLocal = (s) =>
+        String(s || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toUpperCase();
+      const camposOrigem = [
+        pacienteAlvo.setorNome,
+        pacienteAlvo.setorOrigemNome,
+        pacienteAlvo.setorOrigemSigla,
+        pacienteAlvo.setorOrigem,
+        pacienteAlvo.origemSetorNome,
+        pacienteAlvo.localizacaoAtual,
+        pacienteAlvo.setor,
+        pacienteAlvo.leitoOrigemCodigo,
+        pacienteAlvo.leitoOrigem,
+        pacienteAlvo.leitoAtualCodigo,
+        pacienteAlvo.leitoAtual,
+        pacienteAlvo.leitoNome,
+        pacienteAlvo.leito,
+      ].map(removerAcentosLocal).join(' ');
+
+      const origemExtensa = removerAcentosLocal(Object.values(pacienteAlvo).join(' ')) + ' ' + camposOrigem;
+
       // TODO: Padronizar Origem/Destino via protocolo HL7 na v2.0
       const isFromRPA = origemExtensa.includes('RECUPERACAO') || origemExtensa.includes('RPA') || origemExtensa.includes(' RECU');
       if (isFromRPA) {
         return;
       }
+    }
+
+    // Atalho para leitos não-PCP do quarto 504 (UNID. CLÍNICA MÉDICA):
+    // bypass das verificações de coorte, pois o quarto tem configuração especial.
+    const isQuarto504Especial =
+      !isPCPBed
+      && setorNomeUpper === 'UNID. CLINICA MEDICA'
+      && quartoIdentificadorUpper === '504';
+
+    if (isQuarto504Especial) {
+      leitosCompativeis.push(leito);
+      return;
+    }
+
+    if (modo === 'uti') {
+      leitosCompativeis.push(leito);
+      return;
     }
 
     const outrosLeitosDoQuarto = (leitosDoQuarto || []).filter((outro) => outro?.id !== leito.id);
